@@ -508,7 +508,8 @@ export function ChannelsView() {
        the task panes, and the filter bar. Loaded by refresh() (an explicit
        command: mount, manual Refresh, post-action, and the channels:changed
        plugin event). A session-scoped display snapshot survives navigation;
-       every mount revalidates it before allowing row actions.
+       every mount revalidates it before allowing model-dependent row actions.
+       Once loaded, full models remain usable during this mount's refreshes.
        Menu/task actions take EXPLICIT rows/ids computed where they are offered,
        so a context menu can never act on a stale selection. */
     const [data, setData] = useState(readChannelListDisplay);
@@ -519,6 +520,9 @@ export function ChannelsView() {
     const actionsReadyRef = useRef(false);
     const [groupsReady, setGroupsReady] = useState(false);
     const groupsReadyRef = useRef(false);
+    // Cache entries are display projections. Only successful reads in this
+    // mounted view establish full models; refresh progress does not revoke them.
+    const liveModelsRef = useRef({ channels: false, groups: false });
     const mountedRef = useRef(false);
     const importBusyRef = useRef(false);
     const pendingImportRef = useRef<{ content: string; ids: Map<string, string> } | null>(null);
@@ -527,6 +531,7 @@ export function ChannelsView() {
         return pendingImportRef.current.ids;
     }
     const [loadError, setLoadError] = useState<string | null>(null);
+    const [staleResources, setStaleResources] = useState(() => new Set<string>());
     const refreshGenRef = useRef(0);
     const [selected, setSelected] = useState(() => new Set());   // channel ids
     const lastClickedRef = useRef<any>(null);                     // shift-range anchor (interaction-only)
@@ -763,11 +768,12 @@ export function ChannelsView() {
     }
 
     function onRowActivate(node: any) {
-        if (!actionsReadyRef.current) return;
-        if (node.kind === 'group' && !groupsReadyRef.current) return;
         // Double-click: a group toggles its collapse; a channel opens the editor.
-        if (node.kind === 'group') toggleGroupCollapse(node.group.id);
-        else router.navigate(`/channels/${node.channel.id}/edit`);
+        // Editor navigation needs only the ID, never a cached channel model.
+        if (node.kind === 'group') {
+            if (!groupsReadyRef.current) return;
+            toggleGroupCollapse(node.group.id);
+        } else router.navigate(`/channels/${node.channel.id}/edit`);
     }
 
     // Right-click on blank space (empty list, or below the rows): clear any
@@ -910,10 +916,6 @@ export function ChannelsView() {
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
         const gen = ++refreshGenRef.current;
-        actionsReadyRef.current = false;
-        setActionsReady(false);
-        groupsReadyRef.current = false;
-        setGroupsReady(false);
         setRefreshing(true);
         const results: any[] = await Promise.allSettled([
             api.channels.list(),
@@ -930,13 +932,17 @@ export function ChannelsView() {
         if (denied(groupResult)) { next.groups = []; setLastGroupId(null); }
         if (denied(tagResult)) next.tags = [];
         if (denied(statusResult)) next.statusById = {};
-        const failures = [
+        const reads: [string, any][] = [
             ['channels', channelResult],
             ['groups', groupResult],
             ['tags', tagResult],
             ['statuses', statusResult]
-        ].filter(([, result]: any) => result.status === 'rejected')
+        ];
+        const failures = reads.filter(([, result]) => result.status === 'rejected')
             .map(([label, result]: any) => `${label}: ${result.reason?.message || result.reason}`);
+        setStaleResources(new Set(reads
+            .filter(([, result]) => result.status === 'rejected' && !denied(result))
+            .map(([label]) => label)));
 
         if (channelResult.status === 'fulfilled') {
             const channelList = channelResult.value;
@@ -967,11 +973,17 @@ export function ChannelsView() {
         dataRef.current = next;
         setData(next);
         cacheChannelListDisplay(next);
-        // Group visibility is a separate engine permission. A failed group read
-        // must not block actions on freshly authorized individual channels.
-        // Group targeting additionally needs current membership, never summaries.
-        actionsReadyRef.current = channelResult.status === 'fulfilled';
-        groupsReadyRef.current = actionsReadyRef.current && groupResult.status === 'fulfilled';
+        // Preserve the last full models through transient failures, as during
+        // ordinary refreshes before navigation caching. Denials revoke them;
+        // successful empty/subset responses above still replace and prune rows.
+        // Groups have independent permission/provenance and may finish loading
+        // on a different refresh from channels. Summaries never grant readiness.
+        for (const [resource, result] of [['channels', channelResult], ['groups', groupResult]] as const) {
+            if (result.status === 'fulfilled') liveModelsRef.current[resource] = true;
+            else if (denied(result)) liveModelsRef.current[resource] = false;
+        }
+        actionsReadyRef.current = liveModelsRef.current.channels;
+        groupsReadyRef.current = actionsReadyRef.current && liveModelsRef.current.groups;
         setActionsReady(actionsReadyRef.current);
         setGroupsReady(groupsReadyRef.current);
         setRefreshing(false);
@@ -1785,6 +1797,7 @@ export function ChannelsView() {
             mountedRef.current = false;
             actionsReadyRef.current = false;
             groupsReadyRef.current = false;
+            liveModelsRef.current = { channels: false, groups: false };
             off();
             releaseDisplay();
         };
@@ -1843,6 +1856,10 @@ export function ChannelsView() {
         .map((g: any) => ({ group: g, channels: g.channels.filter((c: any) => !hasFilter || matchesFilter(c)) }))
         .filter((g: any) => g.channels.length > 0 || !hasFilter);
     const shownChannels = channels.filter((c: any) => !hasFilter || matchesFilter(c));
+    const hasStaleDisplay = (staleResources.has('channels') && shownChannels.length > 0)
+        || (staleResources.has('groups') && groupView && shownGroups.some(({ group }) => group.id !== DEFAULT_GROUP_ID))
+        || (staleResources.has('tags') && (tagMode !== 'off' || hasFilter) && shownChannels.some(channel => channelTags(channel).length > 0))
+        || (staleResources.has('statuses') && shownChannels.some(channel => statusById[channel.id]));
     const enabledCount = shownChannels.filter(isEnabled).length;
     const countsText = (groupView ? `${shownGroups.length} Group${shownGroups.length === 1 ? '' : 's'}, ` : '')
         + `${shownChannels.length} Channel${shownChannels.length === 1 ? '' : 's'}, `
@@ -1890,7 +1907,7 @@ export function ChannelsView() {
             </ViewTasks>
             <div className="view-body flush flex flex-col overflow-hidden">
                 {loadError && <div className="mx-[13px] mt-3 panel border-danger text-danger" role="alert">
-                    Failed to load channels: {loadError}. Displayed data may be stale. Refresh to retry.
+                    Failed to load channels: {loadError}. {hasStaleDisplay && <>Displayed data may be stale. </>}Refresh to retry.
                 </div>}
                 {/* Grid so the TreeTable's own .dt-wrap stretches to fill the
                     region (a flex child wouldn't grow on the main axis); this
@@ -1920,11 +1937,16 @@ export function ChannelsView() {
                         scrollReady={hasChannels}
                         columnWidths={CHANNEL_COL_WIDTHS}
                         pinnedKeys={['status', 'name']}
-                        emptyText={refreshing ? <>
+                        emptyText={refreshing && !hasChannels ? <>
                             <div className="empty-icon"><Icon name="channels" size={30} /></div>
                             <div role="status">Loading channels…</div>
                         </>
-                            : loadError && !hasChannels ? <div>Unable to load channels. Refresh to retry.</div> : (
+                            : loadError && !hasChannels ? <div>Unable to load channels. Refresh to retry.</div>
+                            : hasFilter && channels.length > 0 ? <>
+                                <div className="empty-icon"><Icon name="channels" size={30} /></div>
+                                <div>No matching channels</div>
+                                <div className="text-text-faint mt-[13px]">Clear or change the filter.</div>
+                            </> : (
                             <>
                                 <div className="empty-icon"><Icon name="channels" size={30} /></div>
                                 <div>No channels</div>

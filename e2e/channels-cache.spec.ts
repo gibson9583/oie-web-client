@@ -105,7 +105,7 @@ test('first visit shows loading until the channel request completes', async ({ p
     } finally { held.release(); }
 });
 
-test('returning from Dashboard immediately displays the complete snapshot but blocks stale row actions', async ({ page }) => {
+test('returning from Dashboard displays the snapshot but gates actions that need channel models', async ({ page }) => {
     const heldChannels = gate(), heldTags = gate();
     let hold = false, channelReads = 0, tagWaiting = false;
     await mockEngine(page, {
@@ -142,7 +142,7 @@ test('returning from Dashboard immediately displays the complete snapshot but bl
         const row = page.getByRole('row').filter({ has: page.getByText('Demo Started', { exact: true }) });
         await expect(row.locator('.tag', { hasText: 'Cached tag' })).toBeVisible();
         await expect(row.locator('.cell-flag')).toHaveText('2');
-        await name(page, 'Demo Started').click();
+        await selectRow(page, 'Demo Started');
         await expect(page.getByRole('button', { name: 'Clone Channel', exact: true })).toHaveCount(0);
         await expect(page.getByRole('button', { name: 'Snapshot action', exact: true })).toHaveCount(0);
         await expect(page.locator('.view-body [aria-selected="true"]')).toHaveCount(0);
@@ -150,15 +150,13 @@ test('returning from Dashboard immediately displays the complete snapshot but bl
         await name(page, 'Demo Started').click({ button: 'right' });
         await expect(page.getByRole('menuitem', { name: 'Clone Channel', exact: true })).toHaveCount(0);
         await page.keyboard.press('Escape');
-        await name(page, 'Demo Started').dblclick();
-        await expect(page).toHaveURL(/\/channels$/);
         await expect(refresh(page)).toBeEnabled();
 
         // A fast channels endpoint cannot make cached rows actionable while
         // one of their prerequisite lists is still being revalidated.
         await finishChannels(page, heldChannels);
         await expect(page.locator('.view-body')).not.toContainText('Refreshing channels');
-        await name(page, 'Demo Started').click();
+        await selectRow(page, 'Demo Started');
         await expect(page.getByRole('button', { name: 'Clone Channel', exact: true })).toHaveCount(0);
         heldTags.release();
         await loaded(page);
@@ -167,6 +165,187 @@ test('returning from Dashboard immediately displays the complete snapshot but bl
         await expect(page.getByRole('button', { name: 'Clone Channel', exact: true })).toBeVisible();
     } finally { heldChannels.release(); heldTags.release(); }
 });
+
+for (const activation of ['double-click', 'Enter']) {
+    test(`a cached channel opens its current engine model by ID with ${activation}`, async ({ page }) => {
+        const held = gate();
+        const current = { ...makeChannel('c-started'), name: 'Current engine channel', description: 'Current engine description' };
+        let hold = false, waiting = false, sourceReads = 0, writes = 0;
+        await mockEngine(page, {
+            ...fixtures,
+            'GET /channels': async (request: Request) => {
+                if (hold && fromChannels(request)) { waiting = true; await held.promise; }
+                return channelList();
+            },
+            'GET /channels/c-started': () => { sourceReads++; return { channel: current }; },
+            'POST /channels': () => { writes++; return true; },
+            'PUT /channels/*': () => { writes++; return true; },
+        });
+        try {
+            await page.goto('/channels');
+            await loaded(page);
+            await dashboard(page);
+            hold = true;
+            await channels(page);
+            await expect.poll(() => waiting).toBe(true);
+            const cached = page.getByRole('row').filter({ has: page.getByText('Demo Started', { exact: true }) });
+            await expect(cached).not.toHaveAttribute('draggable', 'true');
+            if (activation === 'double-click') await cached.dblclick();
+            else { await cached.focus(); await cached.press('Enter'); }
+            await expect(page).toHaveURL(/\/channels\/c-started\/edit$/);
+            await expect.poll(() => sourceReads).toBe(1);
+            // The editor must fetch by ID, never seed itself from the stripped
+            // display row (whose name still says Demo Started).
+            await expect(page.locator('.panel input[type=text]').first()).toHaveValue(current.name);
+            await finishChannels(page, held);
+            await expect(page.locator('.panel input[type=text]').first()).toHaveValue(current.name);
+            expect(writes).toBe(0);
+        } finally { held.release(); }
+    });
+}
+
+for (const responseStatus of [200, 503, 403]) {
+    test(`a live selection accepts another row during refresh, then ${responseStatus === 403 ? 'clears on denial' : `survives ${responseStatus === 503 ? 'a transient failure' : 'success'}`}`, async ({ page }) => {
+        const held = gate();
+        let refreshing = false, waiting = false;
+        await mockEngine(page, { ...fixtures, 'GET /channels': async () => {
+            if (refreshing) {
+                waiting = true;
+                await held.promise;
+                if (responseStatus !== 200) return { __status: responseStatus, body: { error: 'Channel refresh unavailable' } };
+            }
+            return channelList();
+        } });
+        try {
+            await page.goto('/channels');
+            await loaded(page);
+            const first = page.getByRole('row').filter({ has: page.getByText('Demo Started', { exact: true }) });
+            const second = page.getByRole('row').filter({ has: page.getByText('Demo Stopped', { exact: true }) });
+            const clone = page.getByRole('button', { name: 'Clone Channel', exact: true });
+            await first.click();
+            refreshing = true;
+            await refresh(page).click();
+            await expect.poll(() => waiting).toBe(true);
+            await expect(first).toHaveAttribute('aria-selected', 'true');
+            await expect(clone).toBeVisible();
+            await second.click();
+            await expect(first).toHaveAttribute('aria-selected', 'false');
+            await expect(second).toHaveAttribute('aria-selected', 'true');
+            await finishChannels(page, held);
+            if (responseStatus !== 200) {
+                await expect(page.locator('.view-body [role="alert"]')).toContainText('Channel refresh unavailable');
+                await dismissError(page);
+            }
+            if (responseStatus === 403) {
+                await expect(page.locator('.view-body [role="alert"]')).not.toContainText(/stale/i);
+                await expect(first).toHaveCount(0);
+                await expect(second).toHaveCount(0);
+                await expect(clone).toHaveCount(0);
+            } else {
+                if (responseStatus === 503) await expect(page.locator('.view-body [role="alert"]')).toContainText(/stale/i);
+                await expect(first).toHaveAttribute('aria-selected', 'false');
+                await expect(second).toHaveAttribute('aria-selected', 'true');
+                await expect(clone).toBeVisible();
+            }
+        } finally { held.release(); }
+    });
+}
+
+test('the focused Clone task remains mounted throughout its post-action refresh', async ({ page }) => {
+    const held = gate();
+    let written: any = null, waiting = false;
+    await mockEngine(page, {
+        ...fixtures,
+        'GET /channels': async () => {
+            if (written) { waiting = true; await held.promise; }
+            return channelList([...SAMPLE_CHANNELS, ...(written ? [written] : [])]);
+        },
+        'GET /channels/c-started': { channel: { ...makeChannel('c-started'), name: 'Demo Started' } },
+        'POST /channels': (request: Request) => { written = request.postDataJSON().channel; return true; },
+    });
+    try {
+        await page.goto('/channels');
+        await loaded(page);
+        await name(page, 'Demo Started').click();
+        const clone = page.getByRole('button', { name: 'Clone Channel', exact: true });
+        await clone.focus();
+        await clone.press('Enter');
+        await expect.poll(() => waiting).toBe(true);
+        await expect(clone).toBeFocused();
+        await expect(page.getByRole('row').filter({ has: page.getByText('Demo Started', { exact: true }) }))
+            .toHaveAttribute('aria-selected', 'true');
+        await finishChannels(page, held);
+        await expect(name(page, 'Demo Started copy')).toBeVisible();
+        await expect(clone).toBeFocused();
+    } finally { held.release(); }
+});
+
+test('a filter with no matches stays distinct from loading during a live refresh', async ({ page }) => {
+    const held = gate();
+    let refreshing = false, waiting = false;
+    await mockEngine(page, { ...fixtures, 'GET /channels': async () => {
+        if (refreshing) { waiting = true; await held.promise; }
+        return channelList();
+    } });
+    try {
+        await page.goto('/channels');
+        await loaded(page);
+        await page.getByRole('radiogroup', { name: 'Row grouping' }).getByRole('radio', { name: 'Channel view' }).click();
+        const filter = page.getByPlaceholder('Enter channel tag or name');
+        await filter.fill('No such channel');
+        await expect(name(page, 'No matching channels')).toBeVisible();
+        await expect(name(page, 'No channels')).toHaveCount(0);
+        refreshing = true;
+        await refresh(page).click();
+        await expect.poll(() => waiting).toBe(true);
+        await expect(name(page, 'No matching channels')).toBeVisible();
+        await expect(status(page).filter({ hasText: /Loading channels/ })).toHaveCount(0);
+        await finishChannels(page, held);
+        await expect(name(page, 'No matching channels')).toBeVisible();
+        await filter.clear();
+        await expect(name(page, 'Demo Started')).toBeVisible();
+        await expect(name(page, 'Demo Stopped')).toBeVisible();
+    } finally { held.release(); }
+});
+
+test('a hidden tag still reports stale filtering after its refresh fails', async ({ page }) => {
+    let failing = false;
+    await mockEngine(page, { ...fixtures,
+        'GET /server/channelTags': () => failing
+            ? { __status: 503, body: { error: 'Tag refresh unavailable' } } : TAGS,
+    });
+    await page.goto('/channels');
+    await loaded(page);
+    await page.getByRole('radiogroup', { name: 'Tag display' }).getByRole('radio', { name: 'Off', exact: true }).click();
+    const filter = page.getByPlaceholder('Enter channel tag or name');
+    await filter.fill('Cached tag');
+    await expect(name(page, 'Demo Started')).toBeVisible();
+    await expect(name(page, 'Demo Stopped')).toHaveCount(0);
+    await expect(page.locator('.view-body .tag')).toHaveCount(0);
+    failing = true;
+    await refresh(page).click();
+    const alert = page.locator('.view-body [role="alert"]');
+    await expect(alert).toContainText('Tag refresh unavailable');
+    await expect(alert).toContainText(/stale/i);
+    await dismissError(page);
+    // Clearing the tag filter removes the only displayed effect of the old
+    // tags; the error remains, but the freshly loaded rows are not stale.
+    await filter.clear();
+    await expect(name(page, 'Demo Stopped')).toBeVisible();
+    await expect(alert).not.toContainText(/stale/i);
+});
+
+for (const endpoint of ['GET /channels', 'GET /channels/statuses']) {
+    test(`a first-visit ${endpoint} failure does not claim that fresh data is stale`, async ({ page }) => {
+        await mockEngine(page, { ...fixtures, [endpoint]: { __status: 503, body: { error: 'Initial read unavailable' } } });
+        await page.goto('/channels');
+        const alert = page.locator('.view-body [role="alert"]');
+        await expect(alert).toContainText('Initial read unavailable');
+        await expect(alert).not.toContainText(/stale/i);
+        if (endpoint === 'GET /channels/statuses') await expect(name(page, 'Demo Started')).toBeVisible();
+        else await expect(name(page, 'Demo Started')).toHaveCount(0);
+    });
+}
 
 test('an active Channels snapshot survives five minutes and a recent refresh', async ({ page }) => {
     const returning = gate();
@@ -187,7 +366,11 @@ test('an active Channels snapshot survives five minutes and a recent refresh', a
         // Retaining the snapshot must not turn the explicit refresh into a
         // polling query or introduce an extra automatic request.
         expect(reads).toBe(1);
+        const refreshed = page.waitForResponse(response => new URL(response.url()).pathname === '/api/channels'
+            && fromChannels(response.request()));
         await refresh(page).click();
+        await (await refreshed).finished();
+        await settle(page);
         await expect.poll(() => reads).toBe(2);
         await loaded(page);
         await page.clock.fastForward(11_000);
@@ -335,8 +518,11 @@ for (const endpoint of ['GET /channels', 'GET /channelgroups', 'GET /server/chan
             await expect.poll(() => waiting).toBe(true);
             await expect(page.locator('.view-body')).not.toContainText('Refreshing channels');
             await expect(name(page, 'Demo Started')).toBeVisible();
-            await name(page, 'Demo Started').click();
-            await expect(page.getByRole('button', { name: 'Clone Channel', exact: true })).toHaveCount(0);
+            await selectRow(page, 'Demo Started');
+            // Only this mount's successfully loaded full models can keep their
+            // actions usable while retrying an independent prerequisite.
+            if (endpoint === 'GET /channels') await expect(clone).toHaveCount(0);
+            else await expect(clone).toBeVisible();
             held.release();
             await loaded(page);
             await expect(page.locator('.view-body [role="alert"]')).toHaveCount(0);
@@ -357,7 +543,9 @@ for (const endpoint of ['GET /channels', 'GET /channelgroups', 'GET /server/chan
         await dashboard(page);
         denied = true;
         await channels(page);
-        await expect(page.locator('.view-body [role="alert"]')).toContainText('Access no longer permitted');
+        const alert = page.locator('.view-body [role="alert"]');
+        await expect(alert).toContainText('Access no longer permitted');
+        await expect(alert).not.toContainText(/stale/i);
         await dismissError(page);
         if (endpoint === 'GET /channels') {
             await expect(name(page, 'Demo Started')).toHaveCount(0);
@@ -399,37 +587,95 @@ test('a forbidden group list preserves individual channel actions in flat mode',
     await expect.poll(() => writes).toBe(1);
 });
 
-test('a failed group refresh removes selected-group actions and palette targets', async ({ page }) => {
-    let failing = false;
+for (const responseStatus of [503, 403]) {
+    test(`a live group selection ${responseStatus === 503 ? 'survives a transient failure' : 'is cleared by permission denial'}`, async ({ page }) => {
+        let failing = false;
+        await mockEngine(page, {
+            ...fixtures,
+            'GET /channelgroups': () => failing ? { __status: responseStatus, body: { error: 'Group refresh unavailable' } } : GROUPS,
+            'GET /channels/idsAndNames': { map: { entry: [{ string: ['c-started', 'Demo Started'] }] } },
+        });
+        await page.goto('/channels');
+        await loaded(page);
+        const group = page.getByRole('row').filter({ has: page.getByText('[Cached group]', { exact: true }) });
+        await group.click();
+        await expect(page.getByRole('button', { name: 'Deploy Channel', exact: true })).toBeVisible();
+        await page.keyboard.press('Control+k');
+        await expect(page.locator('.cmdk')).toBeVisible();
+        const suggested = page.locator('.cmdk-opt[data-group="Suggested"]').filter({ hasText: 'Demo Started' });
+        await expect(suggested.first()).toBeVisible();
+        await page.keyboard.press('Escape');
+        failing = true;
+        await refresh(page).click();
+        const alert = page.locator('.view-body [role="alert"]');
+        await expect(alert).toContainText('Group refresh unavailable');
+        await dismissError(page);
+        if (responseStatus === 503) {
+            await expect(alert).toContainText(/stale/i);
+            await expect(group).toHaveAttribute('aria-selected', 'true');
+            await expect(page.getByRole('button', { name: 'Deploy Channel', exact: true })).toBeVisible();
+            await expect(page.getByRole('button', { name: 'Disable Channel', exact: true })).toBeVisible();
+            await expect(page.getByRole('button', { name: 'Export Group', exact: true })).toBeVisible();
+        } else {
+            await expect(alert).not.toContainText(/stale/i);
+            await expect(group).toHaveCount(0);
+            await expect(page.getByRole('button', { name: 'Deploy Channel', exact: true })).toHaveCount(0);
+            await expect(page.getByRole('button', { name: 'Disable Channel', exact: true })).toHaveCount(0);
+            await expect(page.getByRole('button', { name: 'Export Group', exact: true })).toHaveCount(0);
+        }
+        await page.keyboard.press('Control+k');
+        await expect(page.locator('.cmdk')).toBeVisible();
+        if (responseStatus === 503) await expect(suggested.first()).toBeVisible();
+        else await expect(suggested).toHaveCount(0);
+        await page.keyboard.press('Escape');
+    });
+}
+
+test('a group remains selected during refresh and actions use its refreshed membership', async ({ page }) => {
+    const held = gate();
+    let refreshing = false, waiting = false;
+    const writes: string[] = [];
     await mockEngine(page, {
         ...fixtures,
-        'GET /channelgroups': () => failing ? { __status: 503, body: { error: 'Group refresh unavailable' } } : GROUPS,
-        'GET /channels/idsAndNames': { map: { entry: [{ string: ['c-started', 'Demo Started'] }] } },
+        'GET /channelgroups': async () => {
+            if (!refreshing) return GROUPS;
+            waiting = true;
+            await held.promise;
+            return { list: { channelGroup: [{ ...GROUPS.list.channelGroup[0], revision: 2,
+                channels: { channel: [{ id: 'c-stopped' }] } }] } };
+        },
+        'GET /channels/idsAndNames': { map: { entry: [
+            { string: ['c-started', 'Demo Started'] }, { string: ['c-stopped', 'Demo Stopped'] },
+        ] } },
+        'POST /channels/*/enabled/false': (request: Request) => { writes.push(new URL(request.url()).pathname); return ''; },
     });
-    await page.goto('/channels');
-    await loaded(page);
-    await name(page, '[Cached group]').click();
-    await expect(page.getByRole('button', { name: 'Deploy Channel', exact: true })).toBeVisible();
-    await page.keyboard.press('Control+k');
-    await expect(page.locator('.cmdk')).toBeVisible();
-    const suggested = page.locator('.cmdk-opt[data-group="Suggested"]').filter({ hasText: 'Demo Started' });
-    await expect(suggested.first()).toBeVisible();
-    await page.keyboard.press('Escape');
-    failing = true;
-    await refresh(page).click();
-    await expect(page.locator('.view-body [role="alert"]')).toContainText('Group refresh unavailable');
-    await dismissError(page);
-    await expect(name(page, '[Cached group]')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Deploy Channel', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Enable Channel', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Disable Channel', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Export Group', exact: true })).toHaveCount(0);
-    await name(page, '[Cached group]').click();
-    await expect(page.getByRole('button', { name: 'Deploy Channel', exact: true })).toHaveCount(0);
-    await page.keyboard.press('Control+k');
-    await expect(page.locator('.cmdk')).toBeVisible();
-    await expect(suggested).toHaveCount(0);
-    await page.keyboard.press('Escape');
+    try {
+        await page.goto('/channels');
+        await loaded(page);
+        const group = page.getByRole('row').filter({ has: page.getByText('[Cached group]', { exact: true }) });
+        await group.click();
+        refreshing = true;
+        await refresh(page).click();
+        await expect.poll(() => waiting).toBe(true);
+        await expect(group).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByRole('button', { name: 'Disable Channel', exact: true })).toBeVisible();
+        await page.keyboard.press('Control+k');
+        const suggestions = page.locator('.cmdk-opt[data-group="Suggested"]');
+        await expect(suggestions.filter({ hasText: 'Demo Started' }).first()).toBeVisible();
+        await page.keyboard.press('Escape');
+        const response = page.waitForResponse(response => new URL(response.url()).pathname === '/api/channelgroups');
+        held.release();
+        await (await response).finished();
+        await settle(page);
+        await expect(group).toHaveAttribute('aria-selected', 'true');
+        await page.keyboard.press('Control+k');
+        await expect(suggestions.filter({ hasText: 'Demo Stopped' }).first()).toBeVisible();
+        await expect(suggestions.filter({ hasText: 'Demo Started' })).toHaveCount(0);
+        await page.keyboard.press('Escape');
+        await page.getByRole('button', { name: 'Disable Channel', exact: true }).click();
+        await expect.poll(() => writes.length).toBe(1);
+        expect(writes).toEqual(['/api/channels/c-stopped/enabled/false']);
+    } finally { held.release(); }
 });
 
 test('a superseded refresh cannot overwrite newer rows or the next navigation snapshot', async ({ page }) => {
