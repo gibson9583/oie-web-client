@@ -45,7 +45,7 @@ import { clearSsoSession, holdAutoRedirect, isSsoSession, takeSsoPending } from 
 import { AccessDeniedView } from './access-denied.jsx';
 import { isNewChannelRoute, isNewAlertRoute, isNewAlertDraft } from '../core/editor-route-state.js';
 import { isNewChannelDraft } from '../core/channel-save.js';
-import { NEW_CHANNEL_TASKS, EDIT_CHANNEL_TASKS, NEW_ALERT_TASKS, EDIT_ALERT_TASKS, CODE_TEMPLATE_TASKS } from '../core/route-tasks.js';
+import { NEW_CHANNEL_TASKS, EDIT_CHANNEL_TASKS, INSPECT_CHANNEL_TASKS, NEW_ALERT_TASKS, EDIT_ALERT_TASKS, CODE_TEMPLATE_TASKS } from '../core/route-tasks.js';
 import type { RouteTasks } from '../core/route-tasks.js';
 
 import { register as registerConnectors } from '../connectors/index.js';
@@ -88,6 +88,9 @@ const VIEW_ROUTES: ViewRoute[] = [
     { path: '/channels', meta: { title: 'Channels' },
         nav: { id: 'channels', label: 'Channels', icon: 'channels', path: '/channels', section: 'Design', order: 0, task: 'doShowChannel' },
         load: () => import('./views/channels.jsx'), pick: (m: any) => m.ChannelsView },
+    { path: '/channels/:channelId/inspect', meta: { title: 'Channel Inspector' },
+        tasks: INSPECT_CHANNEL_TASKS,
+        load: () => import('./views/channel-inspector-view.jsx'), pick: (m: any) => m.ChannelInspectorView },
     { path: '/channels/:channelId/edit', meta: { title: 'Edit Channel' },
         editor: 'channel',
         tasks: ({ params }) => isNewChannelRoute(params.channelId, store.getState('editingChannel')) ? NEW_CHANNEL_TASKS : EDIT_CHANNEL_TASKS,

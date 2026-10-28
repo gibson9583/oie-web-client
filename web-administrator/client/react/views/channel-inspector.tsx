@@ -14,6 +14,7 @@ import { connectorIcon } from '../../core/icons.js';
 import { platform } from '@oie/web-shell';
 import { dataTypeDef } from '../../datatypes/index.js';
 import { Icon } from '../bridges.jsx';
+import { InspectorDependencies, useInspectorDependencies } from './channel-inspector-dependencies.js';
 
 type OpenTab = (tab: 'Summary' | 'Source' | 'Destinations' | 'Scripts') => void;
 
@@ -50,12 +51,12 @@ function stepGlyph(el: InspectedElement): [string, string] {
 
 /* ---- small pieces ---------------------------------------------------------------- */
 
-function Description({ text, print = false }: { text: string; print?: boolean }) {
+function Description({ text, print = false, readOnly = false }: { text: string; print?: boolean; readOnly?: boolean }) {
     const Heading = print ? 'h2' : 'h3';
     return (
         <section className={'ci-description' + (print ? ' ci-print-description' : '')} aria-label="Description">
             <Heading className="ci-description-title"><Icon name="file" size={14} />Description</Heading>
-            <p className={'ci-desc' + (text ? '' : ' dim')}>{text || 'No description. Add one on the Summary tab.'}</p>
+            <p className={'ci-desc' + (text ? '' : ' dim')}>{text || (readOnly ? 'No description.' : 'No description. Add one on the Summary tab.')}</p>
         </section>
     );
 }
@@ -199,7 +200,7 @@ function PrintMapReferences({ inspection: r }: { inspection: ChannelInspection }
 
 /* ---- the tab ---------------------------------------------------------------- */
 
-export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew }: { channel: any; openTab: OpenTab; revision: number; dirty: boolean; isNew: boolean }) {
+export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew, readOnly = false }: { channel: any; openTab?: OpenTab; revision: number; dirty: boolean; isNew: boolean; readOnly?: boolean }) {
     const [includeGlobals, setIncludeGlobals] = useState(true);
     const [globals, setGlobals] = useState<Record<string, string>>({});
     const [globalState, setGlobalState] = useState('loading');
@@ -217,15 +218,15 @@ export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew }
     const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => new Set());
     const [query, setQuery] = useState('');
     const [hitIndex, setHitIndex] = useState(-1);
-    const [channelNames, setChannelNames] = useState<Map<string, string>>(() => new Map());
+    const dependencies = useInspectorDependencies(channel, revision, refresh, readOnly);
+    const channelNames = dependencies.reads.names.value;
     const [activeSection, setActiveSection] = useState('');
     const [targetKey, setTargetKey] = useState('');
     const storyRef = useRef<HTMLDivElement>(null);
     const q = query.trim().toLowerCase();
-    const revisionText = `Current editor · revision ${r.revision}${dirty ? ' · unsaved changes' : ''}`;
+    const revisionText = `${readOnly ? 'Saved channel' : 'Current editor'} · revision ${r.revision}${dirty ? ' · unsaved changes' : ''}`;
     const globalsText = !includeGlobals ? 'Global scripts excluded.' : !canGlobals ? 'Global scripts unavailable with your permissions.'
         : globalState === 'ready' ? 'Includes the latest saved global scripts.' : globalState === 'loading' ? 'Loading global scripts…' : 'Global scripts could not be loaded.';
-    const hasChannelWriter = r.destinations.some(d => d.transport === 'Channel Writer');
 
     useEffect(() => {
         if (!includeGlobals || !canGlobals) return undefined;
@@ -257,22 +258,6 @@ export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew }
         return () => { alive = false; };
     }, [channel.id, revision, isNew, refresh]);
 
-    // Channel Writer targets are ids; resolve names when the user may list channels.
-    useEffect(() => {
-        if (!hasChannelWriter) return undefined;
-        let alive = true;
-        api.channels.idsAndNames().then((v: any) => {
-            if (!alive) return;
-            const names = new Map<string, string>();
-            for (const en of api.asList(v && v.entry)) {
-                const pair = api.asList<any>(en && en.string);
-                if (pair.length) names.set(String(pair[0]), String(pair[1] ?? pair[0]));
-            }
-            setChannelNames(names);
-        }).catch(() => { /* ids stay visible */ });
-        return () => { alive = false; };
-    }, [channel.id, hasChannelWriter]);
-
     const setOpen = (id: string, value: boolean) => setOpenState(prev => {
         const next = new Set(prev);
         if (value) next.add(id); else next.delete(id);
@@ -289,11 +274,11 @@ export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew }
     const matches = useMemo(() => {
         if (!q) return [] as string[];
         const ids: string[] = [];
-        const all = [r.source.poll, r.source.attachment, r.source.postprocess, r.source.outboundTemplate, r.deploy, r.preprocessor, r.sourceFilter, r.sourceTransformer, r.postprocessor,
+        const all = [r.source.poll, r.source.batch, r.source.attachment, r.source.postprocess, r.source.outboundTemplate, r.deploy, r.preprocessor, r.sourceFilter, r.sourceTransformer, r.postprocessor,
             ...r.destinations.flatMap(d => [d.filter, d.transformer, d.outboundTemplate, d.send, d.response, d.responseTemplate])].flat();
         for (const el of all) if (searchText(el).includes(q)) ids.push(el.id);
         return ids;
-    }, [q, r]);
+    }, [q, r, dependencies]);
     useEffect(() => {
         const ids = showCode ? allIds : matches;
         if (ids.length) setOpenState(prev => new Set([...prev, ...ids]));
@@ -306,7 +291,7 @@ export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew }
         const sections = new Set([...storyRef.current?.querySelectorAll<HTMLElement>('[data-hit]') ?? []]
             .map(el => el.closest('.ci-section')?.id).filter((id): id is string => !!id));
         setCollapsedSections(prev => new Set([...prev].filter(id => !sections.has(id))));
-    }, [q, r]);
+    }, [q, r, dependencies]);
 
     const revealAndScroll = (el: HTMLElement) => {
         const section = el.closest('.ci-section');
@@ -331,7 +316,7 @@ export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew }
         revealAndScroll(hits[i]);
     };
     const [hitCount, setHitCount] = useState(0);
-    useEffect(() => { setHitCount(q && storyRef.current ? storyRef.current.querySelectorAll('[data-hit]').length : 0); }, [q, r, open]);
+    useEffect(() => { setHitCount(q && storyRef.current ? storyRef.current.querySelectorAll('[data-hit]').length : 0); }, [q, r, open, dependencies]);
     const onKey = (k: MapKey) => { setTargetKey(keyText(k)); window.requestAnimationFrame(() => scrollTo('ci-key-' + keyText(k))); };
     const ctx: ListCtx = { open, setOpen, query: q, onKey, keys: new Set(r.maps.map(keyText)) };
 
@@ -365,7 +350,8 @@ export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew }
         return () => { scroll.removeEventListener('scroll', schedule); observer?.disconnect(); window.cancelAnimationFrame(frame); };
     }, [r]);
 
-    const sections = buildSections(r, ctx, channelNames, openTab, scrollTo, targetKey);
+    const dependencyBody = (print = false) => <InspectorDependencies channel={channel} context={dependencies} query={print ? '' : q} print={print} retry={() => setRefresh(x => x + 1)} />;
+    const sections = buildSections(r, ctx, channelNames, readOnly ? undefined : openTab, scrollTo, targetKey, dependencyBody());
     const routing = r.sourceTransformer.find(e => e.routing && e.enabled);
 
     return (
@@ -386,7 +372,7 @@ export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew }
                 <button type="button" className="btn" onClick={() => { setShowCode(false); setOpenState(new Set()); storyRef.current?.querySelectorAll('details').forEach(el => { el.open = false; }); }}><Icon name="chevR" size={14} />Collapse all</button>
                 <Dialog.Root open={printPreview} onOpenChange={setPrintPreview}>
                     <Dialog.Trigger asChild><button type="button" className="btn"><Icon name="print" size={14} />Print</button></Dialog.Trigger>
-                    {printPreview && <PrintView inspection={r} context={`${revisionText}. ${deployment}`} globalsText={globalsText} channelNames={channelNames} />}
+                    {printPreview && <PrintView inspection={r} context={`${revisionText}. ${deployment}`} globalsText={globalsText} channelNames={channelNames} readOnly={readOnly} dependencies={dependencyBody(true)} />}
                 </Dialog.Root>
             </div>
             <div className="ci-scroll">
@@ -408,7 +394,7 @@ export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew }
                     </nav>
                     <div className="ci-story" ref={storyRef}>
                         <section className="ci-purpose">
-                            <Description text={r.description} />
+                            <Description text={r.description} readOnly={readOnly} />
                             <div className="ci-glance">
                                 <span><Icon name={connectorIcon(r.source.transport)} size={14} /><b>{typeLabel(r.inboundType)}</b> over {r.source.transport || 'an unknown connector'}</span>
                                 <span><Icon name="filter" size={14} />{plural(r.sourceFilter.length, 'source rule')}</span>
@@ -435,7 +421,7 @@ export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew }
                                                 </button>
                                                 : <span className="ci-section-title">{s.title}</span>}</h4>
                                             <span className="ci-scope">{s.scope}</span>
-                                            {s.tab && <button type="button" className="ci-link ci-open" onClick={() => openTab(s.tab!)}>Open in {s.tab}</button>}
+                                            {!readOnly && openTab && s.tab && <button type="button" className="ci-link ci-open" onClick={() => openTab(s.tab!)}>Open in {s.tab}</button>}
                                         </div>
                                         <div id={s.id + '-content'} className="ci-section-content" hidden={s.num != null && collapsedSections.has(s.id)}>{s.body}</div>
                                     </div>
@@ -451,10 +437,10 @@ export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew }
 
 /* ---- sections ------------------------------------------------------------------- */
 
-function PrintView({ inspection: r, context, globalsText, channelNames }: { inspection: ChannelInspection; context: string; globalsText: string; channelNames: Map<string, string> }) {
+function PrintView({ inspection: r, context, globalsText, channelNames, readOnly, dependencies }: { inspection: ChannelInspection; context: string; globalsText: string; channelNames: Map<string, string>; readOnly: boolean; dependencies: React.ReactNode }) {
     const [prepared] = useState(() => new Date().toLocaleString());
     const ctx: ListCtx = { open: new Set(), setOpen: () => {}, query: '', onKey: () => {}, keys: new Set(r.maps.map(keyText)), print: true };
-    const sections = buildSections(r, ctx, channelNames, () => {}, () => {}, '');
+    const sections = buildSections(r, ctx, channelNames, undefined, () => {}, '', dependencies);
     return <Dialog.Portal>
         <Dialog.Overlay className="ci-print-scrim" />
         <Dialog.Content className="ci-print-dialog" aria-describedby={undefined}>
@@ -488,14 +474,14 @@ function PrintView({ inspection: r, context, globalsText, channelNames }: { insp
                             {section.body}
                         </section>
                     </div>)}
-                    <footer className="ci-print-footer">Read-only configuration from the current editor. Scripts are included as text and are never run by Inspector.</footer>
+                    <footer className="ci-print-footer">Read-only configuration from {readOnly ? 'the saved channel' : 'the current editor'}. Scripts are included as text and are never run by Inspector.</footer>
                 </article>
             </div>
         </Dialog.Content>
     </Dialog.Portal>;
 }
 
-function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<string, string>, openTab: OpenTab, scrollTo: (id: string) => void, targetKey: string): Section[] {
+function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<string, string>, openTab: OpenTab | undefined, scrollTo: (id: string) => void, targetKey: string, dependencies: React.ReactNode): Section[] {
     const s: Section[] = [];
     let n = 0;
     const msg = (x: Omit<Section, 'phase' | 'num'>) => s.push({ ...x, phase: 'message', num: ++n });
@@ -520,6 +506,18 @@ function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<str
                 <DataTypeFacts name={r.outboundType} props={r.source.outboundProperties} query={q} />
             </More>
         </> });
+
+    if (r.source.processBatch || r.source.batch.length) {
+        msg({ id: 'ci-batch', title: 'Split the incoming batch', scope: 'Source inbound data type', tab: 'Source', empty: !r.source.processBatch,
+            body: <>
+                {lead(!r.source.processBatch ? 'Process batch is off. The stored splitting script is not used.'
+                    : r.source.batchMode === 'JavaScript' ? 'After receiving a batch, the splitting script reads from reader and returns the next message. A null or empty return ends the input. Each extracted message proceeds to attachment handling and preprocessing.'
+                        : !r.source.batchMode ? 'No batch splitting method is specified in this configuration.' : `Split using ${r.source.batchMode.replaceAll('_', ' ')}. A stored JavaScript batch script is not used for splitting in this mode.`)}
+                <Facts facts={[[ 'Process batch', r.source.processBatch ? 'Yes' : 'No' ], ['Split batch by', r.source.batchMode.replaceAll('_', ' ') || 'Not specified']]} query={q} />
+                {r.source.processBatch && r.source.batchMode === 'JavaScript' && (!r.source.batch.length || r.source.batch[0].detail === '') && <p className="ci-callout">The JavaScript batch script is empty. Batch extraction requires a script.</p>}
+                {r.source.batch.length > 0 && <Elements list={r.source.batch} kind="script" ctx={ctx} />}
+            </> });
+    }
 
     if (r.source.attachment.length) {
         msg({ id: 'ci-attachments', title: 'Run the attachment handler', scope: 'Attachments', tab: 'Summary',
@@ -632,6 +630,8 @@ function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<str
             {r.metadataColumns.length > 0 && <><div className="ci-sub-head">Custom metadata columns</div><Facts facts={r.metadataColumns} query={q} /></>}
         </> });
 
+    s.push({ id: 'ci-dependencies', phase: 'ref', icon: 'puzzle', title: 'Libraries, resources and dependencies', scope: 'Reference', tab: 'Summary', body: dependencies });
+
     s.push({ id: 'ci-maps', phase: 'ref', icon: 'tag', title: 'Maps and variables', scope: 'Reference',
         body: !r.maps.length ? lead('No literal map keys found in the inspected steps and scripts. Dynamic keys and code template internals are not resolved.') : <>
             {lead(<>Literal keys found in enabled steps and scripts, including Mapper variables and calls such as <code>$c()</code> and <code>channelMap.put()</code>. Dynamic keys and code template internals are not resolved. The same key in separate destination connector maps is a separate value.</>)}
@@ -662,7 +662,7 @@ function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<str
     return s;
 }
 
-function DestinationCard({ d, r, ctx, channelNames, openTab }: { d: InspectedDestination; r: ChannelInspection; ctx: ListCtx; channelNames: Map<string, string>; openTab: OpenTab }) {
+function DestinationCard({ d, r, ctx, channelNames, openTab }: { d: InspectedDestination; r: ChannelInspection; ctx: ListCtx; channelNames: Map<string, string>; openTab?: OpenTab }) {
     const target = d.transport === 'Channel Writer' ? (d.endpoint === 'none' || !d.endpoint ? 'No target channel' : channelNames.get(d.endpoint) ?? d.endpoint) : d.endpoint;
     const outbound = typeLabel(d.outboundType || r.outboundType);
     const sourceOut = typeLabel(r.outboundType);
@@ -680,7 +680,7 @@ function DestinationCard({ d, r, ctx, channelNames, openTab }: { d: InspectedDes
                 <span className="dim">{d.transport}</span>
                 {target && <span className="ci-addr">{target}</span>}
                 {!d.enabled && <span className="tag">Disabled</span>}
-                {!ctx.print && <button type="button" className="ci-link ci-open" onClick={() => openTab('Destinations')}>Open in Destinations</button>}
+                {!ctx.print && openTab && <button type="button" className="ci-link ci-open" onClick={() => openTab('Destinations')}>Open in Destinations</button>}
             </header>
             {d.filterTransformerInQueue && <p className="ci-lead">{d.sendFirst
                 ? 'When an immediate send is attempted, the filter and transformer run first. Otherwise this work starts in the queue. Each queued attempt repeats the filter and transformer.'

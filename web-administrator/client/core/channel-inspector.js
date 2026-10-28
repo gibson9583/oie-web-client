@@ -5,6 +5,7 @@
  */
 import { elementsToArray, elementTypeLabel, destinationsOf } from './oie.js';
 import { mappingEntries, toDisplayString } from './xstream.js';
+import { configurationFacts, configurationText, redactEndpointCredentials } from './inspector-configuration.js';
 const truthy = (v) => v === true || v === 'true';
 const text = (v) => (v == null ? '' : String(v));
 const list = (v) => {
@@ -163,7 +164,7 @@ function describe(el) {
         detail = `Script file: ${text(el.scriptPath)}`;
     }
     else {
-        detail = `${label} (${type})`;
+        detail = `${label} (${type})\n${configurationText(el, { omit: ['__type', 'name', 'enabled', 'operator'] })}`;
     }
     return { detail, isScript, reads, writes, routing };
 }
@@ -224,6 +225,9 @@ function listener(p) {
     return l ? `${text(l.host) || '0.0.0.0'}:${text(l.port)}` : '';
 }
 function endpointOf(transport, p) {
+    return redactEndpointCredentials(endpointValue(transport, p));
+}
+function endpointValue(transport, p) {
     switch (transport) {
         case 'TCP Listener': return p.serverMode === false || p.serverMode === 'false' ? `${text(p.remoteAddress)}:${text(p.remotePort)}` : listener(p);
         case 'TCP Sender': return `${text(p.remoteAddress)}:${text(p.remotePort)}`;
@@ -252,6 +256,9 @@ function settingsOf(transport, p) {
     if (mode)
         add('Transmission mode', mode);
     switch (transport) {
+        case 'JavaScript Reader':
+        case 'JavaScript Writer':
+            break;
         case 'TCP Listener':
         case 'TCP Sender':
             add('Mode', truthy(p.serverMode) ? 'Server' : 'Client');
@@ -301,6 +308,9 @@ function settingsOf(transport, p) {
             add('Service', p.service);
             add('Operation', p.operation);
             break;
+        default:
+            facts.push(...configurationFacts(p, { omit: ['sourceConnectorProperties', 'destinationConnectorProperties', 'resourceIds'] }));
+            break;
     }
     return facts;
 }
@@ -339,6 +349,15 @@ export function inspectChannel(channel, globals = {}) {
     const sp = source.properties || {};
     const scp = sp.sourceConnectorProperties || {};
     const sourceTransport = text(source.transportName);
+    const batchProperties = source.transformer?.inboundProperties?.batchProperties;
+    const batchMode = text(batchProperties?.splitType);
+    const processBatch = truthy(scp.processBatch);
+    // Preserve stored code even when another split mode is selected. Only active
+    // batch scripts participate in map cross-references.
+    const batch = processBatch || text(batchProperties?.batchScript) !== ''
+        ? els.fromScript('Batch splitting script', batchProperties?.batchScript, 'Source batch') : [];
+    for (const element of batch)
+        element.enabled = processBatch && batchMode === 'JavaScript';
     const postprocessMode = sourceTransport === 'Database Reader' ? Number(sp.updateMode ?? 1) : 1;
     const destinations = destinationsOf(channel).map((d) => {
         const p = d.properties || {};
@@ -419,7 +438,7 @@ export function inspectChannel(channel, globals = {}) {
             postprocessMode,
             useScript: truthy(sp.useScript),
             aggregateResults: truthy(sp.aggregateResults),
-            processBatch: truthy(scp.processBatch),
+            processBatch, batch, batchMode,
             firstResponse: truthy(scp.firstResponse),
             postprocess: postprocessMode === 2 || postprocessMode === 3
                 ? truthy(sp.useScript) ? els.fromScript('Database post-process script', sp.update, 'Source post-process')

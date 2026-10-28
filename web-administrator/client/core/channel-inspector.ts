@@ -5,6 +5,7 @@
 
 import { elementsToArray, elementTypeLabel, destinationsOf } from './oie.js';
 import { mappingEntries, toDisplayString } from './xstream.js';
+import { configurationFacts, configurationText, redactEndpointCredentials } from './inspector-configuration.js';
 import type { Element } from './oie.js';
 import type { OieObject } from './wire-types.js';
 
@@ -71,6 +72,8 @@ export interface ChannelInspection {
         inboundProperties: OieObject | null;
         outboundProperties: OieObject | null;
         poll: InspectedElement[];
+        batch: InspectedElement[];
+        batchMode: string;
         attachment: InspectedElement[];
         outboundTemplate: InspectedElement[];
         postprocess: InspectedElement[];
@@ -245,7 +248,7 @@ function describe(el: Element): { detail: string; isScript: boolean; reads: MapK
     } else if (label === 'External Script') {
         detail = `Script file: ${text(el.scriptPath)}`;
     } else {
-        detail = `${label} (${type})`;
+        detail = `${label} (${type})\n${configurationText(el, { omit: ['__type', 'name', 'enabled', 'operator'] })}`;
     }
     return { detail, isScript, reads, writes, routing };
 }
@@ -311,6 +314,10 @@ function listener(p: any): string {
 }
 
 function endpointOf(transport: string, p: any): string {
+    return redactEndpointCredentials(endpointValue(transport, p));
+}
+
+function endpointValue(transport: string, p: any): string {
     switch (transport) {
         case 'TCP Listener': return p.serverMode === false || p.serverMode === 'false' ? `${text(p.remoteAddress)}:${text(p.remotePort)}` : listener(p);
         case 'TCP Sender': return `${text(p.remoteAddress)}:${text(p.remotePort)}`;
@@ -334,6 +341,8 @@ function settingsOf(transport: string, p: any): Fact[] {
     const mode = p.transmissionModeProperties?.pluginPointName;
     if (mode) add('Transmission mode', mode);
     switch (transport) {
+        case 'JavaScript Reader': case 'JavaScript Writer':
+            break;
         case 'TCP Listener': case 'TCP Sender':
             add('Mode', truthy(p.serverMode) ? 'Server' : 'Client');
             add('Keep connection open', truthy(p.keepConnectionOpen) ? 'Yes' : 'No');
@@ -380,6 +389,9 @@ function settingsOf(transport: string, p: any): Fact[] {
             add('Service', p.service);
             add('Operation', p.operation);
             break;
+        default:
+            facts.push(...configurationFacts(p, { omit: ['sourceConnectorProperties', 'destinationConnectorProperties', 'resourceIds'] }));
+            break;
     }
     return facts;
 }
@@ -422,6 +434,14 @@ export function inspectChannel(channel: OieObject, globals: Record<string, strin
     const sp: any = source.properties || {};
     const scp: any = sp.sourceConnectorProperties || {};
     const sourceTransport = text(source.transportName);
+    const batchProperties = source.transformer?.inboundProperties?.batchProperties;
+    const batchMode = text(batchProperties?.splitType);
+    const processBatch = truthy(scp.processBatch);
+    // Preserve stored code even when another split mode is selected. Only active
+    // batch scripts participate in map cross-references.
+    const batch = processBatch || text(batchProperties?.batchScript) !== ''
+        ? els.fromScript('Batch splitting script', batchProperties?.batchScript, 'Source batch') : [];
+    for (const element of batch) element.enabled = processBatch && batchMode === 'JavaScript';
     const postprocessMode = sourceTransport === 'Database Reader' ? Number(sp.updateMode ?? 1) : 1;
 
     const destinations: InspectedDestination[] = destinationsOf(channel).map((d: any) => {
@@ -507,7 +527,7 @@ export function inspectChannel(channel: OieObject, globals: Record<string, strin
             postprocessMode,
             useScript: truthy(sp.useScript),
             aggregateResults: truthy(sp.aggregateResults),
-            processBatch: truthy(scp.processBatch),
+            processBatch, batch, batchMode,
             firstResponse: truthy(scp.firstResponse),
             postprocess: postprocessMode === 2 || postprocessMode === 3
                 ? truthy(sp.useScript) ? els.fromScript('Database post-process script', sp.update, 'Source post-process')

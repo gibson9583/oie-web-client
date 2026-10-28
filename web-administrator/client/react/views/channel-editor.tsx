@@ -2947,7 +2947,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
     /* ---- tabs ---- */
 
     const pluginTabs = platform.channelTabs();
-    const tabLabels = ['Inspector', 'Summary', 'Source', 'Destinations', 'Scripts', ...pluginTabs.map(d => d.label)];
+    const tabLabels = ['Summary', 'Source', 'Destinations', 'Scripts', 'Inspector', ...pluginTabs.map(d => d.label)];
     const fill = activeTab === 'Destinations' || activeTab === 'Scripts' || activeTab === 'Inspector';
 
 

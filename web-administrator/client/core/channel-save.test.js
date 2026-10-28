@@ -1,3 +1,4 @@
+import '../../tools/mock-channel-reads.mjs';
 import assert from 'node:assert/strict';
 import { channelEditState, loadChannelForEdit, saveChannelModel, updateChannelWithConflict } from './channel-save.js';
 import { captureEngineSession, discardEngineResponses } from './engine-fetch.js';

@@ -536,12 +536,13 @@ const hasResponseName = (value, test, parent = '', includeCode = false) => Array
     ? value.some(item => hasResponseName(item, test, parent, includeCode))
     : !!value && typeof value === 'object' && Object.entries(value).some(([key, child]) => channelTextField(key, parent, value, includeCode) && (channelTextArray(parent) && Array.isArray(child) ? child.some(test) : test(channelTextValue(child, parent)))
         || hasResponseName(child, test, channelTextParent(key, parent, value), includeCode));
-// Recover ambiguous text only, rejecting changed snapshots. Code recovery is
-// for a single channel read; listing channels must not issue one XML GET per row.
-async function restoreResponseNames(channel, includeCode = false) {
+// Recover ambiguous text only. Single-channel reads supply their own XML;
+// list response names still require matching the independently fetched snapshot.
+// Code recovery must not issue one XML GET per listed row.
+async function restoreResponseNames(channel, includeCode = false, documentRoot) {
     if (!hasResponseName(channel, value => typeof value !== 'string', 'channel', includeCode))
         return channel;
-    const root = parseMessageDocument(await getXml(`/channels/${enc(channel.id)}`)).documentElement;
+    const root = documentRoot ?? parseMessageDocument(await getXml(`/channels/${enc(channel.id)}`)).documentElement;
     const direct = (node, tag) => Array.from(node.children).find(child => child.tagName === tag);
     const stamp = root.querySelector(':scope > exportData > metadata > lastModified > time')?.textContent;
     if (root.tagName !== 'channel' || direct(root, 'id')?.textContent !== String(channel.id)
@@ -578,11 +579,62 @@ async function restoreResponseNames(channel, includeCode = false) {
         throw new Error('Engine returned incomplete channel text XML.');
     return restored;
 }
+// ObjectJSONSerializer converts the same XStream XML with autoArray and
+// autoPrimitive enabled. Retain that shape (including unknown plugin fields),
+// then recover known String fields from this very response. One XML read avoids
+// transferring the whole channel twice and cannot mix two saved revisions.
+function channelXmlObject(node) {
+    // Match JSON.parse's ordinary objects without invoking inherited setters
+    // for engine field names such as __proto__.
+    const result = {};
+    const set = (key, value) => Object.defineProperty(result, key, {
+        value, writable: true, enumerable: true, configurable: true
+    });
+    for (const attribute of node.attributes)
+        set('@' + attribute.name, attribute.value);
+    for (const child of node.children) {
+        const key = child.tagName;
+        const value = channelXmlObject(child);
+        if (!Object.hasOwn(result, key))
+            set(key, value);
+        else if (Array.isArray(result[key]))
+            result[key].push(value);
+        else
+            set(key, [result[key], value]);
+    }
+    const text = Array.from(node.childNodes).filter(child => child.nodeType === 3 || child.nodeType === 4)
+        .map(child => child.textContent ?? '').join('');
+    const primitive = /^(?:true|false|null|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)$/.exec(text);
+    // Staxon's integer parser normalizes -0 to 0; exact String source is
+    // restored below, so its original numeric spelling is still retained.
+    const value = text === '' ? null : text === '-0' ? 0 : primitive?.[0] === text ? JSON.parse(text) : text;
+    if (!node.children.length && !node.attributes.length)
+        return value;
+    if (text && (!node.children.length || text.trim()))
+        set('$', value);
+    return result;
+}
 async function readChannels(path, params, list = false) {
     const assertSession = captureEngineSession();
+    if (!list) {
+        const xml = await getXml(path, params);
+        assertSession();
+        if (!xml.trim())
+            return null;
+        const root = parseMessageDocument(xml).documentElement;
+        if (root.tagName === 'null')
+            return null;
+        const channel = channelXmlObject(root);
+        const id = decodeURIComponent(path.slice(path.lastIndexOf('/') + 1));
+        if (root.tagName !== 'channel' || String(channel?.id) !== id)
+            throw new Error('Engine returned invalid channel XML.');
+        const result = await restoreResponseNames(channel, true, root);
+        assertSession();
+        return result;
+    }
     const value = await get(path, params);
     assertSession();
-    const result = list ? await Promise.all(asList(value, 'channel').map(channel => restoreResponseNames(channel))) : await restoreResponseNames(value, true);
+    const result = await Promise.all(asList(value, 'channel').map(channel => restoreResponseNames(channel)));
     assertSession();
     return result;
 }
