@@ -3,7 +3,14 @@
  * typed ImmutablePair values; expressions must remain source text, not JSON
  * literals. Keep the older import shapes understood by Generated Script too. */
 export const REPLACEMENT_PAIR = 'org.apache.commons.lang3.tuple.ImmutablePair';
-const expression = (value) => String(value && typeof value === 'object' ? value.$ ?? '' : value ?? '');
+function expression(value) {
+    if (value && typeof value === 'object') {
+        // The engine emits the String expression "null" as $: null, but an
+        // empty typed String has no $ text. Preserve that distinction.
+        return value.$ === undefined ? '' : String(value.$);
+    }
+    return String(value ?? '');
+}
 export function replacementPairs(element) {
     let value = element?.replacements;
     if (!value)

@@ -40,4 +40,40 @@ for (const type of ['mapper.MapperStep', 'messagebuilder.MessageBuilderStep']) {
     assert.ok(nested.includes(rows[0].join(', ')), 'iterator preview retains replacements');
 }
 assert.equal(JSON.stringify(wire), snapshot, 'reading and previewing never mutate the model');
+
+// Shipped OIE 4.6.0 serializes the Java String "null" as {"@class":"string","$":null}.
+// An empty typed String instead has no $ field. Neither a preview nor editing
+// another row may turn the null expression into a blank cell or drop its row.
+for (const type of ['mapper.MapperStep', 'messagebuilder.MessageBuilderStep']) {
+    for (const side of ['left', 'right']) {
+        const nativePair = {
+            left: { '@class': 'string', $: '"pattern"' },
+            right: { '@class': 'string', $: '"replacement"' }
+        };
+        nativePair[side].$ = null;
+        const element = {
+            __type: `com.mirth.connect.plugins.${type}`,
+            variable: 'folder', messageSegment: "tmp['folder']", mapping: '123',
+            replacements: { [REPLACEMENT_PAIR]: nativePair }
+        };
+        const original = JSON.stringify(element);
+        const expected = side === 'left' ? ['null', '"replacement"'] : ['"pattern"', 'null'];
+        const loaded = replacementPairs(element);
+        assert.deepEqual(loaded, [expected], `${type} ${side}: retain explicit null text`);
+        assert.ok(generateElementScript(element).includes(`new Array(${expected.join(', ')})`));
+        assert.equal(JSON.stringify(element), original, 'decoding and preview leave native data untouched');
+
+        // A table edit rewrites every row: preserve the existing expression.
+        loaded.push(['"other"', '"edited"']);
+        element.replacements = replacementsToWire(loaded);
+        assert.deepEqual(replacementPairs(element), [expected, ['"other"', '"edited"']]);
+        assert.ok(generateElementScript(element).includes(`new Array(${expected.join(', ')})`));
+    }
+}
+for (const [text, expected] of [[null, 'null'], [false, 'false'], [0, '0'], ['', ''], [undefined, '']]) {
+    assert.deepEqual(replacementPairs({ replacements: { [REPLACEMENT_PAIR]: {
+        left: { '@class': 'string', $: '"pattern"' },
+        right: { '@class': 'string', ...(text === undefined ? {} : { $: text }) }
+    } } }), [['"pattern"', expected]]);
+}
 console.log('step replacement wire formats and generated scripts passed');

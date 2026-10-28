@@ -4,9 +4,14 @@
 export const REPLACEMENT_PAIR = 'org.apache.commons.lang3.tuple.ImmutablePair';
 export type Replacement = [string, string];
 
-const expression = (value: any): string => String(
-    value && typeof value === 'object' ? value.$ ?? '' : value ?? ''
-);
+function expression(value: any): string {
+    if (value && typeof value === 'object') {
+        // The engine emits the String expression "null" as $: null, but an
+        // empty typed String has no $ text. Preserve that distinction.
+        return value.$ === undefined ? '' : String(value.$);
+    }
+    return String(value ?? '');
+}
 
 export function replacementPairs(element: any): Replacement[] {
     let value = element?.replacements;
