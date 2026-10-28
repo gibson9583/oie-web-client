@@ -31,6 +31,8 @@
 
 import { platform } from '@oie/web-shell';
 import type { Platform } from '@oie/web-shell';
+import { replacementPairs, replacementsToWire } from '/core/step-replacements.js';
+import type { Replacement } from '/core/step-replacements.js';
 const React = platform.React;
 
 const SCOPES = [
@@ -305,6 +307,56 @@ function makeIteratorEditor(isRule: any) {
 
 /* ---- per-type editor components ---------------------------------------------- */
 
+function StringReplacementEditor({ element, onChange }: any) {
+    const [rows, setRows] = React.useState(() => replacementPairs(element));
+    const [selected, setSelected] = React.useState(-1);
+    const commit = (next: Replacement[]) => {
+        element.replacements = replacementsToWire(next);
+        setRows(next);
+        onChange();
+    };
+    const edit = (index: number, side: number, value: string) => {
+        const next = rows.map((row: Replacement) => [...row] as Replacement);
+        next[index][side] = value;
+        commit(next);
+    };
+    return (
+        <div className="span-2 mt-2 min-w-0" role="group" aria-label="String Replacement">
+            <Field label="String Replacement">
+                <div className="flex gap-2 mb-1.5">
+                    <button type="button" className="btn btn-sm" onClick={() => {
+                        commit([...rows, ['', '']]);
+                        setSelected(rows.length);
+                    }}>New</button>
+                    <button type="button" className="btn btn-sm btn-danger" disabled={selected < 0 || selected >= rows.length} onClick={() => {
+                        const next = rows.filter((_: Replacement, i: number) => i !== selected);
+                        commit(next);
+                        setSelected(next.length ? Math.min(selected, next.length - 1) : -1);
+                    }}>Delete</button>
+                </div>
+                <div className="dt-wrap border border-line rounded max-h-[260px]">
+                    <table className="dt w-full table-fixed" aria-label="String replacements">
+                        <thead><tr><th scope="col">Regular Expression</th><th scope="col">Replace With</th></tr></thead>
+                        <tbody>
+                            {rows.length ? rows.map((row: Replacement, i: number) => (
+                                <tr key={i} className={selected === i ? 'selected' : undefined} onClick={() => setSelected(i)}>
+                                    {row.map((value: string, side: number) => (
+                                        <td key={side}>
+                                            <input type="text" spellCheck={false} aria-label={`${side === 0 ? 'Regular Expression' : 'Replace With'} ${i + 1}`}
+                                                value={value} onFocus={() => setSelected(i)}
+                                                onChange={(e: any) => edit(i, side, e.target.value)} />
+                                        </td>
+                                    ))}
+                                </tr>
+                            )) : <tr><td colSpan={2}><span className="text-text-faint">No replacements — use New</span></td></tr>}
+                        </tbody>
+                    </table>
+                </div>
+            </Field>
+        </div>
+    );
+}
+
 function MapperEditor({ element, onChange }: any) {
     const force = useRerender();
     return (
@@ -341,6 +393,7 @@ function MapperEditor({ element, onChange }: any) {
                     />
                 </Field>
             </div>
+            <StringReplacementEditor element={element} onChange={onChange} />
         </div>
     );
 }
@@ -377,6 +430,7 @@ function MessageBuilderEditor({ element, onChange }: any) {
                     />
                 </Field>
             </div>
+            <StringReplacementEditor element={element} onChange={onChange} />
         </div>
     );
 }

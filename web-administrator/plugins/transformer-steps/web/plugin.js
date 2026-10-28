@@ -1,5 +1,6 @@
 // plugins/transformer-steps/web/plugin.tsx
 import { platform } from "@oie/web-shell";
+import { replacementPairs, replacementsToWire } from "/core/step-replacements.js";
 var React = platform.React;
 var SCOPES = [
   { value: "CHANNEL", label: "Channel Map" },
@@ -205,6 +206,38 @@ function makeIteratorEditor(isRule) {
     component: IteratorEditor
   };
 }
+function StringReplacementEditor({ element, onChange }) {
+  const [rows, setRows] = React.useState(() => replacementPairs(element));
+  const [selected, setSelected] = React.useState(-1);
+  const commit = (next) => {
+    element.replacements = replacementsToWire(next);
+    setRows(next);
+    onChange();
+  };
+  const edit = (index, side, value) => {
+    const next = rows.map((row) => [...row]);
+    next[index][side] = value;
+    commit(next);
+  };
+  return /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2 min-w-0", role: "group", "aria-label": "String Replacement" }, /* @__PURE__ */ React.createElement(Field, { label: "String Replacement" }, /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-1.5" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", onClick: () => {
+    commit([...rows, ["", ""]]);
+    setSelected(rows.length);
+  } }, "New"), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm btn-danger", disabled: selected < 0 || selected >= rows.length, onClick: () => {
+    const next = rows.filter((_, i) => i !== selected);
+    commit(next);
+    setSelected(next.length ? Math.min(selected, next.length - 1) : -1);
+  } }, "Delete")), /* @__PURE__ */ React.createElement("div", { className: "dt-wrap border border-line rounded max-h-[260px]" }, /* @__PURE__ */ React.createElement("table", { className: "dt w-full table-fixed", "aria-label": "String replacements" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { scope: "col" }, "Regular Expression"), /* @__PURE__ */ React.createElement("th", { scope: "col" }, "Replace With"))), /* @__PURE__ */ React.createElement("tbody", null, rows.length ? rows.map((row, i) => /* @__PURE__ */ React.createElement("tr", { key: i, className: selected === i ? "selected" : void 0, onClick: () => setSelected(i) }, row.map((value, side) => /* @__PURE__ */ React.createElement("td", { key: side }, /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "text",
+      spellCheck: false,
+      "aria-label": `${side === 0 ? "Regular Expression" : "Replace With"} ${i + 1}`,
+      value,
+      onFocus: () => setSelected(i),
+      onChange: (e) => edit(i, side, e.target.value)
+    }
+  ))))) : /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 2 }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "No replacements \u2014 use New"))))))));
+}
 function MapperEditor({ element, onChange }) {
   const force = useRerender();
   return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: "Variable" }, /* @__PURE__ */ React.createElement(
@@ -251,7 +284,7 @@ function MapperEditor({ element, onChange }) {
         force();
       }
     }
-  ))));
+  ))), /* @__PURE__ */ React.createElement(StringReplacementEditor, { element, onChange }));
 }
 function MessageBuilderEditor({ element, onChange }) {
   const force = useRerender();
@@ -289,7 +322,7 @@ function MessageBuilderEditor({ element, onChange }) {
         force();
       }
     }
-  ))));
+  ))), /* @__PURE__ */ React.createElement(StringReplacementEditor, { element, onChange }));
 }
 function XsltEditor({ element, onChange }) {
   const force = useRerender();
