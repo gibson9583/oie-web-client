@@ -14,8 +14,8 @@ const XSLT = 'com.mirth.connect.plugins.xsltstep.XsltStep';
 // typed ImmutablePair values and the attachment handler's string map.
 const primitive = (value: string): unknown => value === '' ? null : JSON.parse(value);
 const transformers = (channel: any): any[] => [channel.sourceConnector.transformer,
-    channel.destinationConnectors.connector[0].transformer,
-    channel.destinationConnectors.connector[0].responseTransformer];
+    ([] as any[]).concat(channel.destinationConnectors.connector)[0].transformer,
+    ([] as any[]).concat(channel.destinationConnectors.connector)[0].responseTransformer];
 
 function textChannel(value: string) {
     const channel = makeChannel(ID);
@@ -221,7 +221,7 @@ test('preserves typed replacement source and only the JavaScript attachment map 
     expect(singleton).toEqual(channel.properties.attachmentProperties);
 });
 
-test('new datatype text recovery retains snapshot and unavailable-XML rejection', async ({ page }) => {
+test('datatype text uses one authoritative snapshot and rejects unavailable or wrong-channel XML', async ({ page }) => {
     const { channel, wire } = textChannel('null');
     let mode = 'success';
     await mockEngine(page, {
@@ -236,11 +236,17 @@ test('new datatype text recovery retains snapshot and unavailable-XML rejection'
         }
     });
     await page.goto('/channels');
-    for (mode of ['id', 'revision', 'timestamp', 'unavailable']) {
+    for (mode of ['id', 'unavailable']) {
         const error = await page.evaluate(async id => {
             try { await (await import(String('/core/api.js'))).channels.get(id); return ''; }
             catch (error: any) { return error.message; }
         }, ID);
-        expect(error).toMatch(mode === 'unavailable' ? /Text XML unavailable/ : /Channel changed while reading text fields/);
+        expect(error).toMatch(mode === 'unavailable' ? /Text XML unavailable/ : /invalid channel XML/);
+    }
+    for (mode of ['revision', 'timestamp']) {
+        const result = await page.evaluate(async id => (await import(String('/core/api.js'))).channels.get(id), ID);
+        expect(result.revision).toBe(channel.revision + (mode === 'revision' ? 1 : 0));
+        expect(result.exportData.metadata.lastModified.time).toBe(channel.exportData.metadata.lastModified.time + (mode === 'timestamp' ? 1 : 0));
+        expect(result.sourceConnector.transformer.inboundProperties.batchProperties.batchScript).toBe('null');
     }
 });

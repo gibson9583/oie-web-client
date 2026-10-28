@@ -67,10 +67,10 @@ test.describe('Channel Inspector', () => {
         await mockEngine(page, { [`GET /channels/${ID}`]: { channel: CHANNEL } });
     });
 
-    test('opens as the first editor tab and reads in engine order', async ({ page }) => {
+    test('opens after the Scripts editor tab and reads in engine order', async ({ page }) => {
         await page.goto(`/channels/${ID}/edit?tab=Inspector`);
         const tabs = page.getByRole('tablist', { name: 'Channel sections' }).getByRole('tab');
-        await expect(tabs.first()).toHaveText('Inspector');
+        await expect(tabs.nth(4)).toHaveText('Inspector');
         await expect(page.getByRole('tab', { name: 'Inspector', exact: true })).toHaveAttribute('aria-selected', 'true');
 
         await expect(page.getByText('Normalizes lab results for clinical storage and EHR delivery.')).toBeVisible();
@@ -79,7 +79,7 @@ test.describe('Channel Inspector', () => {
         await expect(sections).toHaveText([
             'Prepare the channel', 'Receive HL7 v2.x over TCP Listener', 'Preprocess the raw message', 'Accept or filter the message',
             'Transform the HL7 v2.x message', 'Send to destinations', 'Postprocess', 'Respond to the sender',
-            'Retry queued sends', 'Store and prune messages', 'Maps and variables'
+            'Retry queued sends', 'Store and prune messages', 'Libraries, resources and dependencies', 'Maps and variables'
         ]);
         // Default hooks are still configured source, including their comments.
         await expect(page.locator('#ci-preprocess')).not.toHaveClass(/empty/);
@@ -252,7 +252,7 @@ test.describe('Channel Inspector', () => {
         await expect(page.getByRole('button', { name: 'Inspect Channel', exact: true })).toHaveCount(0);
         await page.getByText('Demo Stopped', { exact: true }).click();
         await page.getByRole('button', { name: 'Inspect Channel', exact: true }).click();
-        await expect(page).toHaveURL(/\/channels\/c-stopped\/edit\?tab=Inspector$/);
+        await expect(page).toHaveURL(/\/channels\/c-stopped\/inspect$/);
     });
 
     test('includes exact global script text, toggles it, and retries failed reads', async ({ page }) => {
@@ -430,21 +430,45 @@ test.describe('Channel Inspector', () => {
         await expect(namedRow('section[aria-labelledby="print-ci-filter"]', 'Custom acceptance').locator('.ci-expr')).toContainText('All iterations pass');
     });
 
-    for (const failure of ['revision', 'timestamp', 'unavailable']) {
-        test(`rejects ${failure} code XML instead of combining channel snapshots`, async ({ page }) => {
+    for (const difference of ['revision', 'timestamp']) {
+        test(`reads one coherent XML snapshot despite a different JSON ${difference}`, async ({ page }) => {
             const channel = structuredClone(CHANNEL);
             channel.deployScript = 'false';
             const wire = structuredClone(channel);
             wire.deployScript = false;
-            if (failure === 'revision') channel.revision++;
-            if (failure === 'timestamp') channel.exportData.metadata.lastModified.time++;
-            await mockEngine(page, { [`GET /channels/${ID}`]: (request: any) => request.headers().accept?.includes('application/xml')
-                ? failure === 'unavailable' ? { __status: 503, body: { message: 'Code XML unavailable' } } : xml('channel', channel) : { channel: wire } });
+            wire.description = 'Other JSON snapshot';
+            channel.description = 'Coherent XML snapshot';
+            if (difference === 'revision') channel.revision++;
+            if (difference === 'timestamp') channel.exportData.metadata.lastModified.time++;
+            let xmlReads = 0, jsonReads = 0;
+            await mockEngine(page, { [`GET /channels/${ID}`]: (request: any) => {
+                if (request.headers().accept?.includes('application/xml')) { xmlReads++; return xml('channel', channel); }
+                jsonReads++;
+                return { channel: wire };
+            } });
             await page.goto(`/channels/${ID}/edit?tab=Inspector`);
-            await expect(page).toHaveURL(/\/channels$/);
-            await expect(page.getByText(failure === 'unavailable' ? 'Code XML unavailable' : /Channel changed while reading text fields/)).toBeVisible();
+            await expect(page.locator('.ci-desc')).toHaveText('Coherent XML snapshot');
+            await expect(page.locator('.ci-from').first()).toContainText(`revision ${channel.revision}`);
+            await page.getByRole('button', { name: 'Expand all', exact: true }).click();
+            await expect(page.locator('#ci-deploy .ci-item').filter({ has: page.locator('.ci-name', { hasText: /^Deploy script$/ }) }).locator('.ci-code .lc')).toHaveText(['false']);
+            const modified = await page.evaluate(async () => (await import(String('/core/store.js'))).getState('editingChannel').exportData.metadata.lastModified.time);
+            expect(Number(modified)).toBe(channel.exportData.metadata.lastModified.time);
+            expect({ xmlReads, jsonReads }).toEqual({ xmlReads: 1, jsonReads: 0 });
         });
     }
+
+    test('rejects unavailable channel XML without using a separate JSON snapshot', async ({ page }) => {
+        let jsonReads = 0;
+        await mockEngine(page, { [`GET /channels/${ID}`]: (request: any) => {
+            if (request.headers().accept?.includes('application/xml')) return { __status: 503, body: { message: 'Code XML unavailable' } };
+            jsonReads++;
+            return { channel: CHANNEL };
+        } });
+        await page.goto(`/channels/${ID}/edit?tab=Inspector`);
+        await expect(page).toHaveURL(/\/channels$/);
+        await expect(page.getByText('Code XML unavailable')).toBeVisible();
+        expect(jsonReads).toBe(0);
+    });
 
     test('previews and prints complete content without changing editor state', async ({ page }, info) => {
         const channel = structuredClone(CHANNEL);

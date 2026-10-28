@@ -846,7 +846,7 @@ export function ChannelsView() {
             { label: 'Export All Channels', icon: 'export', task: 'doExportAllChannels', group: 'channel', onClick: () => exportAllTask() },
             '-',
             { label: 'Edit Channel', icon: 'edit', task: 'doEditChannel', group: 'channel', onClick: () => router.navigate(`/channels/${channel.id}/edit`) },
-            { label: 'Inspect Channel', icon: 'search', task: 'doEditChannel', group: 'channel', onClick: () => router.navigate(`/channels/${channel.id}/edit?tab=Inspector`) },
+            { label: 'Inspect Channel', icon: 'search', task: 'doShowChannel', group: 'view', onClick: () => router.navigate(`/channels/${channel.id}/inspect`) },
             { label: 'View Messages', icon: 'messages', task: 'doViewMessages', group: 'channel', onClick: () => messagesTask(rows) },
             '-',
             { label: 'Deploy Channel', icon: 'deploy', task: 'doDeployChannel', group: 'channel', hidden: !anyEnabled, onClick: () => deployTask(rows) },
@@ -1798,7 +1798,7 @@ export function ChannelsView() {
                         {showDelete && <TaskButton label="Delete Channel" icon="trash" danger task="doDeleteChannel" onClick={() => deleteTask(selectedChannels())} />}
                         {showClone && <TaskButton label="Clone Channel" icon="copy" task="doCloneChannel" onClick={() => cloneTask(selectedChannels())} />}
                         {showEdit && <TaskButton label="Edit Channel" icon="edit" task="doEditChannel" onClick={() => { const c = requireSingle(selectedChannels()); if (c) router.navigate(`/channels/${c.id}/edit`); }} />}
-                        {showEdit && <TaskButton label="Inspect Channel" icon="search" task="doEditChannel" onClick={() => { const c = requireSingle(selectedChannels()); if (c) router.navigate(`/channels/${c.id}/edit?tab=Inspector`); }} />}
+                        {singleChannel && <TaskButton label="Inspect Channel" icon="search" task="doShowChannel" group="view" onClick={() => { const c = requireSingle(selectedChannels()); if (c) router.navigate(`/channels/${c.id}/inspect`); }} />}
                         {showEnable && <TaskButton label="Enable Channel" icon="check" task="doEnableChannel" onClick={() => setEnabledTask(true, effectiveChannels())} />}
                         {showDisable && <TaskButton label="Disable Channel" icon="x" task="doDisableChannel" onClick={() => setEnabledTask(false, effectiveChannels())} />}
                         {showMessages && <TaskButton label="View Messages" icon="messages" task="doViewMessages" onClick={() => messagesTask(selectedChannels())} />}
