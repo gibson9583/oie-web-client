@@ -397,7 +397,7 @@ for (const [left, right] of [['0', 'false'], ['null', ''], [0, false], [null, nu
     const draft = stepEverywhere(MAPPER, { replacements: { [PAIR]: nativePair(left, right) } });
     const original = JSON.stringify(draft);
     const inspected = inspectChannel(draft);
-    assert.ok(inspected.sourceTransformer[0].detail.endsWith(`1. ${left ?? ''} → ${right ?? ''}`));
+    assert.ok(inspected.sourceTransformer[0].detail.endsWith(`1. ${String(left)} → ${String(right)}`));
     assert.equal(JSON.stringify(draft), original);
 }
 const expressionWrite = inspectChannel(stepEverywhere(BUILDER, { replacements: { [PAIR]: nativePair("'-'", "($c('replacementUsed', true), '')") } }));

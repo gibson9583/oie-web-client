@@ -105,19 +105,27 @@ test('channel viewers inspect saved source without editor state, edit controls o
 
 test('viewers enter the standalone Inspector from Channels and Dashboard', async ({ page }) => {
     await permissions(page);
-    await mockEngine(page, { [`GET /channels/${ID}`]: { channel: channel() } });
+    let saved = channel();
+    let reads = 0;
+    await mockEngine(page, { [`GET /channels/${ID}`]: () => { reads++; return { channel: saved }; } });
     await page.goto('/channels');
     await page.getByText('Demo Stopped', { exact: true }).click();
     await expect(page.getByRole('button', { name: 'Edit Channel', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Inspect Channel', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/channels/${ID}/inspect$`));
     await expect(page.locator('.ci-root')).toBeVisible();
+    expect(reads).toBe(1);
+    saved = { ...saved, description: 'SAVED_AFTER_CACHE' };
     await page.getByRole('button', { name: 'Back to Channels', exact: true }).click();
+    // Cached rows appear before authoritative action data is ready.
+    await expect(page.getByRole('row').filter({ has: page.getByText('Demo Stopped', { exact: true }) })).toHaveAttribute('draggable', 'true');
     await page.getByText('Demo Stopped', { exact: true }).click({ button: 'right' });
     await expect(page.getByRole('menuitem', { name: 'Edit Channel', exact: true })).toHaveCount(0);
     await page.getByRole('menuitem', { name: 'Inspect Channel', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/channels/${ID}/inspect$`));
     await expect(page.locator('.ci-root')).toBeVisible();
+    await expect(page.locator('.ci-root')).toContainText('SAVED_AFTER_CACHE');
+    expect(reads).toBe(2); // Inspect never consumes the cached list summary.
     await navigate(page, '/dashboard');
     await page.getByText('Demo Stopped', { exact: true }).click({ button: 'right' });
     await expect(page.getByRole('menuitem', { name: 'Edit Channel', exact: true })).toHaveCount(0);

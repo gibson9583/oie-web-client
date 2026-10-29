@@ -29,7 +29,7 @@ const JS_CHANNEL_ID = 'reference-js-channel';
 const jsChannel = () => {
     const channel = makeChannel(JS_CHANNEL_ID, { source: connector('JavaScript Reader'), destination: connector('JavaScript Writer') });
     // Data type properties as the engine sends them, so the properties editor renders.
-    Object.assign(channel.sourceConnector.transformer, { inboundProperties: {}, outboundProperties: {} });
+    Object.assign(channel.sourceConnector.transformer, { inboundProperties: { '@class': 'com.mirth.connect.plugins.datatypes.hl7v2.HL7v2DataTypeProperties' }, outboundProperties: { '@class': 'com.mirth.connect.plugins.datatypes.hl7v2.HL7v2DataTypeProperties' } });
     return channel;
 };
 

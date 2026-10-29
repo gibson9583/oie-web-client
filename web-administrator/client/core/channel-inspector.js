@@ -3,8 +3,9 @@
  * Channel Inspector model: a read-only description of a channel in the order
  * the engine runs it. Pure — reads the wire channel, never changes it.
  */
+import { replacementPairs } from './step-replacements.js';
 import { elementsToArray, elementTypeLabel, destinationsOf } from './oie.js';
-import { mappingEntries, toDisplayString } from './xstream.js';
+import { mappingEntries } from './xstream.js';
 import { configurationFacts, configurationText, redactEndpointCredentials } from './inspector-configuration.js';
 const truthy = (v) => v === true || v === 'true';
 const text = (v) => (v == null ? '' : String(v));
@@ -77,22 +78,6 @@ const ITERATOR_TYPES = new Set(['com.mirth.connect.model.IteratorStep', 'com.mir
 function condition(el) {
     const values = list(el.values).map(text);
     return `${text(el.field)} ${CONDITIONS[text(el.condition)] ?? text(el.condition).toLowerCase()}${values.length ? ' ' + values.join(' or ') : ''}`.trim();
-}
-function replacementPairs(el) {
-    const replacements = el.replacements;
-    if (!replacements || typeof replacements !== 'object')
-        return [];
-    // Native XStream uses an ImmutablePair class wrapper; imported/editor
-    // models can carry the pair fields directly.
-    const rows = replacements['org.apache.commons.lang3.tuple.ImmutablePair'] ?? replacements.entry ?? replacements;
-    return (Array.isArray(rows) ? rows : [rows]).flatMap(p => {
-        if (!p || typeof p !== 'object')
-            return [];
-        const pair = Array.isArray(p) ? p : 'left' in p ? [p.left, p.right]
-            : 'key' in p ? [p.key, p.value] : 'first' in p ? [p.first, p.second]
-                : Array.isArray(p.string) ? p.string : null;
-        return pair ? [[toDisplayString(pair[0]), toDisplayString(pair[1])]] : [];
-    });
 }
 function describe(el) {
     const type = el.__type;

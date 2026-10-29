@@ -7,7 +7,7 @@ export function fixtureXml(tag: string, value: any): string {
     if (Array.isArray(value)) return value.map(item => fixtureXml(tag, item)).join('');
     const escape = (text: any) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\r]/g, c => `&#x${c.charCodeAt(0).toString(16)};`);
-    if (value == null) return `<${tag}/>`;
+    if (value == null) return `<${tag}></${tag}>`;
     const entries = typeof value === 'object' ? Object.entries(value) : [];
     const attributes = entries.filter(([key]) => key.startsWith('@')).map(([key, child]) => ` ${key.slice(1)}="${escape(child)}"`).join('');
     const content = typeof value === 'object'
@@ -87,7 +87,8 @@ export async function mockEngine(page: any, overrides = {}) {
                 return route.fulfill({ status: 200, contentType: 'application/xml', body: fixtureXml('message', fx.message ?? fx) });
             }
             return route.fulfill({ status: 200, contentType: 'application/xml',
-                body: Object.entries(fx).map(([tag, value]) => fixtureXml(tag, value)).join('') });
+                body: Object.hasOwn(fx, 'channel') && fx.channel == null ? '<null/>'
+                    : Object.entries(fx).map(([tag, value]) => fixtureXml(tag, value)).join('') });
         }
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(fx) });
     });

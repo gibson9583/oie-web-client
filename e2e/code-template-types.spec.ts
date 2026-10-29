@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { test, expect } from './base.js';
-import { mockEngine } from './mock.js';
+import { mockEngine, fixtureXml } from './mock.js';
 import { makeChannel } from './connector-fixtures.js';
 
 type Model = Record<string, any>;
@@ -281,7 +281,7 @@ test('custom function declarations reach JavaScript suggestions and the Monaco w
         }
     };
     await page.route(`**/api/channels/${channelId}`, route => route.fulfill({
-        status: 200, contentType: 'application/json', body: JSON.stringify({ channel })
+        status: 200, contentType: 'application/xml', body: fixtureXml('channel', channel)
     }));
     await page.goto(`/channels/${channelId}/transformer/0`);
     await expect(page.locator('.monaco-editor').first()).toBeVisible();

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { replacementPairs, replacementsToWire, REPLACEMENT_PAIR } from './step-replacements.js';
 import { generateElementScript } from './step-script.js';
+import { inspectChannel } from './channel-inspector.js';
 
 const rows = [[String.raw`"^s3://bucket/(.*)$"`, '"/SharedData/$1"'], ['"/SharedData/"', '"/final/"']];
 const wire = replacementsToWire(rows);
@@ -23,6 +24,8 @@ const snapshot = JSON.stringify(wire);
 for (const type of ['mapper.MapperStep', 'messagebuilder.MessageBuilderStep']) {
     const element = { __type: `com.mirth.connect.plugins.${type}`, variable: 'folder', messageSegment: "tmp['folder']", mapping: "'s3://bucket/sample'", replacements: wire };
     const script = generateElementScript(element);
+    const detail = inspectChannel({ sourceConnector: { transformer: { elements: { [element.__type]: element } } } }).sourceTransformer[0].detail;
+    for (const [left, right] of rows) assert.ok(detail.includes(`${left} → ${right}`));
     assert.ok(script.includes('new Array(new Array(' + rows[0].join(', ') + '),new Array(' + rows[1].join(', ') + '))'));
     assert.ok(!script.includes('[object Object]'));
     const calls = [];
@@ -60,6 +63,8 @@ for (const type of ['mapper.MapperStep', 'messagebuilder.MessageBuilderStep']) {
         const expected = side === 'left' ? ['null', '"replacement"'] : ['"pattern"', 'null'];
         const loaded = replacementPairs(element);
         assert.deepEqual(loaded, [expected], `${type} ${side}: retain explicit null text`);
+        const detail = inspectChannel({ sourceConnector: { transformer: { elements: { [element.__type]: element } } } }).sourceTransformer[0].detail;
+        assert.ok(detail.includes(`${expected[0]} → ${expected[1]}`));
         assert.ok(generateElementScript(element).includes(`new Array(${expected.join(', ')})`));
         assert.equal(JSON.stringify(element), original, 'decoding and preview leave native data untouched');
 

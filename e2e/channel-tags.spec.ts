@@ -1,5 +1,5 @@
 import { test, expect } from './base.js';
-import { mockEngine } from './mock.js';
+import { mockEngine, fixtureXml } from './mock.js';
 import { makeChannel } from './connector-fixtures.js';
 
 for (const surface of ['edit', 'guided']) {
@@ -17,7 +17,7 @@ for (const surface of ['edit', 'guided']) {
             const writes: any[] = [];
             await mockEngine(page, {
                 'GET /channels/numeric-tags': () => ({ channel }),
-                'GET /server/channelTags': { set: { channelTag: origin === 'export-only' ? [] : tags } },
+                'GET /server/channelTags': origin === 'export-only' ? { __status: 403 } : { set: { channelTag: tags } },
                 'PUT /channels/numeric-tags': (req: any) => {
                     channel = req.postDataJSON().channel;
                     writes.push(structuredClone(channel));
@@ -123,16 +123,11 @@ for (const surface of ['edit', 'guided']) {
     });
 }
 
-const CHANNEL_TAGS_XML = `<channel><id>xml-tags</id><exportData><channelTags>
-  <channelTag><id>tag-negzero</id><name>-0</name><channelIds><string>xml-tags</string></channelIds></channelTag>
-  <channelTag><id>tag-null</id><name>null</name><channelIds><string>xml-tags</string></channelIds></channelTag>
-</channelTags></exportData></channel>`;
-
 function taggedChannel() {
     const channel = makeChannel('xml-tags');
     channel.exportData = { ...channel.exportData, channelTags: { channelTag: [
-        { id: 'tag-negzero', name: 0, channelIds: { string: ['xml-tags'] } },
-        { id: 'tag-null', name: null, channelIds: { string: ['xml-tags'] } }
+        { id: 'tag-negzero', name: '-0', channelIds: { string: ['xml-tags'] } },
+        { id: 'tag-null', name: 'null', channelIds: { string: ['xml-tags'] } }
     ] } };
     return channel;
 }
@@ -142,7 +137,7 @@ for (const surface of ['edit', 'guided']) {
         let channel = taggedChannel();
         const writes: any[] = [];
         await mockEngine(page, {
-            'GET /channels/xml-tags': (req: any) => req.headers().accept === 'application/xml' ? CHANNEL_TAGS_XML : { channel },
+            'GET /channels/xml-tags': (req: any) => req.headers().accept === 'application/xml' ? fixtureXml('channel', channel) : { channel },
             'GET /server/channelTags': { __status: 403 },
             'PUT /channels/xml-tags': (req: any) => { channel = req.postDataJSON().channel; writes.push(channel); return true; }
         });
@@ -168,7 +163,7 @@ for (const surface of ['edit', 'guided']) {
             const writes: any[] = [];
             await mockEngine(page, {
                 'GET /channels/xml-tags': (req: any) => req.headers().accept === 'application/xml'
-                    ? (failing ? (typeof failure === 'number' ? { __status: failure } : failure) : CHANNEL_TAGS_XML) : { channel },
+                    ? (failing ? (typeof failure === 'number' ? { __status: failure } : failure) : fixtureXml('channel', channel)) : { channel },
                 'GET /server/channelTags': () => failing ? { __status: 503 } : ENGINE_TAGS_XML,
                 'PUT /channels/xml-tags': (req: any) => { channel = req.postDataJSON().channel; writes.push(channel); return true; }
             });
@@ -199,7 +194,7 @@ for (const xml of ['', '<error/>', '<set><channelTag>', '<set><channelTag><id>mi
 }
 
 test('channel tag fallback rejects XML belonging to another channel', async ({ page }) => {
-    await mockEngine(page, { 'GET /channels/xml-tags': CHANNEL_TAGS_XML.replace('<id>xml-tags</id>', '<id>other</id>') });
+    await mockEngine(page, { 'GET /channels/xml-tags': fixtureXml('channel', taggedChannel()).replace('<id>xml-tags</id>', '<id>other</id>') });
     await page.goto('/dashboard');
     const error = await page.evaluate(async () => {
         const { default: api } = await import(String('/core/api.js'));
@@ -214,7 +209,7 @@ for (const lookup of ['tags', 'channel']) {
         const creates: any[] = [];
         await mockEngine(page, {
             'GET /channels': { list: { channel: [channel] } },
-            'GET /channels/xml-tags': (req: any) => req.headers().accept === 'application/xml' ? CHANNEL_TAGS_XML : { channel },
+            'GET /channels/xml-tags': (req: any) => req.headers().accept === 'application/xml' ? fixtureXml('channel', channel) : { channel },
             'GET /server/channelTags': lookup === 'tags' ? ENGINE_TAGS_XML : { __status: 403 },
             'POST /channels': (req: any) => { creates.push(req.postDataJSON().channel); return true; }
         });

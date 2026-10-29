@@ -1,6 +1,6 @@
 import type { Page, Request } from '@playwright/test';
 import { test, expect } from './base.js';
-import { mockEngine } from './mock.js';
+import { mockEngine, fixtureXml } from './mock.js';
 import { CASES, makeChannel } from './connector-fixtures.js';
 
 // These string properties are resolved by the engine's ValueReplacer. Numeric
@@ -62,7 +62,7 @@ async function openField(page: Page, spec: VelocityCase) {
     await page.goto(`/channels/${id}/edit`);
     await showPanel(page, spec.name);
     const savedProperties = () => connector.mode === 'SOURCE'
-        ? stored.sourceConnector.properties : stored.destinationConnectors.connector[0].properties;
+        ? stored.sourceConnector.properties : ([] as any[]).concat(stored.destinationConnectors.connector)[0].properties;
     return { state, properties, savedProperties, input: page.locator(`[data-fkey="${spec.key}"]`) };
 }
 
@@ -108,7 +108,7 @@ for (const spec of fields) {
             await expect(page.locator('.content-row')).not.toHaveAttribute('inert');
             const expected = structuredClone(properties);
             setFieldValue(expected, spec.key, value);
-            expect(savedProperties()).toEqual(expected);
+            expect(fixtureXml('properties', savedProperties())).toBe(fixtureXml('properties', expected));
             await expect(input).not.toHaveClass(/cform-invalid/);
             await page.reload();
             await showPanel(page, spec.name);
@@ -199,7 +199,7 @@ test('channel wizard saves TCP source and destination port expressions', async (
     await expect(page).toHaveURL(/\/channels$/);
     expect(writes).toHaveLength(1);
     expect(writes[0].sourceConnector.properties.listenerConnectorProperties.port).toBe('${ListenerPort}');
-    expect(writes[0].destinationConnectors.connector[0].properties.remotePort).toBe('${InteleOrchestratorPort}');
+    expect(([] as any[]).concat(writes[0].destinationConnectors.connector)[0].properties.remotePort).toBe('${InteleOrchestratorPort}');
 });
 
 test('Document Writer keeps typing focus, presets and units synchronized through save retry', async ({ page }, testInfo) => {
@@ -369,7 +369,7 @@ test('channel wizard keeps Document Writer dimensions editable through navigatio
     await page.getByRole('main').getByRole('button', { name: 'Create Channel', exact: true }).click();
     await expect(page).toHaveURL(/\/channels$/);
     expect(writes).toHaveLength(1);
-    expect(writes[0].destinationConnectors.connector[0].properties).toMatchObject({
+    expect(([] as any[]).concat(writes[0].destinationConnectors.connector)[0].properties).toMatchObject({
         pageWidth: '${WizardWidth}', pageHeight: '${WizardHeight}', pageUnit: 'INCHES', output: 'ATTACHMENT',
     });
 });
@@ -392,6 +392,6 @@ test('Document Writer imports rebind dimension edits without changing the origin
     await expect.poll(() => state.writes.length).toBe(1);
     const destinations = state.writes[0].destinationConnectors.connector;
     expect(destinations).toHaveLength(2);
-    expect(destinations[0].properties).toEqual(properties);
+    expect(fixtureXml('properties', destinations[0].properties)).toBe(fixtureXml('properties', properties));
     expect(destinations[1].properties).toEqual({ ...importedProperties, pageWidth: '${EditedWidth}' });
 });
