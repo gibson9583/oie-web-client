@@ -876,7 +876,10 @@ test.describe('Channel Inspector', () => {
             }));
         await mockEngine(page, { ['GET /channels/' + ID]: { channel } });
         await page.goto('/channels/' + ID + '/edit?tab=Inspector');
-        await expect(page.locator('.ci-chain-label')).toHaveText('Chain 1196 destinations, in configured order');
+        // This stress case includes shell/plugin startup plus 196 destination
+        // sections. CI Firefox traces show the complete tree arriving after
+        // eight seconds; keep a bounded readiness wait within the 120s test.
+        await expect(page.locator('.ci-chain-label')).toHaveText('Chain 1196 destinations, in configured order', { timeout: 15_000 });
         const row = page.locator('#ci-key-channelMap\\.' + key);
         await row.scrollIntoViewIfNeeded();
         const disclosure = row.locator('details');
