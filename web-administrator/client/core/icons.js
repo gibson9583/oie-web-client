@@ -38,6 +38,7 @@ const P = {
     edit: 'M4 20l4-1L20 7l-3-3L5 16zM14 6l3 3',
     trash: 'M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6',
     copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
+    print: 'M6 9V3h12v6M6 18H4v-7h16v7h-2M6 14h12v7H6z',
     // Two panes with a divider — side-by-side comparison.
     compare: 'M4 5h6v14H4zM14 5h6v14h-6zM12 3v18',
     export: 'M12 15V3M8 7l4-4 4 4M5 21h14v-7',
@@ -129,3 +130,24 @@ export function icon(name, size = 16) {
 // Raw path data for renderers that build their own <svg> (e.g. the React <Icon>
 // component) instead of using icon()'s DOM SVGElement. Mirrors icon()'s fallback.
 export function iconPath(name) { return pathOf(name); }
+/** Icon for a connector transport name (TCP → server, HTTP → globe, …). */
+export function connectorIcon(name) {
+    const n = String(name || '').toLowerCase();
+    if (n.includes('channel'))
+        return 'channels';
+    if (n.includes('http') || n.includes('web service'))
+        return 'globe';
+    if (n.includes('tcp') || n.includes('mllp'))
+        return 'server';
+    if (n.includes('database'))
+        return 'db';
+    if (n.includes('file') || n.includes('document'))
+        return 'folder';
+    if (n.includes('javascript'))
+        return 'code';
+    if (n.includes('smtp') || n.includes('jms') || n.includes('mail'))
+        return 'mail';
+    if (n.includes('dicom'))
+        return 'file';
+    return 'puzzle';
+}

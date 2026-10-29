@@ -1,6 +1,6 @@
 import { test, expect } from './base.js';
 import type { Page } from '@playwright/test';
-import { mockEngine } from './mock.js';
+import { mockEngine, fixtureXml } from './mock.js';
 import { CASES as CONNECTOR_CASES, makeChannel } from './connector-fixtures.js';
 
 /*
@@ -544,6 +544,11 @@ test.describe('Channel editor', () => {
         });
 
         await page.goto(`/channels/${ID}/edit`);
+        const initialProperties = await page.evaluate(async id => {
+            const { channels } = await import(String('/core/api.js'));
+            const current = await channels.get(id);
+            return ([] as any[]).concat(current.destinationConnectors.connector)[0].properties;
+        }, ID);
         await page.getByRole('tab', { name: 'Destinations', exact: true }).click();
         await expect(page.locator('[data-fkey="remoteAddress"]')).toHaveValue('127.0.0.1');
 
@@ -563,7 +568,7 @@ test.describe('Channel editor', () => {
         await expect.poll(() => putBody, { timeout: 8000 }).not.toBeNull();
         const destinations = JSON.parse(putBody).channel.destinationConnectors.connector;
         expect(destinations).toHaveLength(2);
-        expect(destinations[0].properties).toEqual(tcp!.properties());
+        expect(destinations[0].properties).toEqual(initialProperties);
         expect(destinations[1].metaDataId).toBe(2);
         const sent = destinations[1].properties;
         expect(sent.remoteAddress).toBe('10.9.9.9');
@@ -778,9 +783,7 @@ test.describe('Channel editor', () => {
                     const savedKey = channel.sourceConnector.properties.sourceConnectorProperties.responseVariable;
                     if (request.headers().accept === 'application/xml') {
                         xmlReads++;
-                        return `<channel><id>${CHANNEL_ID}</id><revision>${channel.revision}</revision>
-                            <sourceConnector><properties><sourceConnectorProperties><responseVariable>${savedKey}</responseVariable></sourceConnectorProperties></properties></sourceConnector>
-                            <exportData><metadata><lastModified><time>${channel.exportData.metadata.lastModified.time}</time></lastModified></metadata></exportData></channel>`;
+                        return fixtureXml('channel', channel);
                     }
                     const wire = structuredClone(channel);
                     if (savedKey === key) wire.sourceConnector.properties.sourceConnectorProperties.responseVariable = wireValue;
@@ -829,10 +832,15 @@ test.describe('Channel editor', () => {
                 xmlReads++;
                 if (pending) await pending;
                 if (mode === 'failure') return { __status: 503, body: 'XML unavailable' };
-                return `<channel><id>${mode === 'id' ? 'different' : CHANNEL_ID}</id><revision>${mode === 'revision' ? 4 : 3}</revision>
-                    <sourceConnector><properties><sourceConnectorProperties>${mode === 'missing' ? '' : '<responseVariable>1.0</responseVariable>'}</sourceConnectorProperties></properties>
-                    <transformer><elements><${mapper}><variable>1e3</variable></${mapper}><${mapper}><variable>null</variable></${mapper}></elements></transformer></sourceConnector>
-                    <exportData><metadata><lastModified><time>${mode === 'timestamp' ? 2 : channel.exportData.metadata.lastModified.time}</time></lastModified></metadata></exportData></channel>`;
+                const snapshot = structuredClone(channel);
+                snapshot.id = mode === 'id' ? 'different' : CHANNEL_ID;
+                snapshot.revision = mode === 'revision' ? 4 : 3;
+                snapshot.exportData.metadata.lastModified.time = mode === 'timestamp' ? 2 : channel.exportData.metadata.lastModified.time;
+                snapshot.sourceConnector.properties.sourceConnectorProperties.responseVariable = '1.0';
+                snapshot.sourceConnector.transformer.elements[mapper][0].variable = '1e3';
+                snapshot.sourceConnector.transformer.elements[mapper][1].variable = 'null';
+                const xml = fixtureXml('channel', snapshot);
+                return mode === 'missing' ? xml.replace('<responseVariable>1.0</responseVariable>', '') : xml;
             },
             'POST /channels': (request: any) => { writes.push(request.postDataJSON().channel); return true; },
         });
@@ -847,10 +855,13 @@ test.describe('Channel editor', () => {
         expect(cloned.sourceConnector.properties.sourceConnectorProperties.responseVariable).toBe('1.0');
         expect(writes[0].sourceConnector.transformer.elements[mapper].map((step: any) => step.variable)).toEqual(['1e3', 'null']);
         for (mode of ['id', 'revision', 'timestamp', 'missing', 'failure']) {
-            const error = await page.evaluate(async id => {
-                try { await (await import(String('/core/api.js'))).channels.get(id); return ''; }
-                catch (error: any) { return error.message; }
-            }, CHANNEL_ID);
+            const error = await page.evaluate(async () => {
+                try {
+                    const api = await import(String('/core/api.js'));
+                    await api.channels.list(); // JSON lists still reject a mismatched XML response-name snapshot.
+                    return '';
+                } catch (error: any) { return error.message; }
+            });
             expect(error).toMatch(mode === 'missing' ? /invalid response name XML/ : mode === 'failure' ? /XML unavailable/ : /Channel changed/);
         }
         mode = 'success';

@@ -1010,6 +1010,7 @@ function DashboardView({ onToggleView }: any) {
             { label: 'Undeploy Channel', icon: 'undeploy', hidden: anyState((x: any) => isHaltableNonSyncing(x.state)), task: 'doUndeployChannel', onClick: () => undeployTask(ids) },
             '-',
             { label: 'Edit Channel', icon: 'edit', task: 'doEditChannel', group: 'channel', onClick: () => router.navigate(`/channels/${st.channelId}/edit`) },
+            { label: 'Inspect Channel', icon: 'search', task: 'doShowChannel', group: 'view', onClick: () => router.navigate(`/channels/${st.channelId}/inspect`) },
             // Tagged with Swing's channelEdit constants (CHANNEL_EDIT_FILTER/_TRANSFORMER)
             // so an RBAC policy that hides filter/transformer editing applies here too.
             { label: 'Edit Filter', icon: 'filter', task: 'doEditFilter', group: 'channelEdit', onClick: () => router.navigate(`/channels/${st.channelId}/filter/0`) },

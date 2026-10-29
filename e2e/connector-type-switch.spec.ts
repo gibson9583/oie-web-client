@@ -25,7 +25,7 @@ async function state(page: Page, mode: Mode) {
         const store = await import(String('/core/store.js'));
         const channel = store.getState('editingChannel');
         return {
-            connector: mode === 'SOURCE' ? channel.sourceConnector : channel.destinationConnectors.connector[0],
+            connector: mode === 'SOURCE' ? channel.sourceConnector : ([] as any[]).concat(channel.destinationConnectors.connector)[0],
             dirty: store.getState('editingChannelDirty')
         };
     }, mode);
@@ -59,7 +59,7 @@ for (const mode of ['SOURCE', 'DESTINATION'] as const) {
 
     test(`${mode}: reopened defaults switch without prompting despite filter/transformer changes`, async ({ page }) => {
         const channel = makeChannel('saved-defaults');
-        const connector = mode === 'SOURCE' ? channel.sourceConnector : channel.destinationConnectors.connector[0];
+        const connector = mode === 'SOURCE' ? channel.sourceConnector : ([] as any[]).concat(channel.destinationConnectors.connector)[0];
         connector.name = 'Saved connector';
         connector.filter.elements = { 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule': { script: 'return true;', enabled: true } };
         connector.transformer.outboundTemplate = '<keep/>';
@@ -77,7 +77,7 @@ for (const mode of ['SOURCE', 'DESTINATION'] as const) {
 
     test(`${mode}: saved non-default shared settings prompt on first switch; cancel and retry are safe`, async ({ page }) => {
         const channel = makeChannel('saved-custom');
-        const connector = mode === 'SOURCE' ? channel.sourceConnector : channel.destinationConnectors.connector[0];
+        const connector = mode === 'SOURCE' ? channel.sourceConnector : ([] as any[]).concat(channel.destinationConnectors.connector)[0];
         const common = mode === 'SOURCE' ? connector.properties.sourceConnectorProperties : connector.properties.destinationConnectorProperties;
         common.queueBufferSize = 2345;
         await openPanel(page, mode, channel);
@@ -244,7 +244,7 @@ for (const mode of ['SOURCE', 'DESTINATION'] as const) {
     for (const wizard of [false, true]) {
         test(`${wizard ? 'wizard' : 'classic'} ${mode}: server queue size and resources follow Swing`, async ({ page }) => {
             const channel = makeChannel('inherited-queue');
-            const connector = mode === 'SOURCE' ? channel.sourceConnector : channel.destinationConnectors.connector[0];
+            const connector = mode === 'SOURCE' ? channel.sourceConnector : ([] as any[]).concat(channel.destinationConnectors.connector)[0];
             const key = mode === 'SOURCE' ? 'sourceConnectorProperties' : 'destinationConnectorProperties';
             const resources = { '@class': 'linked-hash-map', entry: { string: ['custom-id', 'Custom Resource'] } };
             connector.properties[key].queueBufferSize = 0;

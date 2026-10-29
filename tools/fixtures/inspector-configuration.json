@@ -1,0 +1,210 @@
+{
+  "sqs": {
+    "com.mirth.connect.connectors.sqs.SqsReceiverProperties": {
+      "pollConnectorProperties": {
+        "pollingType": "INTERVAL",
+        "pollOnStart": false,
+        "pollingFrequency": 5000,
+        "pollingHour": 0,
+        "pollingMinute": 0,
+        "cronJobs": null,
+        "pollConnectorPropertiesAdvanced": {
+          "weekly": true,
+          "inactiveDays": {
+            "boolean": [
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          },
+          "dayOfMonth": 1,
+          "allDay": true,
+          "startingHour": 8,
+          "startingMinute": 0,
+          "endingHour": 17,
+          "endingMinute": 0
+        }
+      },
+      "sourceConnectorProperties": {
+        "responseVariable": "None",
+        "respondAfterProcessing": true,
+        "processBatch": false,
+        "firstResponse": false,
+        "processingThreads": 1,
+        "resourceIds": {
+          "@class": "linked-hash-map",
+          "entry": {
+            "string": [
+              "Default Resource",
+              "[Default Resource]"
+            ]
+          }
+        },
+        "queueBufferSize": 0
+      },
+      "queueUrl": "https://sqs.us-east-1.amazonaws.com/123/incoming",
+      "region": null,
+      "authType": "DEFAULT",
+      "accessKeyId": "SECRET_SQS_ID",
+      "secretAccessKey": "SECRET_SQS_KEY",
+      "roleArn": null,
+      "externalId": null,
+      "waitTimeSeconds": 20,
+      "maxMessages": 10,
+      "visibilityTimeout": 30,
+      "includeAttributes": true,
+      "messageGroupHandling": false,
+      "s3EventMode": "DISABLED",
+      "s3MaxObjectSizeKB": 10240,
+      "s3FileType": "Text",
+      "s3Encoding": "DEFAULT_ENCODING"
+    }
+  },
+  "kiteworks": {
+    "com.mirth.connect.connectors.kiteworks.KiteworksReceiverProperties": {
+      "baseUrl": "https://files.example",
+      "clientId": null,
+      "clientSecret": "SECRET_KITE_CLIENT",
+      "subject": null,
+      "issuer": null,
+      "audience": null,
+      "customJwtClaims": "{}",
+      "scope": null,
+      "keySource": "PEM_FILE",
+      "keyPath": null,
+      "keyAlias": null,
+      "keyPassword": "SECRET_KITE_KEY",
+      "connectTimeoutMs": 10000,
+      "readTimeoutMs": 60000,
+      "proxyHost": null,
+      "proxyPort": 8080,
+      "proxyUsername": null,
+      "proxyPassword": "SECRET_KITE_PROXY",
+      "uploadAllowedHosts": null,
+      "pollConnectorProperties": {
+        "pollingType": "INTERVAL",
+        "pollOnStart": false,
+        "pollingFrequency": 5000,
+        "pollingHour": 0,
+        "pollingMinute": 0,
+        "cronJobs": null,
+        "pollConnectorPropertiesAdvanced": {
+          "weekly": true,
+          "inactiveDays": {
+            "boolean": [
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          },
+          "dayOfMonth": 1,
+          "allDay": true,
+          "startingHour": 8,
+          "startingMinute": 0,
+          "endingHour": 17,
+          "endingMinute": 0
+        }
+      },
+      "sourceConnectorProperties": {
+        "responseVariable": "None",
+        "respondAfterProcessing": true,
+        "processBatch": false,
+        "firstResponse": false,
+        "processingThreads": 1,
+        "resourceIds": {
+          "@class": "linked-hash-map",
+          "entry": {
+            "string": [
+              "Default Resource",
+              "[Default Resource]"
+            ]
+          }
+        },
+        "queueBufferSize": 0
+      },
+      "folderId": "folder-7",
+      "fileFilter": "*",
+      "regex": false,
+      "recursive": false,
+      "ignoreDot": true,
+      "minimumAgeMs": 1000,
+      "minimumSizeBytes": 0,
+      "maximumSizeBytes": 10485760,
+      "maxFilesPerPoll": 100,
+      "maxEntriesPerPoll": 10000,
+      "pageSize": 100,
+      "sortBy": "modified:asc",
+      "binary": false,
+      "charsetEncoding": "UTF-8",
+      "afterProcessingAction": "NONE",
+      "moveToFolderId": null,
+      "moveToFileName": null,
+      "errorReadingAction": "NONE",
+      "errorResponseAction": "AFTER_PROCESSING",
+      "errorMoveToFolderId": null,
+      "errorMoveToFileName": null,
+      "replaceOnMove": false
+    }
+  },
+  "query": {
+    "com.mirth.connect.connectors.fhirquery.FhirQueryDispatcherProperties": {
+      "destinationConnectorProperties": {
+        "queueEnabled": false,
+        "sendFirst": false,
+        "retryIntervalMillis": 10000,
+        "regenerateTemplate": false,
+        "retryCount": 0,
+        "rotate": false,
+        "includeFilterTransformer": false,
+        "threadCount": 1,
+        "threadAssignmentVariable": null,
+        "validateResponse": false,
+        "resourceIds": {
+          "@class": "linked-hash-map",
+          "entry": {
+            "string": [
+              "Default Resource",
+              "[Default Resource]"
+            ]
+          }
+        },
+        "queueBufferSize": 0,
+        "reattachAttachments": true
+      },
+      "serverName": "Clinical FHIR",
+      "queryName": "Recent patients",
+      "queryParameters": "{\"_count\":25}",
+      "inputMode": "DEMOGRAPHICS",
+      "inputTemplate": "return\nmessage;",
+      "patientId": null,
+      "firstName": null,
+      "lastName": null,
+      "dob": null,
+      "mrn": null,
+      "phone": null,
+      "email": null,
+      "street1": null,
+      "street2": null,
+      "city": null,
+      "state": null,
+      "zip": null,
+      "gender": null,
+      "race": null,
+      "ethnicity": null,
+      "requireMinimumIdentifiers": true,
+      "multipleMatchBehavior": "FIRST",
+      "noMatchBehavior": "ERROR",
+      "failOnPartialResults": false
+    }
+  }
+}

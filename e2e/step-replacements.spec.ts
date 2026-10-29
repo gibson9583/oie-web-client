@@ -46,6 +46,7 @@ for (const type of ['mapper.MapperStep', 'messagebuilder.MessageBuilderStep']) {
         await expect(save).toBeEnabled();
         await save.click();
         await expect.poll(() => attempts.length).toBe(2);
+        await expect(page.locator('.content-row')).not.toHaveAttribute('inert');
         for (const sent of attempts) expect(sent.sourceConnector.transformer.elements[className][0].replacements).toEqual(singleton);
         await group.getByRole('textbox', { name: 'Replace With 1', exact: true }).fill('"/changed/"');
         await page.getByRole('tab', { name: 'Generated Script', exact: true }).click();
@@ -95,6 +96,9 @@ for (const type of ['mapper.MapperStep', 'messagebuilder.MessageBuilderStep']) {
             await page.locator('input.grid-name').first().fill('Renamed folder mapping');
             await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
             await expect.poll(() => written.length).toBe(1);
+            // Receiving the PUT is not save completion: readback still holds
+            // the editor inert. WebKit fill can otherwise bypass that user lock.
+            await expect(page.locator('.content-row')).not.toHaveAttribute('inert');
             expect(connector(written[0])[surface.target].elements[className][0].replacements).toEqual(element.replacements);
 
             await replacement(1).fill('"/changed/"');
@@ -109,6 +113,7 @@ for (const type of ['mapper.MapperStep', 'messagebuilder.MessageBuilderStep']) {
             await group.getByRole('button', { name: 'New', exact: true }).click(); // Unfinished regex is omitted like Swing.
             await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
             await expect.poll(() => written.length).toBe(2);
+            await expect(page.locator('.content-row')).not.toHaveAttribute('inert');
             expect(connector(written[1])[surface.target].elements[className][0].replacements).toEqual({ [PAIR]: [
                 pair('"^s3://bucket/"', '"/changed/"'), pair('"/changed/"', '"/final/"')
             ] });

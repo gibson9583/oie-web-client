@@ -1,5 +1,5 @@
 import { test, expect } from './base.js';
-import { mockEngine } from './mock.js';
+import { mockEngine, fixtureXml as xml } from './mock.js';
 import { makeChannel } from './connector-fixtures.js';
 import type { Page } from '@playwright/test';
 
@@ -11,7 +11,7 @@ const properties = (widths: any = null, names: any = null) => ({
 });
 function fixture() {
     const channel = makeChannel('delimited-arrays');
-    for (const connector of [channel.sourceConnector, channel.destinationConnectors.connector[0]]) {
+    for (const connector of [channel.sourceConnector, ([] as any[]).concat(channel.destinationConnectors.connector)[0]]) {
         for (const transformer of [connector.transformer, connector.responseTransformer].filter(Boolean)) {
             for (const side of ['inbound', 'outbound']) {
                 transformer[`${side}DataType`] = 'DELIMITED';
@@ -21,17 +21,21 @@ function fixture() {
     }
     return channel;
 }
-async function setup(page: Page, channel = fixture(), surface = 'edit') {
+async function setup(page: Page, channel = fixture(), surface = 'edit', xmlChannel = channel) {
     let server = structuredClone(channel);
+    let serverXml = structuredClone(xmlChannel);
     const writes: any[] = [];
     await mockEngine(page, { [`GET /channels/${channel.id}`]: { channel: server } });
     await page.route(url => url.pathname === `/api/channels/${channel.id}`, async route => {
         if (route.request().method() === 'PUT') {
             server = JSON.parse(route.request().postData()!).channel;
+            serverXml = structuredClone(server);
             writes.push(structuredClone(server));
             return route.fulfill({ status: 200, contentType: 'text/plain', body: 'true' });
         }
-        if (route.request().method() === 'GET') return route.fulfill({ status: 200, json: { channel: server } });
+        if (route.request().method() === 'GET') return route.request().headers().accept?.includes('application/xml')
+            ? route.fulfill({ status: 200, contentType: 'application/xml', body: xml('channel', serverXml) })
+            : route.fulfill({ status: 200, json: { channel: server } });
         return route.fallback();
     });
     await page.goto(`/channels/${channel.id}/${surface}`);
@@ -49,7 +53,7 @@ async function save(page: Page, writes: any[], expected: number) {
 
 test('Delimited defaults omit arrays and a save repairs legacy null/empty arrays on every transformer side', async ({ page }) => {
     const channel = fixture();
-    channel.destinationConnectors.connector[0].responseTransformer.inboundProperties.serializationProperties.columnWidths = { int: [] };
+    ([] as any[]).concat(channel.destinationConnectors.connector)[0].responseTransformer.inboundProperties.serializationProperties.columnWidths = { int: [] };
     const writes = await setup(page, channel);
     const modal = await dialog(page);
     const rows = modal.locator('table.dt tbody tr');
@@ -58,7 +62,7 @@ test('Delimited defaults omit arrays and a save repairs legacy null/empty arrays
     await expect(modal.getByLabel('Column Widths', { exact: true }).first()).toHaveValue('');
     await modal.getByRole('button', { name: 'OK', exact: true }).click();
     await save(page, writes, 1);
-    for (const connector of [writes[0].sourceConnector, writes[0].destinationConnectors.connector[0]]) {
+    for (const connector of [writes[0].sourceConnector, ([] as any[]).concat(writes[0].destinationConnectors.connector)[0]]) {
         for (const transformer of [connector.transformer, connector.responseTransformer].filter(Boolean)) {
             for (const side of ['inbound', 'outbound']) {
                 const props = transformer[`${side}Properties`];
@@ -68,7 +72,7 @@ test('Delimited defaults omit arrays and a save repairs legacy null/empty arrays
             }
         }
     }
-    expect(writes[0].destinationConnectors.connector[0].responseTransformer.inboundProperties.future).toEqual({ keep: 'unknown' });
+    expect(([] as any[]).concat(writes[0].destinationConnectors.connector)[0].responseTransformer.inboundProperties.future).toEqual({ keep: 'unknown' });
 });
 
 test('Delimited lists preserve singleton/array wire shapes, cancel edits, and omit cleared lists', async ({ page }) => {
@@ -103,9 +107,12 @@ test('Delimited lists preserve singleton/array wire shapes, cancel edits, and om
 
 test('engine JSON literals for true/false/null column names stay valid and save as strings', async ({ page }) => {
     const channel = fixture();
-    channel.sourceConnector.transformer.inboundProperties = properties(null, { string: [true, false, null, 'normal'] });
-    channel.sourceConnector.transformer.outboundProperties = properties(null, { string: true });
-    const writes = await setup(page, channel);
+    channel.sourceConnector.transformer.inboundProperties = properties(null, { string: ['true', 'false', 'null', 'normal'] });
+    channel.sourceConnector.transformer.outboundProperties = properties(null, { string: 'true' });
+    const wire = structuredClone(channel);
+    wire.sourceConnector.transformer.inboundProperties.serializationProperties.columnNames = { string: [true, false, null, 'normal'] };
+    wire.sourceConnector.transformer.outboundProperties.serializationProperties.columnNames = { string: true };
+    const writes = await setup(page, wire, 'edit', channel);
     const modal = await dialog(page);
     const names = modal.getByLabel('Column Names', { exact: true });
     await expect(names.first()).toHaveValue('true,false,null,normal');
@@ -187,7 +194,7 @@ test('partial bulk ignores disabled invalid outbound lists while applying valid 
     await modal.getByRole('button', { name: 'OK', exact: true }).click();
     await expect(modal).toHaveCount(0);
     await save(page, writes, 1);
-    for (const connector of [writes[0].sourceConnector, writes[0].destinationConnectors.connector[0]]) {
+    for (const connector of [writes[0].sourceConnector, ([] as any[]).concat(writes[0].destinationConnectors.connector)[0]]) {
         expect(connector.transformer.inboundProperties.serializationProperties.columnWidths).toEqual({ int: [5, 3] });
         expect(connector.transformer.outboundProperties.deserializationProperties).not.toHaveProperty('columnWidths');
         expect(connector.transformer.outboundProperties.future).toEqual({ keep: 'unknown' });
@@ -233,7 +240,7 @@ for (const surface of ['transformer/0', 'transformer/1', 'response/1']) {
         await modal.getByRole('button', { name: 'OK', exact: true }).click();
         await page.getByRole('button', { name: 'Back to Channel', exact: true }).click();
         await save(page, writes, 1);
-        const connector = surface === 'transformer/0' ? writes[0].sourceConnector : writes[0].destinationConnectors.connector[0];
+        const connector = surface === 'transformer/0' ? writes[0].sourceConnector : ([] as any[]).concat(writes[0].destinationConnectors.connector)[0];
         const target = surface.startsWith('response') ? connector.responseTransformer : connector.transformer;
         expect(target.inboundProperties.serializationProperties).toMatchObject({ columnWidths: { int: [5, 3] }, columnNames: { string: ['first', 'second'] }, future: 17 });
     });

@@ -471,51 +471,170 @@ export const users = {
    ========================================================================== */
 const responseName = (name, parent) => name === 'responseVariable' && parent === 'sourceConnectorProperties'
     || name === 'variable' && parent === 'com.mirth.connect.plugins.mapper.MapperStep';
-const hasResponseName = (value, test, parent = '') => Array.isArray(value)
-    ? value.some(item => hasResponseName(item, test, parent))
-    : !!value && typeof value === 'object' && Object.entries(value).some(([key, child]) => responseName(key, parent) && test(child) || hasResponseName(child, test, key));
-// Only ambiguous JSON names need an additional XML read. Reject a changed
-// snapshot instead of combining a newer response name with an older channel.
-async function restoreResponseNames(channel) {
-    if (!hasResponseName(channel, value => typeof value !== 'string'))
+// Inspector needs the source text, including empty strings versus "null".
+// Both are JSON null in the engine response, so never infer code from a primitive.
+const CHANNEL_CODE_FIELDS = {
+    channel: ['deployScript', 'undeployScript', 'preprocessingScript', 'postprocessingScript'],
+    'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': ['script'],
+    'com.mirth.connect.plugins.javascriptrule.JavaScriptRule': ['script'],
+    'com.mirth.connect.plugins.mapper.MapperStep': ['mapping', 'defaultValue'],
+    'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep': ['messageSegment', 'mapping', 'defaultValue'],
+    'com.mirth.connect.plugins.xsltstep.XsltStep': ['sourceXml', 'resultVariable', 'template', 'customFactory'],
+    'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule': ['field'],
+    'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep': ['field'],
+    'com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep': ['scriptPath'],
+    'com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule': ['scriptPath'],
+    '#iterator-properties': ['target', 'indexVariable'],
+    '#rule-values': ['string'],
+    '#replacement-pair': ['left', 'right'],
+    '#attachment-entry': ['string'],
+    'com.mirth.connect.plugins.datatypes.hl7v2.HL7v2BatchProperties': ['batchScript'],
+    'com.mirth.connect.plugins.datatypes.hl7v3.HL7V3BatchProperties': ['batchScript'],
+    'com.mirth.connect.plugins.datatypes.xml.XMLBatchProperties': ['elementName', 'query', 'batchScript'],
+    'com.mirth.connect.plugins.datatypes.json.JSONBatchProperties': ['batchScript'],
+    'com.mirth.connect.plugins.datatypes.edi.EDIBatchProperties': ['batchScript'],
+    'com.mirth.connect.plugins.datatypes.ncpdp.NCPDPBatchProperties': ['batchScript'],
+    'com.mirth.connect.plugins.datatypes.delimited.DelimitedBatchProperties': ['batchMessageDelimiter', 'batchGroupingColumn', 'batchScript'],
+    'com.mirth.connect.plugins.datatypes.raw.RawBatchProperties': ['batchScript'],
+    // These are Java String fields in the shipped datatype property classes;
+    // checkbox/number properties and unknown plugin fields retain their types.
+    'com.mirth.connect.plugins.datatypes.hl7v2.HL7v2SerializationProperties': ['segmentDelimiter'],
+    'com.mirth.connect.plugins.datatypes.hl7v2.HL7v2DeserializationProperties': ['segmentDelimiter'],
+    'com.mirth.connect.plugins.datatypes.hl7v2.HL7v2ResponseGenerationProperties': [
+        'segmentDelimiter', 'successfulACKCode', 'successfulACKMessage', 'errorACKCode', 'errorACKMessage',
+        'rejectedACKCode', 'rejectedACKMessage', 'dateFormat'
+    ],
+    'com.mirth.connect.plugins.datatypes.hl7v2.HL7v2ResponseValidationProperties': ['successfulACKCode', 'errorACKCode', 'rejectedACKCode', 'originalIdMapVariable'],
+    'com.mirth.connect.plugins.datatypes.edi.EDISerializationProperties': ['segmentDelimiter', 'elementDelimiter', 'subelementDelimiter'],
+    'com.mirth.connect.plugins.datatypes.ncpdp.NCPDPSerializationProperties': ['fieldDelimiter', 'groupDelimiter', 'segmentDelimiter'],
+    'com.mirth.connect.plugins.datatypes.ncpdp.NCPDPDeserializationProperties': ['fieldDelimiter', 'groupDelimiter', 'segmentDelimiter'],
+    'com.mirth.connect.plugins.datatypes.delimited.DelimitedSerializationProperties': ['columnDelimiter', 'recordDelimiter', 'quoteToken', 'quoteEscapeToken'],
+    'com.mirth.connect.plugins.datatypes.delimited.DelimitedDeserializationProperties': ['columnDelimiter', 'recordDelimiter', 'quoteToken', 'quoteEscapeToken'],
+    'com.mirth.connect.connectors.js.JavaScriptReceiverProperties': ['script'],
+    'com.mirth.connect.connectors.js.JavaScriptDispatcherProperties': ['script'],
+    'com.mirth.connect.connectors.jdbc.DatabaseReceiverProperties': ['select', 'update'],
+    'com.mirth.connect.connectors.jdbc.DatabaseDispatcherProperties': ['query']
+};
+const channelTextField = (name, parent, owner, includeCode) => {
+    const type = ['properties', 'serializationProperties', 'deserializationProperties', 'batchProperties', 'responseGenerationProperties', 'responseValidationProperties'].includes(parent) ? owner['@class'] : parent;
+    if (parent === '#replacement-pair' && owner[name]?.['@class'] !== 'string')
+        return false;
+    if (parent === '#attachment-entry' && (!Array.isArray(owner.string) || owner.string[0] !== 'javascript.script'))
+        return false;
+    return responseName(name, parent) || includeCode && Object.hasOwn(CHANNEL_CODE_FIELDS, type) && CHANNEL_CODE_FIELDS[type].includes(name);
+};
+const channelTextParent = (name, parent, owner) => name === 'properties' && ['com.mirth.connect.model.IteratorStep', 'com.mirth.connect.model.IteratorRule'].includes(parent) ? '#iterator-properties'
+    : name === 'values' && ['com.mirth.connect.plugins.rulebuilder.RuleBuilderRule', 'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep'].includes(parent) ? '#rule-values'
+        : name === 'columnNames' && parent === 'serializationProperties' && owner['@class'] === 'com.mirth.connect.plugins.datatypes.delimited.DelimitedSerializationProperties' ? '#rule-values'
+            : name === 'replacements' && ['com.mirth.connect.plugins.mapper.MapperStep', 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep'].includes(parent) ? '#replacements'
+                : name === 'org.apache.commons.lang3.tuple.ImmutablePair' && parent === '#replacements' ? '#replacement-pair'
+                    : name === 'properties' && parent === 'attachmentProperties' && owner.type === 'JavaScript' ? '#attachment-properties'
+                        : name === 'entry' && parent === '#attachment-properties' ? '#attachment-entry' : name;
+const channelTextValue = (value, parent) => parent === '#replacement-pair' ? value?.$ : value;
+const channelTextArray = (parent) => parent === '#rule-values' || parent === '#attachment-entry';
+const hasResponseName = (value, test, parent = '', includeCode = false) => Array.isArray(value)
+    ? value.some(item => hasResponseName(item, test, parent, includeCode))
+    : !!value && typeof value === 'object' && Object.entries(value).some(([key, child]) => channelTextField(key, parent, value, includeCode) && (channelTextArray(parent) && Array.isArray(child) ? child.some(test) : test(channelTextValue(child, parent)))
+        || hasResponseName(child, test, channelTextParent(key, parent, value), includeCode));
+// Recover ambiguous text only. Single-channel reads supply their own XML;
+// list response names still require matching the independently fetched snapshot.
+// Code recovery must not issue one XML GET per listed row.
+async function restoreResponseNames(channel, includeCode = false, documentRoot) {
+    if (!hasResponseName(channel, value => typeof value !== 'string', 'channel', includeCode))
         return channel;
-    const root = parseMessageDocument(await getXml(`/channels/${enc(channel.id)}`)).documentElement;
+    const root = documentRoot ?? parseMessageDocument(await getXml(`/channels/${enc(channel.id)}`)).documentElement;
     const direct = (node, tag) => Array.from(node.children).find(child => child.tagName === tag);
     const stamp = root.querySelector(':scope > exportData > metadata > lastModified > time')?.textContent;
     if (root.tagName !== 'channel' || direct(root, 'id')?.textContent !== String(channel.id)
         || direct(root, 'revision')?.textContent !== String(channel.revision)
         || (stamp ?? '') !== String(channel.exportData?.metadata?.lastModified?.time ?? '')) {
-        throw new Error('Channel changed while reading response names. Reload the channel and retry.');
+        throw new Error('Channel changed while reading text fields. Reload the channel and retry.');
     }
     const restored = cloneJson(channel);
-    const patch = (value, node) => {
+    const patch = (value, node, parent = node.tagName) => {
         if (!value || typeof value !== 'object')
             return;
         for (const [key, child] of Object.entries(value)) {
             const nodes = Array.from(node.children).filter(item => item.tagName === key);
-            if (responseName(key, node.tagName)) {
-                if (nodes.length !== 1 || nodes[0].children.length || nodes[0].hasAttribute('reference')) {
-                    throw new Error('Engine returned invalid response name XML.');
+            if (channelTextField(key, parent, value, includeCode)) {
+                const many = channelTextArray(parent) && Array.isArray(child);
+                // JSON strings are already exact; recover ambiguous code only.
+                if (!responseName(key, parent) && (many ? child.every((item) => typeof item === 'string') : typeof channelTextValue(child, parent) === 'string'))
+                    continue;
+                if (nodes.length !== (many ? child.length : 1) || nodes.some(item => item.children.length || item.hasAttribute('reference'))) {
+                    throw new Error(`Engine returned invalid ${responseName(key, parent) ? 'response name' : 'channel code'} XML.`);
                 }
-                value[key] = nodes[0].textContent ?? '';
+                const text = many ? nodes.map(item => item.textContent ?? '') : nodes[0].textContent ?? '';
+                value[key] = parent === '#replacement-pair' && child && typeof child === 'object' ? { ...child, $: text } : text;
             }
             else
                 (Array.isArray(child) ? child : [child]).forEach((item, index) => {
                     if (nodes[index])
-                        patch(item, nodes[index]);
+                        patch(item, nodes[index], channelTextParent(key, parent, value));
                 });
         }
     };
     patch(restored, root);
-    if (hasResponseName(restored, value => typeof value !== 'string'))
-        throw new Error('Engine returned incomplete response name XML.');
+    if (hasResponseName(restored, value => typeof value !== 'string', 'channel', includeCode))
+        throw new Error('Engine returned incomplete channel text XML.');
     return restored;
+}
+// ObjectJSONSerializer converts the same XStream XML with autoArray and
+// autoPrimitive enabled. Retain that shape (including unknown plugin fields),
+// then recover known String fields from this very response. One XML read avoids
+// transferring the whole channel twice and cannot mix two saved revisions.
+function channelXmlObject(node) {
+    // Match JSON.parse's ordinary objects without invoking inherited setters
+    // for engine field names such as __proto__.
+    const result = {};
+    const set = (key, value) => Object.defineProperty(result, key, {
+        value, writable: true, enumerable: true, configurable: true
+    });
+    for (const attribute of node.attributes)
+        set('@' + attribute.name, attribute.value);
+    for (const child of node.children) {
+        const key = child.tagName;
+        const value = channelXmlObject(child);
+        if (!Object.hasOwn(result, key))
+            set(key, value);
+        else if (Array.isArray(result[key]))
+            result[key].push(value);
+        else
+            set(key, [result[key], value]);
+    }
+    const text = Array.from(node.childNodes).filter(child => child.nodeType === 3 || child.nodeType === 4)
+        .map(child => child.textContent ?? '').join('');
+    const primitive = /^(?:true|false|null|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)$/.exec(text);
+    // Staxon's integer parser normalizes -0 to 0; exact String source is
+    // restored below, so its original numeric spelling is still retained.
+    const value = text === '' ? null : text === '-0' ? 0 : primitive?.[0] === text ? JSON.parse(text) : text;
+    if (!node.children.length && !node.attributes.length)
+        return value;
+    if (text && (!node.children.length || text.trim()))
+        set('$', value);
+    return result;
 }
 async function readChannels(path, params, list = false) {
     const assertSession = captureEngineSession();
+    if (!list) {
+        const xml = await getXml(path, params);
+        assertSession();
+        if (!xml.trim())
+            return null;
+        const root = parseMessageDocument(xml).documentElement;
+        if (root.tagName === 'null')
+            return null;
+        const channel = channelXmlObject(root);
+        const id = decodeURIComponent(path.slice(path.lastIndexOf('/') + 1));
+        if (root.tagName !== 'channel' || String(channel?.id) !== id)
+            throw new Error('Engine returned invalid channel XML.');
+        const result = await restoreResponseNames(channel, true, root);
+        assertSession();
+        return result;
+    }
     const value = await get(path, params);
     assertSession();
-    const result = list ? await Promise.all(asList(value, 'channel').map(restoreResponseNames)) : await restoreResponseNames(value);
+    const result = await Promise.all(asList(value, 'channel').map(channel => restoreResponseNames(channel)));
     assertSession();
     return result;
 }

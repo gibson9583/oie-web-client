@@ -1,5 +1,5 @@
 import { test, expect } from './base.js';
-import { mockEngine } from './mock.js';
+import { mockEngine, fixtureXml } from './mock.js';
 import { CASES, channelWithSourceElement } from './step-rule-fixtures.js';
 
 /*
@@ -20,6 +20,7 @@ const EDITED = 'RT Edited';
 for (const c of CASES) {
     test(`${c.label} (${c.kind}) round-trips its element`, async ({ page }) => {
         const id = `rt-el-${c.label.toLowerCase().replace(/\s+/g, '-')}`;
+        const element = c.element();
         const channel = channelWithSourceElement(id, c.kind, c.class, c.element());
 
         await mockEngine(page, { [`GET /channels/${id}`]: { channel } });
@@ -33,16 +34,6 @@ for (const c of CASES) {
 
         await page.goto(`/channels/${id}/edit`);
         await expect(page.getByRole('tab', { name: 'Summary', exact: true })).toBeVisible();
-
-        // Capture the parsed API model: empty collection representation can
-        // differ between JSON and XML reads. Compare the editor against its
-        // actual input so this remains a no-mutation test.
-        const loadedElement = await page.evaluate(async ({ id, kind, className }) => {
-            const api = await import(String('/core/api.js'));
-            const loaded = await api.channels.get(id);
-            const target = kind === 'filter' ? loaded.sourceConnector.filter : loaded.sourceConnector.transformer;
-            return [target.elements[className]].flat()[0];
-        }, { id, kind: c.kind, className: c.class });
 
         // Source tab → Edit Transformer / Edit Filter → the filter/transformer view.
         await page.getByRole('tab', { name: 'Source', exact: true }).click();
@@ -63,13 +54,8 @@ for (const c of CASES) {
 
         const sent = JSON.parse(putBody).channel;
         const target = c.kind === 'filter' ? sent.sourceConnector.filter : sent.sourceConnector.transformer;
-        // The tree editor always serializes iterator children as an elements
-        // collection, including an empty collection when XML parsed it as null.
-        if (c.class === 'com.mirth.connect.model.IteratorStep' || c.class === 'com.mirth.connect.model.IteratorRule') {
-            loadedElement.properties.children = '';
-        }
-        const expected = { [c.class]: [{ ...loadedElement, name: EDITED, sequenceNumber: '0' }] };
-        expect(target.elements).toEqual(expected);
+        const expected = { [c.class]: [{ ...element, name: EDITED }] };
+        expect(fixtureXml('elements', target.elements)).toBe(fixtureXml('elements', expected));
     });
 }
 

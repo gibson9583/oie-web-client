@@ -63,7 +63,7 @@ for (const database of databases) {
         await expect(page.locator('select').filter({ has: page.locator(`option[value="${driver}"]`) })).toHaveValue(driver);
         await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
         await expect.poll(() => writes.length).toBe(1);
-        const saved = database.mode === 'SOURCE' ? writes[0].sourceConnector : writes[0].destinationConnectors.connector[0];
+        const saved = database.mode === 'SOURCE' ? writes[0].sourceConnector : ([] as any[]).concat(writes[0].destinationConnectors.connector)[0];
         expect(saved.properties.driver).toBe(driver);
     });
 
@@ -95,10 +95,10 @@ for (const database of databases) {
 
             await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
             await expect.poll(() => writes.length).toBe(1);
-            const saved = database.mode === 'SOURCE' ? writes[0].sourceConnector : writes[0].destinationConnectors.connector[0];
+            const saved = database.mode === 'SOURCE' ? writes[0].sourceConnector : ([] as any[]).concat(writes[0].destinationConnectors.connector)[0];
             expect(saved.properties.driver).toBe('org.postgresql.Driver');
-            expect(saved.properties.url).toBe('');
-            expect(saved.properties.useScript).toBe(useScript);
+            expect(saved.properties.url).toBeNull();
+            expect(saved.properties.useScript).toBe(true);
             expect(saved.properties[database.sql]).toBe(script);
         });
     }

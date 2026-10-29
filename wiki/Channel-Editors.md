@@ -25,7 +25,7 @@ channel.
 
 ![Classic channel editor](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/channel-editor.png)
 
-The classic editor exposes four tabs:
+The classic editor exposes five tabs:
 
 - **Summary** — identity, enabled state, tags, data types, dependencies, storage,
   pruning, attachments, metadata, and description.
@@ -33,9 +33,119 @@ The classic editor exposes four tabs:
 - **Destinations** — destination list, transport settings, queueing, response,
   filter, and transformer links.
 - **Scripts** — preprocessing, postprocessing, deploy, and undeploy JavaScript.
+- **Inspector** — a read-only view of the working channel in execution order.
+
+Installed plugins may add further tabs.
 
 Use **Validate Connector** before saving when the connector provides validation.
 Use **Set Data Types** and **Set Dependencies** to update their shared models.
+
+### Channel Inspector
+
+Opening a channel with **Edit Channel** starts on **Summary**. The **Inspector**
+tab follows **Scripts** and reads the current editor model, including unsaved
+changes, without saving or deploying it. Its context line identifies the editor
+revision and unsaved changes.
+
+Select **Inspect Channel** in Channels or the Dashboard channel context menu to
+inspect the saved configuration directly. Channels also provides an **Inspect
+Channel** task. Direct inspection requires channel-view permission; it does not
+require channel-edit permission or load an unsaved editor draft.
+
+Deployment status separately reports whether the channel is deployed and, when
+available, how many saved revisions it is ahead of deployment. Use **Refresh
+status** to read the status again. A failed or unavailable status read leaves
+inspection usable.
+
+Library membership, channel dependencies, and resources provide additional
+context. These reads fail independently, so available context remains visible
+when another lookup is denied or unavailable. Retry reloads the context without
+saving it. In the editor, staged dependency and library selections remain staged.
+Batch scripts appear with the source's batch settings. Unrecognized plugin
+settings are shown as generic configuration with credential fields and endpoint
+credentials redacted; script bodies remain visible as configured.
+
+The engine and shipped Web Support APIs do not expose the deployed channel
+configuration. Inspector therefore has no deployed-configuration selector or
+configuration diff; a matching saved revision does not mean unsaved editor
+changes are deployed.
+
+The story groups deploy and undeploy hooks, then follows receiving,
+preprocessing, source filtering, source transformation, destination processing,
+postprocessing, and the response to the sender. Queues, storage, pruning, and
+custom metadata follow. A destination chain map shows enabled destinations in
+their configured order. Chains process independently; destinations within a
+chain wait for the previous destination's initial processing. Queued sends can
+finish later. Filtering and send errors allow the chain to continue; an error in
+the initial filter/transformer stops the remaining destinations in that chain.
+When **Include Filter/Transformer** is enabled, queued attempts repeat those
+steps. With an Always queue, the filter and transformer also start in the queue;
+with an On Failure queue, they run immediately only when an immediate send is
+attempted. Later destinations and the sender's response can proceed before
+queued work finishes. Disabled destinations remain available in a separate disclosure.
+The response section explains when a source queue answers before processing.
+
+Open a rule, step, or script row to read its configuration or numbered code.
+Configured script bodies are included, even empty bodies, default hooks,
+comments, and bare returns. Line breaks can change what JavaScript returns;
+empty or missing channel preprocessors can also change the message.
+Iterator children retain their nesting; disabled rows show that they are skipped.
+Iterator rules also show whether any or all iterations must accept, and whether
+processing stops as soon as that result is determined.
+Mapper and Message Builder replacements are shown in order. XSLT steps include
+the source and stylesheet expressions, their literal map reads, and an enabled
+custom transformer factory. JavaScript attachment handlers appear before
+preprocessing, including their source and literal map references.
+Each destination has Filter, Transform, Send, and Handle the response substeps.
+Source, destination, and response outbound templates are included even when no
+transformer steps are configured. They initialize `tmp`, whose final value
+supplies that transformer's output.
+
+Database Reader post-process scripts and SQL appear with their configured
+per-row or after-poll timing, including aggregated results. Enabled scripts
+also contribute to the map-key reference.
+SQL mode's **Once After All Results** update runs after each poll, including
+empty or failed polls. JavaScript aggregation applies to a returned `ResultSet`;
+a Java `List` dispatches rows individually and skips **Once After All Results**
+post-processing while **Aggregate Results** is enabled. Data-type JavaScript
+properties retain their source text, including primitive-looking values such as
+`false` and `null`.
+
+Inside the editor, **Open in Summary**, **Open in Source**, **Open in Destinations**,
+and **Open in Scripts** return to the corresponding editable tab. The table of
+contents follows the reading position on wider screens.
+
+- **Find in channel** highlights matching settings, rows, and map keys and opens
+  matching code rows. Press **Enter** to move through matches and **Escape** to
+  clear the search.
+- Click a numbered stage's number or heading to fold or unfold its contents.
+  These stage states are independent of **Show all code**, **Expand all**, and
+  **Collapse all**, which control the code and detail disclosures inside them.
+  Find and navigation reveal their target stage; printing always includes all stages.
+  Long scripts also provide **Show full script**.
+- Map-key buttons link to **Maps and variables**; its writer and reader links
+  return to the associated rows. The reference uses enabled steps and scripts.
+  Separate destination connector maps still hold separate values even when the
+  same key appears in both.
+  Long lists of references collapse behind a reference count; open the list to
+  follow any writer or reader. Printing includes every reference, with the key
+  and map repeated when its reference list continues onto another page.
+- **Include global scripts** reads the latest saved global scripts when the
+  current user has permission. The context line distinguishes loading,
+  inclusion, exclusion, missing permission, and read failure. A failed read offers
+  **Retry global scripts**. Unsaved edits in the Global Scripts editor are not
+  included.
+- **Print** opens a document preview with all details and full scripts, including
+  disabled destinations. Use **Print / Save PDF** to print the document or save it
+  as a PDF. **Back to Inspector** returns without changing the editor disclosures
+  or channel configuration.
+
+This is a static explanation of configuration, not a runtime execution trace.
+Map references approximate literal keys, including Mapper variables and calls
+such as `$c('key')` and `channelMap.put('key', value)`. Dynamic keys and code
+template internals are not resolved. A missing writer does not prove a value is
+absent, and routing code can change which destinations an individual message
+reaches.
 
 ## Filters and transformers
 

@@ -11,7 +11,7 @@ const properties = () => ({
 });
 async function setup(page: Page, surface = 'edit', loaded = false) {
     let channel = makeChannel('delimited-typing');
-    for (const connector of [channel.sourceConnector, channel.destinationConnectors.connector[0]]) {
+    for (const connector of [channel.sourceConnector, ([] as any[]).concat(channel.destinationConnectors.connector)[0]]) {
         for (const transformer of [connector.transformer, connector.responseTransformer].filter(Boolean)) {
             for (const side of ['inbound', 'outbound']) {
                 transformer[`${side}DataType`] = 'DELIMITED';
@@ -151,7 +151,7 @@ for (const surface of ['transformer/0', 'response/1', 'guided']) {
             await page.getByRole('button', { name: 'Back to Channel', exact: true }).click();
         }
         const saved = await save(page, writes);
-        const transformer = surface === 'response/1' ? saved.destinationConnectors.connector[0].responseTransformer
+        const transformer = surface === 'response/1' ? ([] as any[]).concat(saved.destinationConnectors.connector)[0].responseTransformer
             : saved.sourceConnector.transformer;
         expectLists(transformer.inboundProperties);
     });
