@@ -3,8 +3,9 @@
  * the engine runs it. Pure — reads the wire channel, never changes it.
  */
 
+import { replacementPairs } from './step-replacements.js';
 import { elementsToArray, elementTypeLabel, destinationsOf } from './oie.js';
-import { mappingEntries, toDisplayString } from './xstream.js';
+import { mappingEntries } from './xstream.js';
 import { configurationFacts, configurationText, redactEndpointCredentials } from './inspector-configuration.js';
 import type { Element } from './oie.js';
 import type { OieObject } from './wire-types.js';
@@ -176,20 +177,6 @@ function condition(el: any): string {
     return `${text(el.field)} ${CONDITIONS[text(el.condition)] ?? text(el.condition).toLowerCase()}${values.length ? ' ' + values.join(' or ') : ''}`.trim();
 }
 
-function replacementPairs(el: Element): Array<[string, string]> {
-    const replacements = el.replacements;
-    if (!replacements || typeof replacements !== 'object') return [];
-    // Native XStream uses an ImmutablePair class wrapper; imported/editor
-    // models can carry the pair fields directly.
-    const rows = replacements['org.apache.commons.lang3.tuple.ImmutablePair'] ?? replacements.entry ?? replacements;
-    return (Array.isArray(rows) ? rows : [rows]).flatMap(p => {
-        if (!p || typeof p !== 'object') return [];
-        const pair = Array.isArray(p) ? p : 'left' in p ? [p.left, p.right]
-            : 'key' in p ? [p.key, p.value] : 'first' in p ? [p.first, p.second]
-                : Array.isArray(p.string) ? p.string : null;
-        return pair ? [[toDisplayString(pair[0]), toDisplayString(pair[1])] as [string, string]] : [];
-    });
-}
 
 function describe(el: Element): { detail: string; isScript: boolean; reads: MapKey[]; writes: MapKey[]; routing: boolean } {
     const type = el.__type;

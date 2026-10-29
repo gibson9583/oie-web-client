@@ -12,6 +12,8 @@
  * Dispatch is by element.__type (the Java class name the model carries).
  */
 
+import { replacementPairs } from './step-replacements.js';
+
 /* Scope enum -> map object (MapperStep.Scope.map). */
 const SCOPE_MAP: Record<string, string> = {
     CONNECTOR: 'connectorMap',
@@ -24,25 +26,6 @@ const SCOPE_MAP: Record<string, string> = {
 /* JavaScriptSharedUtil.convertIdentifier — for iterator temp-var names. */
 function convertIdentifier(id: unknown): string {
     return String(id ?? '').replace(/[^a-zA-Z0-9_$]/g, '') || '_';
-}
-
-/* Pair list from the model's `replacements`, normalized to [ [left, right], … ].
-   The strings are already quoted JS expressions in the model — inserted raw. */
-function replacementPairs(el: any): Array<[any, any]> {
-    let r = el && el.replacements;
-    if (!r) return [];
-    if (r.entry) r = r.entry;                 // XStream map/list wrapper
-    const arr = Array.isArray(r) ? r : [r];
-    return arr.map((p) => {
-        if (Array.isArray(p)) return [p[0], p[1]];
-        if (p == null || typeof p !== 'object') return null;
-        // Pair serialized as {left,right} | {key,value} | {first,second} | {string:[a,b]}
-        if (p.left !== undefined) return [p.left, p.right];
-        if (p.key !== undefined) return [p.key, p.value];
-        if (p.first !== undefined) return [p.first, p.second];
-        if (Array.isArray(p.string)) return [p.string[0], p.string[1]];
-        return null;
-    }).filter((p): p is [any, any] => !!p);
 }
 
 /* MapperStep.buildRegexArray — new Array(new Array(l,r),…) or new Array(). */

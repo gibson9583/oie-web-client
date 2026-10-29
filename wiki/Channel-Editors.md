@@ -27,31 +27,43 @@ channel.
 
 The classic editor exposes five tabs:
 
-- **Inspector** — a read-only view of the working channel in execution order.
 - **Summary** — identity, enabled state, tags, data types, dependencies, storage,
   pruning, attachments, metadata, and description.
 - **Source** — source transport and its listener/polling/reader settings.
 - **Destinations** — destination list, transport settings, queueing, response,
   filter, and transformer links.
 - **Scripts** — preprocessing, postprocessing, deploy, and undeploy JavaScript.
+- **Inspector** — a read-only view of the working channel in execution order.
+
+Installed plugins may add further tabs.
 
 Use **Validate Connector** before saving when the connector provides validation.
 Use **Set Data Types** and **Set Dependencies** to update their shared models.
 
 ### Channel Inspector
 
-**Inspector** is the first tab. Opening a channel with **Edit Channel** still
-starts on **Summary**. Select **Inspect Channel** in Channels or the Dashboard
-channel context menu to open Inspector directly. Channels also provides an
-**Inspect Channel** task. These actions use the same channel-edit permission as
-**Edit Channel**.
+Opening a channel with **Edit Channel** starts on **Summary**. The **Inspector**
+tab follows **Scripts** and reads the current editor model, including unsaved
+changes, without saving or deploying it. Its context line identifies the editor
+revision and unsaved changes.
 
-Inspector reads the current editor model, including unsaved changes, without
-saving or deploying it. Its context line identifies the editor revision and
-unsaved changes. Deployment status separately reports whether the channel is
-deployed and, when available, how many saved revisions it is ahead of deployment.
-Use **Refresh status** to read the status again. A failed or unavailable status
-read leaves the local inspection usable.
+Select **Inspect Channel** in Channels or the Dashboard channel context menu to
+inspect the saved configuration directly. Channels also provides an **Inspect
+Channel** task. Direct inspection requires channel-view permission; it does not
+require channel-edit permission or load an unsaved editor draft.
+
+Deployment status separately reports whether the channel is deployed and, when
+available, how many saved revisions it is ahead of deployment. Use **Refresh
+status** to read the status again. A failed or unavailable status read leaves
+inspection usable.
+
+Library membership, channel dependencies, and resources provide additional
+context. These reads fail independently, so available context remains visible
+when another lookup is denied or unavailable. Retry reloads the context without
+saving it. In the editor, staged dependency and library selections remain staged.
+Batch scripts appear with the source's batch settings. Unrecognized plugin
+settings are shown as generic configuration with credential fields and endpoint
+credentials redacted; script bodies remain visible as configured.
 
 The engine and shipped Web Support APIs do not expose the deployed channel
 configuration. Inspector therefore has no deployed-configuration selector or
@@ -99,8 +111,8 @@ post-processing while **Aggregate Results** is enabled. Data-type JavaScript
 properties retain their source text, including primitive-looking values such as
 `false` and `null`.
 
-**Open in Summary**, **Open in Source**, **Open in Destinations**, and
-**Open in Scripts** return to the corresponding editable tab. The table of
+Inside the editor, **Open in Summary**, **Open in Source**, **Open in Destinations**,
+and **Open in Scripts** return to the corresponding editable tab. The table of
 contents follows the reading position on wider screens.
 
 - **Find in channel** highlights matching settings, rows, and map keys and opens

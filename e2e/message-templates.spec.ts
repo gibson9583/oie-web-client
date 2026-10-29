@@ -4,7 +4,7 @@ import { mockEngine } from './mock.js';
 import { makeChannel } from './connector-fixtures.js';
 
 const targetOf = (channel: any, route: string) => route === 'transformer/0' ? channel.sourceConnector.transformer
-    : channel.destinationConnectors.connector[0][route.startsWith('response') ? 'responseTransformer' : 'transformer'];
+    : ([] as any[]).concat(channel.destinationConnectors.connector)[0][route.startsWith('response') ? 'responseTransformer' : 'transformer'];
 const decode = (value: any) => value?.['@encoding'] === 'base64' ? Buffer.from(value.$, 'base64').toString('utf8') : value;
 const field = (page: Page, side = 'Inbound') => page.getByRole('textbox', { name: `${side} Template`, exact: true });
 const panel = (page: Page) => page.getByRole('tabpanel', { name: 'Message Templates', exact: true });

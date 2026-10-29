@@ -120,12 +120,18 @@ test.describe('engine picker', () => {
 
         // From now on the server refuses to route ANY /api call for this tab
         // (registered after mockEngine, so it takes precedence). The shell's
-        // background polling hits it on its own — no user action required.
+        // next engine read must expire the session. Trigger it explicitly so this
+        // test does not race the polling timer.
         await page.route('**/api/**', (route) => route.fulfill({
             status: 421,
             contentType: 'application/json',
             body: JSON.stringify({ error: 'ENGINE_UNKNOWN', message: 'The selected engine is no longer available on this server. Choose an engine and sign in again.' }),
         }));
+
+        await page.evaluate(async () => {
+            const { default: api } = await import(String('/core/api.js'));
+            await api.channels.get('c-started').catch(() => {});
+        });
 
         await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible({ timeout: 15_000 });
         await expect(page.locator('.login-notice')).toHaveText('The engine you were signed in to is no longer available — choose an engine and sign in again.');

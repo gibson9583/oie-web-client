@@ -59,14 +59,14 @@ for (const [name, mode] of [['File Reader', 'SOURCE'], ['File Writer', 'DESTINAT
         expect(propertiesOf(writes[4])).toMatchObject({ anonymous: false, username: 'named-user', password: 'named-password' });
     });
 
-    test(`${name}: loaded string-boolean anonymous settings preserve custom credentials until toggled`, async ({ page }) => {
+    test(`${name}: XML boolean anonymous settings preserve custom credentials until toggled`, async ({ page }) => {
         const writes = await open(page, { scheme: 'WEBDAV', anonymous: 'true', username: 'anonymous', password: 'contact@example.test' });
         await expect(page.locator('[data-fkey="password"]')).toHaveValue('contact@example.test');
         await page.getByRole('tab', { name: 'Summary', exact: true }).click();
         await page.locator('.panel input[type=text]').first().fill('Preserve imported credentials');
         await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
         await expect.poll(() => writes.length).toBe(1);
-        expect(propertiesOf(writes[0])).toMatchObject({ anonymous: 'true', username: 'anonymous', password: 'contact@example.test' });
+        expect(propertiesOf(writes[0])).toMatchObject({ anonymous: true, username: 'anonymous', password: 'contact@example.test' });
         const defaults = await page.evaluate(async ({ name, mode }) => {
             const { platform } = await import(String('/core/platform.js'));
             return platform.connectorPanel(name, mode)!.defaults('4.6.0');
@@ -80,7 +80,7 @@ for (const [name, mode] of [['File Reader', 'SOURCE'], ['File Writer', 'DESTINAT
         await page.locator('.panel input[type=text]').first().fill('Repair legacy File credentials');
         await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
         await expect.poll(() => writes.length).toBe(1);
-        expect(propertiesOf(writes[0])).toMatchObject({ anonymous: 'true', username: 'anonymous', password: 'anonymous' });
+        expect(propertiesOf(writes[0])).toMatchObject({ anonymous: true, username: 'anonymous', password: 'anonymous' });
     });
 
     test(`${name}: stale SFTP Anonymous flag does not overwrite named credentials on scheme change`, async ({ page }) => {

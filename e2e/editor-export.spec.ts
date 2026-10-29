@@ -1,5 +1,5 @@
 import { test, expect } from './base.js';
-import { mockEngine } from './mock.js';
+import { mockEngine, fixtureXml } from './mock.js';
 import { makeChannel } from './connector-fixtures.js';
 import { DEFAULT_FIXTURES } from './fixtures.js';
 
@@ -55,7 +55,7 @@ for (const surface of surfaces) for (const outcome of ['success', 'failure', 'ex
             'GET /session-expiry-probe': { __status: 401 },
             'GET /alerts/al-1': (request: any) => xml(request, '<alertModel><id>al-1</id><name>Error Alert</name></alertModel>', { alertModel: alert }),
             'GET /alerts/al-2': (request: any) => xml(request, '<alertModel><id>al-2</id></alertModel>', { alertModel: { ...alert, id: 'al-2' } }),
-            'GET /channels/c-started': (request: any) => xml(request, '<channel><id>c-started</id><name>Demo Started</name></channel>', { channel }),
+            'GET /channels/c-started': (request: any) => xml(request, fixtureXml('channel', channel), { channel }),
             'GET /channels': (request: any) => xml(request, '<list><channel><id>c-started</id><name>Demo Started</name></channel><channel><id>c-stopped</id><name>Demo Stopped</name></channel></list>', DEFAULT_FIXTURES['GET /channels']),
             'GET /channelgroups': (request: any) => xml(request, '<list><channelGroup><id>g-1</id><name>Demo Group</name><channels><channel><id>c-started</id></channel></channels></channelGroup></list>', { list: { channelGroup: [group] } }),
             'GET /codeTemplateLibraries': (request: any) => xml(request, '<list><codeTemplateLibrary><id>lib-1</id></codeTemplateLibrary></list>', DEFAULT_FIXTURES['GET /codeTemplateLibraries']),

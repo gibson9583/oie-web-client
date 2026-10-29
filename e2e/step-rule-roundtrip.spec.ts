@@ -1,5 +1,5 @@
 import { test, expect } from './base.js';
-import { mockEngine } from './mock.js';
+import { mockEngine, fixtureXml } from './mock.js';
 import { CASES, channelWithSourceElement } from './step-rule-fixtures.js';
 
 /*
@@ -55,7 +55,7 @@ for (const c of CASES) {
         const sent = JSON.parse(putBody).channel;
         const target = c.kind === 'filter' ? sent.sourceConnector.filter : sent.sourceConnector.transformer;
         const expected = { [c.class]: [{ ...element, name: EDITED }] };
-        expect(target.elements).toEqual(expected);
+        expect(fixtureXml('elements', target.elements)).toBe(fixtureXml('elements', expected));
     });
 }
 

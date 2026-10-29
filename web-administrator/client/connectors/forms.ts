@@ -109,7 +109,7 @@ export function listenerAddressField(hostKey: string, label = 'Listener Address'
             const name = `listener-addr-${++listenerAddrUid}`;
             // Mode is derived from the host (0.0.0.0 => all), then held locally so
             // "Specific" stays selected even before an address is typed.
-            let mode = String(getPath(p, hostKey) ?? '0.0.0.0') === '0.0.0.0' ? 'all' : 'specific';
+            let mode = String(getPath(p, hostKey) ?? '') === '0.0.0.0' ? 'all' : 'specific';
             const input = textInput(String(getPath(p, hostKey) ?? ''), {
                 class: 'w-[180px]', 'data-fkey': hostKey,
                 onInput: (e: any) => { setPath(p, hostKey, e.target.value); ctx.onChange(); }

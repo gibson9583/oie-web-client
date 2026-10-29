@@ -1,5 +1,5 @@
 import { test, expect } from './base.js';
-import { mockEngine } from './mock.js';
+import { mockEngine, fixtureXml } from './mock.js';
 import { CASES, makeChannel } from './connector-fixtures.js';
 
 /*
@@ -8,11 +8,13 @@ import { CASES, makeChannel } from './connector-fixtures.js';
  * .jsx read/write path is untested. Here, for each connector, we load a channel
  * that uses it, OPEN its property panel (Source or Destinations tab → the panel
  * mounts and reads the loaded properties), make a trivial channel-level edit, Save,
- * and assert the serialized connector `properties` still deep-equal the fixture.
+ * and assert every serialized property retains the fixture's XML value.
  *
- * A correct panel renders loaded properties without mutating them, so toEqual is
- * the real net: any field a panel drops/renames/reorders/normalizes on load fails
- * here before it can silently break a deploy.
+ * OIE's JSON bridge represents empty elements as null and numeric text as
+ * numbers; singleton collections may be objects. Compare complete XML values
+ * to the independent input fixture, never to the application's decoded model.
+ * Dropped/renamed fields, changed values and reordered lists still fail.
+ * Exact text restoration and primitive types have separate channel XML tests.
  */
 
 const asArray = (v: any) => (Array.isArray(v) ? v : v == null ? [] : [v]);
@@ -68,7 +70,7 @@ for (const c of CASES) {
             : asArray(sent.destinationConnectors.connector)[0].properties;
 
         expect(props['@class']).toBe(c.class);   // legible failure for the common case
-        expect(props).toEqual(expected);          // the real net: no field mutated on load
+        expect(fixtureXml('properties', props)).toBe(fixtureXml('properties', expected));          // every field retains its engine XML value
     });
 }
 
@@ -118,6 +120,6 @@ for (const c of CASES.filter((x) => x.edit)) {
         const props = c.mode === 'SOURCE'
             ? sent.sourceConnector.properties
             : asArray(sent.destinationConnectors.connector)[0].properties;
-        expect(props).toEqual(expected);
+        expect(fixtureXml('properties', props)).toBe(fixtureXml('properties', expected));
     });
 }
