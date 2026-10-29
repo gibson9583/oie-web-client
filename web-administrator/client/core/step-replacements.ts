@@ -4,9 +4,14 @@
 export const REPLACEMENT_PAIR = 'org.apache.commons.lang3.tuple.ImmutablePair';
 export type Replacement = [string, string];
 
-const expression = (value: any): string => String(
-    value && typeof value === 'object' ? value.$ ?? '' : value ?? ''
-);
+function expression(value: any): string {
+    if (value && typeof value === 'object') {
+        // The engine emits the String expression "null" as $: null, but an
+        // empty typed String has no $ text. Preserve that distinction.
+        return value.$ === undefined ? '' : String(value.$);
+    }
+    return String(value ?? '');
+}
 
 export function replacementPairs(element: any): Replacement[] {
     let value = element?.replacements;
@@ -21,4 +26,17 @@ export function replacementPairs(element: any): Replacement[] {
         if (Array.isArray(pair.string)) return [[expression(pair.string[0]), expression(pair.string[1])]];
         return [];
     });
+}
+
+export function replacementsToWire(rows: Replacement[]) {
+    // Swing omits rows without a regex. Keep unfinished rows in the editor,
+    // but never persist a blank expression that would make invalid JavaScript.
+    // StringUtils.isNotBlank uses Java Character.isWhitespace, whose set
+    // differs from JavaScript trim (notably NBSP, BOM and U+001C–U+001F).
+    const nonWhitespace = /[^\u0009-\u000d\u001c-\u0020\u1680\u2000-\u2006\u2008-\u200a\u2028\u2029\u205f\u3000]/;
+    const pairs = rows.filter(([left]) => nonWhitespace.test(left)).map(([left, right]) => ({
+        left: { '@class': 'string', $: left },
+        right: { '@class': 'string', $: right }
+    }));
+    return pairs.length ? { [REPLACEMENT_PAIR]: pairs } : '';
 }

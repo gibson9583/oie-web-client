@@ -116,7 +116,13 @@ test.describe('engine picker', () => {
         await mockEngine(page);   // signed in, boots into the shell
 
         await page.goto('/');
-        await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
+        // The shell appears before authorization/plugin discovery completes.
+        // Dashboard rows prove bootstrap finished and the status poll is active
+        // before the test injects its mid-session refusal.
+        await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
+        await expect(page.getByRole('row').filter({ has: page.getByText('Demo Started', { exact: true }) }))
+            .toBeVisible({ timeout: 15_000 });
+        await expect(page.getByRole('row').filter({ has: page.getByText('Demo Stopped', { exact: true }) })).toBeVisible();
 
         // From now on the server refuses to route ANY /api call for this tab
         // (registered after mockEngine, so it takes precedence). The shell's

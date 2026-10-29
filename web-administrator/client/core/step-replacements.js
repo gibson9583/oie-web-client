@@ -3,7 +3,14 @@
  * typed ImmutablePair values; expressions must remain source text, not JSON
  * literals. Keep the older import shapes understood by Generated Script too. */
 export const REPLACEMENT_PAIR = 'org.apache.commons.lang3.tuple.ImmutablePair';
-const expression = (value) => String(value && typeof value === 'object' ? value.$ ?? '' : value ?? '');
+function expression(value) {
+    if (value && typeof value === 'object') {
+        // The engine emits the String expression "null" as $: null, but an
+        // empty typed String has no $ text. Preserve that distinction.
+        return value.$ === undefined ? '' : String(value.$);
+    }
+    return String(value ?? '');
+}
 export function replacementPairs(element) {
     let value = element?.replacements;
     if (!value)
@@ -24,4 +31,16 @@ export function replacementPairs(element) {
             return [[expression(pair.string[0]), expression(pair.string[1])]];
         return [];
     });
+}
+export function replacementsToWire(rows) {
+    // Swing omits rows without a regex. Keep unfinished rows in the editor,
+    // but never persist a blank expression that would make invalid JavaScript.
+    // StringUtils.isNotBlank uses Java Character.isWhitespace, whose set
+    // differs from JavaScript trim (notably NBSP, BOM and U+001C–U+001F).
+    const nonWhitespace = /[^\u0009-\u000d\u001c-\u0020\u1680\u2000-\u2006\u2008-\u200a\u2028\u2029\u205f\u3000]/;
+    const pairs = rows.filter(([left]) => nonWhitespace.test(left)).map(([left, right]) => ({
+        left: { '@class': 'string', $: left },
+        right: { '@class': 'string', $: right }
+    }));
+    return pairs.length ? { [REPLACEMENT_PAIR]: pairs } : '';
 }

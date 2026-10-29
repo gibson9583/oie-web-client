@@ -47,6 +47,7 @@ import { applyGroupImports, bundledLibrarySaveError, consolidateBundledLibraries
 import { invalidate as invalidateCompletions } from '../../core/script-completions.js';
 import { runLifecycle } from './channel-lifecycle.js';
 import { usePaletteContext } from '../palette-context.js';
+import { cacheChannelListDisplay, readChannelListDisplay, retainChannelListDisplay } from '../channel-list-cache.js';
 import {
     loadViewMode, saveViewMode, loadTagMode, saveTagMode,
     VIEW_MODE_OPTIONS, TAG_MODE_OPTIONS, tagRgb, tagIcon
@@ -506,20 +507,31 @@ export function ChannelsView() {
     /* Server data + UI state — React state driving the declarative <TreeTable>,
        the task panes, and the filter bar. Loaded by refresh() (an explicit
        command: mount, manual Refresh, post-action, and the channels:changed
-       plugin event — this view does not poll, so it is not a query hook).
+       plugin event). A session-scoped display snapshot survives navigation;
+       every mount revalidates it before allowing model-dependent row actions.
+       Once loaded, full models remain usable during this mount's refreshes.
        Menu/task actions take EXPLICIT rows/ids computed where they are offered,
        so a context menu can never act on a stale selection. */
-    const [channels, setChannels] = useState([] as any[]);
+    const [data, setData] = useState(readChannelListDisplay);
+    const dataRef = useRef(data);
+    const { channels, groups, tags, statusById, hasChannels } = data;
+    const [refreshing, setRefreshing] = useState(true);
+    const [actionsReady, setActionsReady] = useState(false);
+    const actionsReadyRef = useRef(false);
+    const [groupsReady, setGroupsReady] = useState(false);
+    const groupsReadyRef = useRef(false);
+    // Cache entries are display projections. Only successful reads in this
+    // mounted view establish full models; refresh progress does not revoke them.
+    const liveModelsRef = useRef({ channels: false, groups: false });
+    const mountedRef = useRef(false);
     const importBusyRef = useRef(false);
     const pendingImportRef = useRef<{ content: string; ids: Map<string, string> } | null>(null);
     function importIdsFor(content: string) {
         if (pendingImportRef.current?.content !== content) pendingImportRef.current = { content, ids: new Map() };
         return pendingImportRef.current.ids;
     }
-    const [tags, setTags] = useState([] as any[]);
-    const [groups, setGroups] = useState([] as any[]);
-    const [statusById, setStatusById] = useState({} as any);        // channelId -> dashboardStatus
     const [loadError, setLoadError] = useState<string | null>(null);
+    const [staleResources, setStaleResources] = useState(() => new Set<string>());
     const refreshGenRef = useRef(0);
     const [selected, setSelected] = useState(() => new Set());   // channel ids
     const lastClickedRef = useRef<any>(null);                     // shift-range anchor (interaction-only)
@@ -741,6 +753,8 @@ export function ChannelsView() {
     }
 
     function onRowSelect(node: any, e: any) {
+        if (!actionsReadyRef.current) return;
+        if (node.kind === 'group' && !groupsReadyRef.current) return;
         if (node.kind === 'group') selectGroup(node.group);
         else selectChannel(node.channel, e);
     }
@@ -755,8 +769,11 @@ export function ChannelsView() {
 
     function onRowActivate(node: any) {
         // Double-click: a group toggles its collapse; a channel opens the editor.
-        if (node.kind === 'group') toggleGroupCollapse(node.group.id);
-        else router.navigate(`/channels/${node.channel.id}/edit`);
+        // Editor navigation needs only the ID, never a cached channel model.
+        if (node.kind === 'group') {
+            if (!groupsReadyRef.current) return;
+            toggleGroupCollapse(node.group.id);
+        } else router.navigate(`/channels/${node.channel.id}/edit`);
     }
 
     // Right-click on blank space (empty list, or below the rows): clear any
@@ -776,19 +793,21 @@ export function ChannelsView() {
             '-',
             { label: 'New Channel', icon: 'plus', task: 'doNewChannel', group: 'channel', onClick: () => newTask() },
             { label: 'Import Channel', icon: 'import', task: 'doImportChannel', group: 'channel', onClick: () => importTask() },
-            { label: 'Export All Channels', icon: 'export', task: 'doExportAllChannels', group: 'channel', onClick: () => exportAllTask() },
+            { label: 'Export All Channels', icon: 'export', task: 'doExportAllChannels', group: 'channel', disabled: !actionsReady, onClick: () => exportAllTask() },
             ...(groupView ? [
                 '-' as const,
                 { label: 'New Group', icon: 'plus', task: 'doNewGroup', group: 'channelGroup', onClick: () => newGroupTask() },
                 { label: 'Import Group', icon: 'import', task: 'doImportGroup', group: 'channelGroup', onClick: () => importGroupTask() },
-                { label: 'Export All Groups', icon: 'export', task: 'doExportAllGroups', group: 'channelGroup', onClick: () => exportGroupsTask() }
+                { label: 'Export All Groups', icon: 'export', task: 'doExportAllGroups', group: 'channelGroup', disabled: !groupsReady, onClick: () => exportGroupsTask() }
             ] : [])
         ]);
     }
 
     function onRowMenu(node: any, e: any) {
         e.preventDefault();
+        if (!actionsReadyRef.current) return;
         if (node.kind === 'group') {
+            if (!groupsReadyRef.current) return;
             selectGroup(node.group);
             const isRealGroup = node.group.id !== DEFAULT_GROUP_ID;
             const group = node.group.group || node.group;   // the raw engine group object
@@ -828,7 +847,7 @@ export function ChannelsView() {
             .filter((a: any) => (a.isEnabled ? a.isEnabled(actionCtx) : singleSel))
             .map((a: any): any => ({
                 label: a.label, icon: a.icon, task: a.task, group: a.group || 'channel',
-                onClick: () => a.onInvoke(channel, actionCtx)
+                onClick: () => { if (actionsReadyRef.current) a.onInvoke(channel, actionCtx); }
             }));
         // Full Swing channelPopupMenu (ChannelPanel) — the whole Channel Tasks
         // list, with Swing's visibility rules: Deploy needs at least one enabled
@@ -855,7 +874,7 @@ export function ChannelsView() {
             '-',
             { label: 'Clone Channel', icon: 'copy', task: 'doCloneChannel', group: 'channel', onClick: () => cloneTask(rows) },
             { label: 'Export Channel', icon: 'export', task: 'doExportChannel', group: 'channel', onClick: () => exportTask(rows) },
-            { label: 'Move to Group…', icon: 'folder', task: 'doAssignChannelToGroup', group: 'channelGroup', hidden: !groupView, onClick: () => moveToGroupTask(rows) },
+            { label: 'Move to Group…', icon: 'folder', task: 'doAssignChannelToGroup', group: 'channelGroup', hidden: !groupView || !groupsReady, onClick: () => moveToGroupTask(rows) },
             ...(pluginItems.length ? ['-', ...pluginItems] : []),
             '-',
             { label: 'Delete Channel', icon: 'trash', danger: true, task: 'doDeleteChannel', group: 'channel', onClick: () => deleteTask(rows) }
@@ -866,6 +885,7 @@ export function ChannelsView() {
     // channel selection moves when the dragged channel is part of it (legacy
     // dragstart behavior); otherwise just the dragged channel.
     async function onRowDrop(fromKey: any, toNode: any) {
+        if (!groupsReadyRef.current) return;
         if (toNode.kind !== 'group') return;
         const id = String(fromKey || '').replace(/^ch:/, '');
         if (!id) return;
@@ -889,12 +909,15 @@ export function ChannelsView() {
 
     /* ---- data --------------------------------------------------------------- */
 
-    /* Reads nothing (only fetches + functional setState), so the mount-captured
-       channels:changed listener can safely call the first render's closure. */
+    /* Mutable data is read through refs so the mount's plugin listener always
+       merges into the latest snapshot. Departed/superseded requests cannot
+       repopulate the shared cache or change the new view's state. */
     async function refresh() {
+        if (!mountedRef.current) return;
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
         const gen = ++refreshGenRef.current;
+        setRefreshing(true);
         const results: any[] = await Promise.allSettled([
             api.channels.list(),
             api.channelGroups.list(),
@@ -902,20 +925,31 @@ export function ChannelsView() {
             api.status.list()
         ]);
         try { assertSession(); } catch { return; }
-        if (gen !== refreshGenRef.current) return;
+        if (!mountedRef.current || gen !== refreshGenRef.current) return;
         const [channelResult, groupResult, tagResult, statusResult] = results;
-        const failures = [
+        const next = { ...dataRef.current };
+        const denied = (result: any) => result.status === 'rejected' && [401, 403].includes(result.reason?.status);
+        if (denied(channelResult)) { next.channels = []; next.hasChannels = false; setSelected(new Set()); }
+        if (denied(groupResult)) { next.groups = []; setLastGroupId(null); }
+        if (denied(tagResult)) next.tags = [];
+        if (denied(statusResult)) next.statusById = {};
+        const reads: [string, any][] = [
             ['channels', channelResult],
             ['groups', groupResult],
             ['tags', tagResult],
             ['statuses', statusResult]
-        ].filter(([, result]: any) => result.status === 'rejected')
+        ];
+        const failures = reads.filter(([, result]) => result.status === 'rejected')
             .map(([label, result]: any) => `${label}: ${result.reason?.message || result.reason}`);
+        setStaleResources(new Set(reads
+            .filter(([, result]) => result.status === 'rejected' && !denied(result))
+            .map(([label]) => label)));
 
         if (channelResult.status === 'fulfilled') {
             const channelList = channelResult.value;
             const nextChannels = channelList.filter((c: any) => c && c.id);
-            setChannels(nextChannels);
+            next.channels = nextChannels;
+            next.hasChannels = true;
             // Prune only when the authoritative channel request succeeded.
             const ids = new Set(nextChannels.map((c: any) => c.id));
             setSelected(prev => {
@@ -925,17 +959,35 @@ export function ChannelsView() {
         }
         if (groupResult.status === 'fulfilled') {
             const nextGroups = groupResult.value.filter((g: any) => g && g.id);
-            setGroups(nextGroups);
+            next.groups = nextGroups;
             setLastGroupId((prev: any) => (prev && prev !== DEFAULT_GROUP_ID && !nextGroups.some((g: any) => g.id === prev) ? null : prev));
         }
-        if (tagResult.status === 'fulfilled') setTags(tagResult.value);
+        if (tagResult.status === 'fulfilled') next.tags = tagResult.value;
         if (statusResult.status === 'fulfilled') {
             const byId: any = {};
             for (const st of statusResult.value) {
                 if (st && st.channelId) byId[st.channelId] = st;
             }
-            setStatusById(byId);
+            next.statusById = byId;
         }
+
+        dataRef.current = next;
+        setData(next);
+        cacheChannelListDisplay(next);
+        // Preserve the last full models through transient failures, as during
+        // ordinary refreshes before navigation caching. Denials revoke them;
+        // successful empty/subset responses above still replace and prune rows.
+        // Groups have independent permission/provenance and may finish loading
+        // on a different refresh from channels. Summaries never grant readiness.
+        for (const [resource, result] of [['channels', channelResult], ['groups', groupResult]] as const) {
+            if (result.status === 'fulfilled') liveModelsRef.current[resource] = true;
+            else if (denied(result)) liveModelsRef.current[resource] = false;
+        }
+        actionsReadyRef.current = liveModelsRef.current.channels;
+        groupsReadyRef.current = actionsReadyRef.current && liveModelsRef.current.groups;
+        setActionsReady(actionsReadyRef.current);
+        setGroupsReady(groupsReadyRef.current);
+        setRefreshing(false);
 
         if (failures.length) {
             const message = failures.join('; ');
@@ -956,14 +1008,14 @@ export function ChannelsView() {
     // selected — that group's channels (so Deploy/Enable/Disable work on a group).
     function effectiveChannels() {
         if (selected.size) return selectedChannels();
-        if (lastGroupId) {
+        if (lastGroupId && groupsReadyRef.current) {
             const g = groupedChannels().find(x => x.id === lastGroupId);
             return g ? g.channels : [];
         }
         return [];
     }
 
-    const paletteChannels = effectiveChannels();
+    const paletteChannels = actionsReady ? effectiveChannels() : [];
     usePaletteContext({
         kind: 'channel', surface: 'channels',
         channelIds: paletteChannels.map((channel: any) => channel.id),
@@ -971,11 +1023,13 @@ export function ChannelsView() {
     });
 
     const requireSingle = (rows: any) => {
+        if (!actionsReadyRef.current) return null;
         if (rows.length !== 1) { toast('Select a single channel', 'warn'); return null; }
         return rows[0];
     };
 
     const requireAny = (rows: any) => {
+        if (!actionsReadyRef.current) return null;
         if (!rows.length) { toast('Select a channel first', 'warn'); return null; }
         return rows;
     };
@@ -1126,6 +1180,7 @@ export function ChannelsView() {
     }
 
     async function exportAllTask() {
+        if (!actionsReadyRef.current) return;
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
         if (!channels.length) { toast('No channels to export', 'warn'); return; }
@@ -1161,17 +1216,25 @@ export function ChannelsView() {
     async function cloneTask(rows: any) {
         const channel = requireSingle(rows);
         if (!channel) return;
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         try {
-            const copy = structuredClone(channel);
+            const current = await api.channels.get(channel.id);
+            assertSession();
+            if (!current || current.id !== channel.id) throw new Error('Channel is no longer available. Refresh and try again.');
+            const copy = structuredClone(current);
             normalizeChannelDataTypeArrays(copy);
             await restoreChannelTagNames(copy);
+            assertSession();
             copy.id = uuid();
-            copy.name = `${channel.name} copy`;
+            copy.name = `${current.name} copy`;
             copy.revision = 0;
             await api.channels.create(copy);
-            toast(`Cloned ${channel.name}`);
+            assertSession();
+            toast(`Cloned ${current.name}`);
             refresh();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(e.message, 'error');
         }
     }
@@ -1187,6 +1250,7 @@ export function ChannelsView() {
     }
 
     async function setEnabledTask(enabled: any, rows: any) {
+        if (!actionsReadyRef.current) return;
         if (!rows.length) { toast('Select a channel or group first', 'warn'); return; }
         for (const channel of rows) {
             try { await api.channels.setEnabled(channel.id, enabled); } catch (e: any) { toast(e.message, 'error'); }
@@ -1195,6 +1259,7 @@ export function ChannelsView() {
     }
 
     async function deployTask(rows: any) {
+        if (!actionsReadyRef.current) return;
         if (!rows.length) { toast('Select a channel or group first', 'warn'); return; }
         try {
             if (!await runLifecycle('deploy', rows.map((c: any) => c.id))) return;
@@ -1248,6 +1313,7 @@ export function ChannelsView() {
     }
 
     function moveToGroupTask(selRows: any) {
+        if (!groupsReadyRef.current) return;
         const rows = requireAny(selRows);
         if (!rows) return;
         const ids = new Set(rows.map((c: any) => c.id));
@@ -1288,6 +1354,7 @@ export function ChannelsView() {
        render-resolved current group; the context menu passes its row's group).
        The synthetic Default Group never reaches them — its items are hidden. */
     const requireGroup = (group: any) => {
+        if (!groupsReadyRef.current) return null;
         if (!group || group.id === DEFAULT_GROUP_ID) { toast('Select a group row first', 'warn'); return null; }
         return group;
     };
@@ -1659,6 +1726,7 @@ export function ChannelsView() {
     }
 
     async function exportGroupTask(g: any) {
+        if (!groupsReadyRef.current) return;
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
         if (!g) { toast('Select a group row first', 'warn'); return; }
@@ -1678,6 +1746,7 @@ export function ChannelsView() {
     }
 
     async function exportGroupsTask() {
+        if (!groupsReadyRef.current) return;
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
         try {
@@ -1719,11 +1788,20 @@ export function ChannelsView() {
     /* ---- mount: load ---- */
 
     useEffect(() => {
+        const releaseDisplay = retainChannelListDisplay();
+        mountedRef.current = true;
         refresh();
         // A plugin that mutates a channel out-of-band (e.g. history revert) emits
         // this so the list reflects the change immediately (Swing doRefreshChannels).
         const off = platform.events.on('channels:changed', () => refresh());
-        return off;
+        return () => {
+            mountedRef.current = false;
+            actionsReadyRef.current = false;
+            groupsReadyRef.current = false;
+            liveModelsRef.current = { channels: false, groups: false };
+            off();
+            releaseDisplay();
+        };
     }, []);
 
     /* ---- task panes (Swing parity, selection-gated) ----
@@ -1731,9 +1809,9 @@ export function ChannelsView() {
        Deploy shows only when that selection holds an enabled channel — disabled
        channels are never deployed, so Swing hides the task when all of them are. */
     const eff = effectiveChannels();
-    const channelSel = selected.size > 0;
-    const singleChannel = selected.size === 1;
-    const deployable = channelSel || !!lastGroupId;
+    const channelSel = actionsReady && selected.size > 0;
+    const singleChannel = channelSel && selected.size === 1;
+    const deployable = channelSel || (groupsReady && !!lastGroupId);
     const showDeploy = deployable && eff.some(isEnabled);
     const showExport = channelSel;
     const showDelete = channelSel;
@@ -1743,10 +1821,10 @@ export function ChannelsView() {
     const showDisable = deployable && eff.some((c: any) => isEnabled(c));
     const showMessages = singleChannel;
 
-    const selectedGroup = lastGroupId ? groupedChannels().find(group => group.id === lastGroupId) : null;
+    const selectedGroup = groupsReady && lastGroupId ? groupedChannels().find(group => group.id === lastGroupId) : null;
     const realGroup = !!selectedGroup && selectedGroup.id !== DEFAULT_GROUP_ID;
     const currentGroup = selectedGroup ? (selectedGroup.group || selectedGroup) : null;
-    const showAssign = channelSel;
+    const showAssign = channelSel && groupsReady;
     const showGroupEdit = realGroup;
     const showGroupExport = !!selectedGroup;
     const showGroupDelete = realGroup;
@@ -1779,6 +1857,10 @@ export function ChannelsView() {
         .map((g: any) => ({ group: g, channels: g.channels.filter((c: any) => !hasFilter || matchesFilter(c)) }))
         .filter((g: any) => g.channels.length > 0 || !hasFilter);
     const shownChannels = channels.filter((c: any) => !hasFilter || matchesFilter(c));
+    const hasStaleDisplay = (staleResources.has('channels') && shownChannels.length > 0)
+        || (staleResources.has('groups') && groupView && shownGroups.some(({ group }) => group.id !== DEFAULT_GROUP_ID))
+        || (staleResources.has('tags') && (tagMode !== 'off' || hasFilter) && shownChannels.some(channel => channelTags(channel).length > 0))
+        || (staleResources.has('statuses') && shownChannels.some(channel => statusById[channel.id]));
     const enabledCount = shownChannels.filter(isEnabled).length;
     const countsText = (groupView ? `${shownGroups.length} Group${shownGroups.length === 1 ? '' : 's'}, ` : '')
         + `${shownChannels.length} Channel${shownChannels.length === 1 ? '' : 's'}, `
@@ -1802,7 +1884,7 @@ export function ChannelsView() {
                         {showEnable && <TaskButton label="Enable Channel" icon="check" task="doEnableChannel" onClick={() => setEnabledTask(true, effectiveChannels())} />}
                         {showDisable && <TaskButton label="Disable Channel" icon="x" task="doDisableChannel" onClick={() => setEnabledTask(false, effectiveChannels())} />}
                         {showMessages && <TaskButton label="View Messages" icon="messages" task="doViewMessages" onClick={() => messagesTask(selectedChannels())} />}
-                        {singleChannel && (() => {
+                        {singleChannel && actionsReady && (() => {
                             const c = selectedChannels()[0];
                             const ctx = { platform, channel: c, selectedIds: new Set(selected) };
                             return platform.channelActions()
@@ -1819,7 +1901,7 @@ export function ChannelsView() {
                         <TaskButton label="New Group" icon="plus" task="doNewGroup" onClick={newGroupTask} />
                         {showGroupEdit && <TaskButton label="Edit Group Details" icon="edit" task="doEditGroupDetails" onClick={() => editGroupTask(currentGroup)} />}
                         <TaskButton label="Import Group" icon="import" task="doImportGroup" onClick={importGroupTask} />
-                        <TaskButton label="Export All Groups" icon="export" task="doExportAllGroups" onClick={exportGroupsTask} />
+                        <TaskButton label="Export All Groups" icon="export" task="doExportAllGroups" disabled={!groupsReady} onClick={exportGroupsTask} />
                         {showGroupExport && <TaskButton label="Export Group" icon="export" task="doExportGroup" onClick={() => exportGroupTask(currentGroup)} />}
                         {showGroupDelete && <TaskButton label="Delete Group" icon="trash" danger task="doDeleteGroup" onClick={() => deleteGroupTask(currentGroup)} />}
                     </div>
@@ -1827,7 +1909,7 @@ export function ChannelsView() {
             </ViewTasks>
             <div className="view-body flush flex flex-col overflow-hidden">
                 {loadError && <div className="mx-[13px] mt-3 panel border-danger text-danger" role="alert">
-                    Failed to load channels: {loadError}
+                    Failed to load channels: {loadError}. {hasStaleDisplay && <>Displayed data may be stale. </>}Refresh to retry.
                 </div>}
                 {/* Grid so the TreeTable's own .dt-wrap stretches to fill the
                     region (a flex child wouldn't grow on the main axis); this
@@ -1840,9 +1922,9 @@ export function ChannelsView() {
                         getChildren={(n: any) => (n.kind === 'group' ? n.children : null)}
                         rowKey={(n: any) => (n.kind === 'group' ? 'grp:' + n.id : 'ch:' + n.channel.id)}
                         rowClassName={(n: any) => (n.kind === 'group' ? 'group-row' : '')}
-                        selectedKeys={channelSel
+                        selectedKeys={!actionsReady ? new Set() : channelSel
                             ? new Set([...selected].map((id: any) => 'ch:' + id))
-                            : (lastGroupId ? new Set(['grp:' + lastGroupId]) : new Set())}
+                            : (groupsReady && lastGroupId ? new Set(['grp:' + lastGroupId]) : new Set())}
                         onSelect={onRowSelect}
                         onActivate={onRowActivate}
                         onRowContextMenu={onRowMenu}
@@ -1850,13 +1932,23 @@ export function ChannelsView() {
                         matches={treeMatches}
                         collapsedKeys={collapsedKeys}
                         onToggleCollapse={(key: any) => toggleGroupCollapse(key.replace(/^grp:/, ''))}
-                        rowDraggable={(n: any) => groupView && n.kind === 'channel'}
+                        rowDraggable={(n: any) => groupsReady && groupView && n.kind === 'channel'}
                         onRowDrop={onRowDrop}
                         columnsKey="channels"
                         scrollKey="channels"
+                        scrollReady={hasChannels}
                         columnWidths={CHANNEL_COL_WIDTHS}
                         pinnedKeys={['status', 'name']}
-                        emptyText={(
+                        emptyText={refreshing && !hasChannels ? <>
+                            <div className="empty-icon"><Icon name="channels" size={30} /></div>
+                            <div role="status">Loading channels…</div>
+                        </>
+                            : loadError && !hasChannels ? <div>Unable to load channels. Refresh to retry.</div>
+                            : hasFilter && channels.length > 0 ? <>
+                                <div className="empty-icon"><Icon name="channels" size={30} /></div>
+                                <div>No matching channels</div>
+                                <div className="text-text-faint mt-[13px]">Clear or change the filter.</div>
+                            </> : (
                             <>
                                 <div className="empty-icon"><Icon name="channels" size={30} /></div>
                                 <div>No channels</div>
@@ -1868,7 +1960,7 @@ export function ChannelsView() {
                     <label>Filter:</label>
                     <input type="text" placeholder="Enter channel tag or name" value={filterText}
                         onChange={(e: any) => setFilterText(e.target.value)} />
-                    <span className="counts">{countsText}</span>
+                    <span className="counts">{hasChannels ? countsText : ''}</span>
                     {/* The same View / Tags toggles as the Dashboard filter bar. */}
                     <div className="flex items-center gap-x-3.5 gap-y-1.5 flex-wrap ml-auto">
                         <SegPill value={viewMode} onChange={setViewMode} label="Row grouping" options={VIEW_MODE_OPTIONS} />
