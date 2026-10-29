@@ -68,6 +68,7 @@ function metaColumns() {
 
 function statusTag(p: any) {
     if (p.status === 'loaded') return h('span.tag.accent', 'Loaded');
+    if (p.status === 'disabled') return h('span.tag', 'Disabled');
     if (p.status === 'error' || p.status === 'incompatible') {
         const label = p.status === 'incompatible' ? 'Incompatible' : 'Error';
         return h('span', h('span.tag.red', label),

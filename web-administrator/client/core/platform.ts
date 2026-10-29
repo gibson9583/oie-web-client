@@ -37,6 +37,7 @@ import { engineFetch, assertEngineResponse, captureEngineSession } from './engin
 import * as ui from './ui.js';
 import * as oie from './oie.js';
 import { webSupportBase } from './websupport.js';
+import { loadDisabledExtensions, allExtensionsDisabled } from './disabled-extensions.js';
 import { registerLoginAuthenticator } from './login-auth.js';
 import * as columns from './columns.js';
 import { createCodeEditor, setCodeEditorFactory } from './codeeditor.js';
@@ -799,10 +800,19 @@ async function loadPluginsOnce(assertSession: () => void): Promise<PluginManifes
             : manifest.entry
     }));
 
-    const engineManifests = await fetchEngineManifests();
+    const [engineManifests] = await Promise.all([fetchEngineManifests(), loadDisabledExtensions()]);
     assertSession();
     const engineIds = new Set(engineManifests.map((m) => m.id).filter(Boolean));
     manifests = manifests.filter((m) => !engineIds.has(m.id)).concat(engineManifests);
+    const isAuthorization = (manifest: PluginManifest) => manifest.authorization === true || manifest.id === 'rbac';
+
+    // Like Swing, skip bundled plugins whose engine extensions are all disabled.
+    const disabled: PluginManifest[] = [];
+    manifests = manifests.filter((m) => {
+        if (m.source === 'engine' || isAuthorization(m) || !allExtensionsDisabled(m.engineExtensions)) return true;
+        disabled.push({ ...m, status: 'disabled' });
+        return false;
+    });
 
     // Compatibility gate: a plugin that declares an @oie apiMin newer than what we
     // implement (or from a different major) would call APIs that aren't here and
@@ -810,7 +820,6 @@ async function loadPluginsOnce(assertSession: () => void): Promise<PluginManifes
     // code — and surface them so the mismatch is visible (Extensions → web plugins)
     // instead of a silent failure. Plugins with no apiMin (bundled/framework, and
     // any built before this contract) are unaffected.
-    const isAuthorization = (manifest: PluginManifest) => manifest.authorization === true || manifest.id === 'rbac';
     const incompatible: PluginManifest[] = [];
     manifests = manifests.filter((m) => {
         if (apiCompatible(OIE_API_VERSION, m.apiMin)) return true;
@@ -912,6 +921,6 @@ async function loadPluginsOnce(assertSession: () => void): Promise<PluginManifes
         throw new Error('The authorization controller was removed during plugin loading');
     }
     // Include the version-skipped plugins so the mismatch is visible in the UI.
-    store.setState('webPlugins', [...loaded, ...incompatible]);
+    store.setState('webPlugins', [...loaded, ...incompatible, ...disabled]);
     return loaded;
 }

@@ -52,6 +52,7 @@ import { getPref } from '../../core/prefs.js';
 import { dataTypeDef, dataTypeList, normalizeDataTypeProperties } from '../../datatypes/index.js';
 import { DataTypePropertiesEditor } from '../../datatypes/props-editor.jsx';
 import { platform } from '@oie/web-shell';
+import { isExtensionDisabled } from '../../core/disabled-extensions.js';
 import { ViewTasks, mountReact } from '../mount.jsx';
 import { DomTabs } from '../dom-tabs.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
@@ -1684,7 +1685,7 @@ function transportNamesFor(mode: any, current: any) {
     const names: any[] = [];
     for (const key of platform.connectorPanels().keys()) {
         const [keyMode, name] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
-        if (keyMode === mode && name !== '*') names.push(name);
+        if (keyMode === mode && name !== '*' && !isExtensionDisabled(name)) names.push(name);
     }
     if (current && !names.includes(current)) names.unshift(current);
     return names;
@@ -1706,7 +1707,7 @@ function ConnectorTypeSelect({ connector, mode, engineTypes, version, markDirty,
     }, []);
     // Derived per render against the CURRENT names, so a selected engine-only
     // type never appears twice (plain + '(no web editor)').
-    const extra = engineList.filter(t => t.type === mode && !names.includes(t.name)).map(t => t.name);
+    const extra = engineList.filter(t => t.type === mode && !names.includes(t.name) && !isExtensionDisabled(t.name)).map(t => t.name);
     return (
         <select style={width ? { width } : undefined} value={connector.transportName} disabled={switching}
             onChange={(e: any) => switchType(e.target.value)}>

@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "Database Reader (source) and Database Writer (destination) connector panels — ConnectorSettingsPanel equivalent.",
+    "engineExtensions": ["Database Reader", "Database Writer"],
     "client": { "entry": "web/plugin.js" }
 }

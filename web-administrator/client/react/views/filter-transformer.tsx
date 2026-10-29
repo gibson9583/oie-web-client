@@ -58,6 +58,7 @@ import { dataTypeDef, dataTypeList, normalizeDataTypeProperties } from '../../da
 import { DataTypePropertiesEditor } from '../../datatypes/props-editor.jsx';
 import { REFERENCE_CATALOG } from '../../core/reference-catalog.js';
 import { platform } from '@oie/web-shell';
+import { isElementTypeDisabled } from '../../core/disabled-extensions.js';
 import { ViewTasks, mountReact } from '../mount.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
@@ -1510,7 +1511,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // TransformerPane (which drops onlySourceConnector() plugins off the source).
     function availableTypeEntries() {
         const registry = isFilter ? platform.ruleTypes() : platform.stepTypes();
-        return [...registry].filter(([, def]) => isSourceConnector || !def.onlySource);
+        return [...registry].filter(([type, def]) => (isSourceConnector || !def.onlySource) && !isElementTypeDisabled(type));
     }
 
     function selectElement(path: any) {

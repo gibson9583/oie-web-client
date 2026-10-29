@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "Web Service Listener (source) and Web Service Sender (destination) connector panels — ConnectorSettingsPanel equivalent.",
+    "engineExtensions": ["Web Service Listener", "Web Service Sender"],
     "client": { "entry": "web/plugin.js" }
 }

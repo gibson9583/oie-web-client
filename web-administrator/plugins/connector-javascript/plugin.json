@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "JavaScript Reader (source) and JavaScript Writer (destination) connector panels — ConnectorSettingsPanel equivalent.",
+    "engineExtensions": ["JavaScript Reader", "JavaScript Writer"],
     "client": { "entry": "web/plugin.js" }
 }
