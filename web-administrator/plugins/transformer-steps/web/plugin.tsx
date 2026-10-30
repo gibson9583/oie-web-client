@@ -31,17 +31,10 @@
 
 import { platform } from '@oie/web-shell';
 import type { Platform } from '@oie/web-shell';
+import { iteratorTree, iteratorSampleCount } from '/core/mapping-model.js';
 import { replacementPairs, replacementsToWire } from '/core/step-replacements.js';
 import type { Replacement } from '/core/step-replacements.js';
 const React = platform.React;
-
-const SCOPES = [
-    { value: 'CHANNEL', label: 'Channel Map' },
-    { value: 'CONNECTOR', label: 'Connector Map' },
-    { value: 'GLOBAL_CHANNEL', label: 'Global Channel Map' },
-    { value: 'GLOBAL', label: 'Global Map' },
-    { value: 'RESPONSE', label: 'Response Map' }
-];
 
 const CONDITIONS = [
     { value: 'EXISTS', label: 'Exists' },
@@ -357,83 +350,304 @@ function StringReplacementEditor({ element, onChange }: any) {
     );
 }
 
-function MapperEditor({ element, onChange }: any) {
-    const force = useRerender();
+/* ---- Mapper / Message Builder (guided) ----------------------------------------
+ * Both steps read as one statement: Set <variable | outbound field> = <value>.
+ * Every Swing control is here (Variable, Add to, Message Segment, Mapping,
+ * Default Value, String Replacement); the value gets four ways in (message
+ * field, text, map variable, JavaScript) that all write the same `mapping`
+ * expression. Transformer hosts pass messageTree / MessageFieldPicker /
+ * variables (API 4.11); without them the editor still works as plain fields.
+ */
+
+let mapUid = 0;
+
+/* Swing combo order (MapperStep.Scope). `read` is the shorthand that reads it back. */
+const SCOPE_CARDS = [
+    { value: 'CONNECTOR', label: 'Connector Map', hint: 'This connector, this message', read: '$co' },
+    { value: 'CHANNEL', label: 'Channel Map', hint: 'All connectors, this message', read: '$c' },
+    { value: 'GLOBAL_CHANNEL', label: 'Global Channel Map', hint: 'Shared across messages in this channel. Clearing on deploy depends on channel settings.', read: '$gc' },
+    { value: 'GLOBAL', label: 'Global Map', hint: 'Shared across channels. Clearing on server start depends on server settings.', read: '$g' },
+    { value: 'RESPONSE', label: 'Response Map', hint: 'Response variables, this message', read: '$r' }
+];
+
+const VAR_FNS = [
+    { value: '$c', label: 'Channel' },
+    { value: '$co', label: 'Connector' },
+    { value: '$gc', label: 'Global Channel' },
+    { value: '$g', label: 'Global' },
+    { value: '$r', label: 'Response' },
+    { value: '$s', label: 'Source' },
+    { value: '$cfg', label: 'Configuration' },
+    { value: '$', label: 'Any map' }
+];
+
+const VALUE_MODES = [
+    { value: 'field', label: 'Message field' },
+    { value: 'text', label: 'Text' },
+    { value: 'variable', label: 'Variable' },
+    { value: 'js', label: '{ } JavaScript' }
+];
+
+const INBOUND_PATH_RE = /^msg(?:\[(?:'(?:[^'\\]|\\.)*'|\d+|[A-Za-z_$][\w$]*)\])+(?:\.toString\(\))?$/;
+const VARIABLE_RE = /^(\$(?:gc|co|cfg|g|c|r|s)?)\(\s*'((?:[^'\\]|\\.)*)'\s*\)$/;
+
+/* JavaScript string literal <-> value (same rules as core/mapping-model). */
+function literalValue(expr: any): string | null {
+    const m = /^(['"])((?:\\.|(?!\1)[^\\\n])*)\1$/.exec(String(expr ?? '').trim());
+    if (!m) return null;
+    return m[2].replace(/\\(u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|.)/g, (_all: string, c: string) => {
+        if (c[0] === 'u' || c[0] === 'x') return c.length > 1 ? String.fromCharCode(parseInt(c.slice(1), 16)) : c;
+        return ({ n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', v: '\v', 0: '\0' } as any)[c] ?? c;
+    });
+}
+function quoted(value: any) {
+    return `'${String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, '\\\'').replace(/\n/g, '\\n').replace(/\r/g, '\\r')}'`;
+}
+
+function parseValue(src: any) {
+    const s = String(src ?? '').trim();
+    if (!s) return { mode: '' };
+    if (INBOUND_PATH_RE.test(s)) return { mode: 'field', field: s };
+    const lit = literalValue(s);
+    if (lit !== null) return { mode: 'text', text: lit };
+    const v = VARIABLE_RE.exec(s);
+    if (v) return { mode: 'variable', fn: v[1], name: literalValue(`'${v[2]}'`) ?? v[2] };
+    return { mode: 'js' };
+}
+
+function flattenTree(nodes: any[], parent: any = null, out: any[] = []) {
+    for (const n of nodes || []) {
+        out.push({ node: n, parent });
+        flattenTree(n.children, n, out);
+    }
+    return out;
+}
+
+/* A lone .1 component is the field itself, as in the Message Trees rows. */
+function fieldLabel({ node, parent }: any) {
+    const lone = parent?.desc && parent.children.length === 1 && node.name === `${parent.name}.1` && !node.children.length;
+    return lone ? `${node.name} (${parent.desc})` : node.label;
+}
+
+/* Undefined while loading; null when there is no usable template. */
+function useMessageTree(messageTree: any, side: 'inbound' | 'outbound', revision = 0) {
+    const [nodes, setNodes] = React.useState(undefined as any);
+    React.useEffect(() => {
+        if (typeof messageTree !== 'function') return undefined;
+        let alive = true;
+        setNodes(undefined);
+        Promise.resolve().then(() => messageTree(side)).then((n: any) => { if (alive) setNodes(n || null); }, () => { if (alive) setNodes(null); });
+        return () => { alive = false; };
+    }, [messageTree, side, revision]);
+    return nodes;
+}
+
+/* Inline field picker. The host draws the same tree-table as Message Trees. */
+function PathPicker({ MessageFieldPicker, nodes, title, value, onPick, onClose, messageSide, onMessageSide, onRetry }: any) {
+    const boxRef = React.useRef(null as any);
+    React.useEffect(() => { boxRef.current.scrollIntoView({ block: 'nearest' }); }, []);
+    React.useEffect(() => {
+        const away = (e: any) => { if (boxRef.current && !boxRef.current.contains(e.target)) onClose(); };
+        const esc = (e: any) => { if (e.key === 'Escape') onClose(); };
+        document.addEventListener('mousedown', away);
+        document.addEventListener('keydown', esc);
+        return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc); };
+    }, [onClose]);
     return (
-        <div className="form-grid">
-            <Field label="Variable">
-                <input
-                    type="text"
-                    value={element.variable ?? ''}
-                    onChange={(e: any) => { element.variable = e.target.value; onChange(); force(); }}
-                />
-            </Field>
-            <Field label="Add to">
-                <Select
-                    options={SCOPES}
-                    value={element.scope || 'CHANNEL'}
-                    onChange={(e: any) => { element.scope = e.target.value; onChange(); force(); }}
-                />
-            </Field>
-            <div className="span-2">
-                <Field label="Mapping">
-                    <input
-                        type="text"
-                        value={element.mapping ?? ''}
-                        onChange={(e: any) => { element.mapping = e.target.value; onChange(); force(); }}
-                    />
-                </Field>
-            </div>
-            <div className="span-2 mt-2">
-                <Field label="Default Value">
-                    <input
-                        type="text"
-                        value={element.defaultValue ?? ''}
-                        onChange={(e: any) => { element.defaultValue = e.target.value; onChange(); force(); }}
-                    />
-                </Field>
-            </div>
-            <StringReplacementEditor element={element} onChange={onChange} />
+        <div className="map-picker" ref={boxRef} role="dialog" aria-label={title}>
+            <MessageFieldPicker side={messageSide} onSide={onMessageSide} nodes={nodes} value={value} onPick={onPick} onRetry={onRetry} />
         </div>
     );
 }
 
-function MessageBuilderEditor({ element, onChange }: any) {
-    const force = useRerender();
+/* Field-path input with Browse. Drops from the Message Trees tab still land in the input. */
+function FieldInput({ value, nodes, side, placeholder, ariaLabel, onValue, targetTrees, onRetry, MessageFieldPicker }: any) {
+    const [open, setOpen] = React.useState(false);
+    const targetSide = /^\s*tmp\b/.test(value) ? 'outbound' : 'inbound';
+    const [browseSide, setBrowseSide] = React.useState(targetSide);
+    const close = React.useCallback(() => setOpen(false), []);
+    const selected = flattenTree((targetTrees ? targetTrees[targetSide] : nodes) || []).find(({ node }: any) =>
+        String(node.accessor).replace(/\.toString\(\)\s*$/, '') === String(value).replace(/\.toString\(\)\s*$/, ''));
     return (
-        <div className="form-grid">
-            <div className="span-2">
-                <Field label="Message Segment">
-                    <input
-                        type="text"
-                        placeholder="tmp['MSH']['MSH.3']['MSH.3.1']"
-                        value={element.messageSegment ?? ''}
-                        onChange={(e: any) => { element.messageSegment = e.target.value; onChange(); force(); }}
-                    />
-                </Field>
-            </div>
-            <div className="span-2">
-                <Field label="Mapping">
-                    <input
-                        type="text"
-                        value={element.mapping ?? ''}
-                        onChange={(e: any) => { element.mapping = e.target.value; onChange(); force(); }}
-                    />
-                </Field>
-            </div>
-            <div className="span-2">
-                <Field label="Default Value">
-                    <input
-                        type="text"
-                        value={element.defaultValue ?? ''}
-                        onChange={(e: any) => { element.defaultValue = e.target.value; onChange(); force(); }}
-                    />
-                </Field>
-            </div>
-            <StringReplacementEditor element={element} onChange={onChange} />
+        <div className="map-field">
+            <button type="button" className="map-field-choice" aria-expanded={open}
+                title={selected ? `${fieldLabel(selected)}\n${value}` : value}
+                aria-label={`Browse ${targetTrees ? 'target' : side} fields`} onClick={() => {
+                    if (!open) setBrowseSide(targetSide);
+                    setOpen((o: any) => !o);
+                }}>
+                <span>{selected ? `${targetTrees ? `${targetSide === 'outbound' ? 'tmp' : 'msg'} › ` : ''}${fieldLabel(selected)}` : value || 'Choose a field…'}</span><span>Browse…</span>
+            </button>
+            <details className="map-raw-path"><summary>Edit path expression</summary>
+                <input type="text" className="mono" placeholder={placeholder} aria-label={ariaLabel}
+                    data-message-target={targetTrees ? true : undefined}
+                    value={value} onChange={(e: any) => onValue(e.target.value)} />
+            </details>
+            {open && MessageFieldPicker ? (
+                <PathPicker MessageFieldPicker={MessageFieldPicker} nodes={targetTrees ? targetTrees[browseSide] : nodes}
+                    title={targetTrees ? 'Target fields' : side === 'outbound' ? 'Outbound fields' : 'Inbound fields'} onClose={close}
+                    value={value} messageSide={targetTrees ? browseSide : side} onMessageSide={targetTrees ? setBrowseSide : undefined} onRetry={onRetry}
+                    onPick={(node: any) => {
+                        const acc = String(node.accessor);
+                        onValue(targetTrees || side === 'outbound' ? acc.replace(/\.toString\(\)\s*$/, '') : acc);
+                        setOpen(false);
+                    }} />
+            ) : null}
         </div>
     );
 }
+
+/* The value (`mapping`) editor: four modes over one expression. Drafts keep
+   each mode's last input while the editor is open, so switching modes and
+   back does not lose work. */
+function ValueEditor({ element, onChange, inbound, variables, defaultMode, onRetry, MessageFieldPicker }: any) {
+    const force = useRerender();
+    const initial = React.useMemo(() => parseValue(element.mapping), []); // eslint-disable-line react-hooks/exhaustive-deps
+    const [mode, setMode] = React.useState(initial.mode || defaultMode);
+    const drafts = React.useRef({
+        field: initial.mode === 'field' ? initial.field : '',
+        text: initial.mode === 'text' ? initial.text : '',
+        fn: initial.mode === 'variable' ? initial.fn : '$c',
+        name: initial.mode === 'variable' ? initial.name : '',
+        js: String(element.mapping ?? '')
+    } as any).current;
+    const vars = typeof variables === 'function' ? variables() : [];
+    const listId = React.useMemo(() => `map-vars-${++mapUid}`, []);
+
+    const expr = (m: string) => {
+        if (m === 'field') return drafts.field;
+        if (m === 'text') return quoted(drafts.text);
+        if (m === 'variable') return drafts.name ? `${drafts.fn}(${quoted(drafts.name)})` : '';
+        return drafts.js;
+    };
+    const write = (m: string) => {
+        element.mapping = expr(m);
+        if (m !== 'js') drafts.js = element.mapping;
+        onChange();
+        force();
+    };
+    const setDraft = (key: string, v: any, m: string) => { drafts[key] = v; write(m); };
+    const setters = vars.filter((v: any) => v.name === drafts.name);
+
+    return (
+        <div className="map-value">
+            <select aria-label="Value type" value={mode}
+                onChange={(e: any) => { const m = e.target.value; if (m === mode) return; setMode(m); write(m); }}>
+                {VALUE_MODES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            {mode === 'field' && (
+                <FieldInput value={drafts.field} nodes={inbound} side="inbound" ariaLabel="Message field"
+                    onRetry={onRetry} MessageFieldPicker={MessageFieldPicker}
+                    placeholder="msg['PID']['PID.3']['PID.3.1'].toString()"
+                    onValue={(v: any) => setDraft('field', v, 'field')} />
+            )}
+            {mode === 'text' && (
+                <input type="text" aria-label="Text value" placeholder="Fixed text"
+                    value={drafts.text} onChange={(e: any) => setDraft('text', e.target.value, 'text')} />
+            )}
+            {mode === 'variable' && (
+                <div className="map-field-row">
+                    <select aria-label="Map" value={drafts.fn} onChange={(e: any) => setDraft('fn', e.target.value, 'variable')}>
+                        {VAR_FNS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                    </select>
+                    <input type="text" className="mono" aria-label="Variable name" placeholder="variableName"
+                        list={listId} value={drafts.name} onChange={(e: any) => setDraft('name', e.target.value, 'variable')} />
+                    <datalist id={listId}>
+                        {[...new Set(vars.map((v: any) => v.name))].map((n: any) => <option key={n} value={n} />)}
+                    </datalist>
+                </div>
+            )}
+            {mode === 'variable' && drafts.name && (
+                <div className="hint">{setters.length
+                    ? `Set by step ${setters.map((v: any) => v.step).join(', ')}`
+                    : 'Not set by another step in this transformer.'}</div>
+            )}
+            {mode === 'js' && (
+                <input type="text" className="mono" aria-label="JavaScript value" placeholder="Any JavaScript expression"
+                    value={drafts.js} onChange={(e: any) => setDraft('js', e.target.value, 'js')} />
+            )}
+        </div>
+    );
+}
+
+/* The host supplies the real ancestor stack; picker samples never change it. */
+function MappingEditor({ element, onChange, messageTree, MessageFieldPicker, variables, iteratorContext, builder = false }: any) {
+    const [, bumpRev] = React.useReducer((x: number) => x + 1, 0);
+    const [iteratorIndices, setIndices] = React.useState({} as Record<string, number>);
+    const [treeRevision, reloadTrees] = React.useReducer((x: number) => x + 1, 0);
+    const reloadFields = () => { reloadTrees(); bumpRev(); };
+    const inbound = useMessageTree(messageTree, 'inbound', treeRevision);
+    const outbound = useMessageTree(builder ? messageTree : null, 'outbound', treeRevision);
+    const contexts = typeof iteratorContext === 'function' ? iteratorContext() : [];
+    const sampleOptions = { iteratorIndices };
+    const pickedInbound = iteratorTree(inbound, contexts, sampleOptions);
+    const pickedOutbound = iteratorTree(outbound, contexts, sampleOptions);
+    const change = () => { onChange(); bumpRev(); };
+    const name = String(element.variable ?? '');
+    const scope = element.scope || 'CHANNEL';
+    const card = SCOPE_CARDS.find(s => s.value === scope);
+    const dupes = !builder && typeof variables === 'function' && name.trim()
+        ? variables().filter((v: any) => v.name === name.trim()) : [];
+    const summary = [!builder ? card?.label || scope : '',
+        replacementPairs(element).length ? `${replacementPairs(element).length} replacement(s)` : ''].filter(Boolean).join(' · ');
+    return (
+        <div className="map-editor">
+            {contexts.length ? <div className="map-iterator-context" aria-label="Iterator context">
+                {contexts.map((context: any, i: number) => {
+                    const count = iteratorSampleCount(inbound, context, contexts, sampleOptions);
+                    const index = iteratorIndices[context.indexVariable] ?? 0;
+                    return <div key={`${i}:${context.indexVariable}`}>
+                        <span title={context.target}>Inside <b>{context.name}</b> · index <code>{context.indexVariable}</code></span>
+                        {count !== null && count > 0 ? <select aria-label={`Sample for ${context.name}`} value={index}
+                            onChange={(e: any) => {
+                                const next = { ...iteratorIndices, [context.indexVariable]: Number(e.target.value) };
+                                for (const child of contexts.slice(i + 1)) delete next[child.indexVariable];
+                                setIndices(next);
+                            }}>
+                            {Array.from({ length: count }, (_, n) => <option key={n} value={n}>{`Sample ${n + 1} of ${count}`}</option>)}
+                        </select> : <span className="hint">{count === 0 ? 'No template repetitions' : 'Sample unavailable'}</span>}
+                    </div>;
+                })}
+            </div> : null}
+            {builder ? <Field label="Step name">
+                <input aria-label="Step name" placeholder="Uses the target path" value={element.name ?? ''}
+                    onChange={(e: any) => { element.name = e.target.value; change(); }} />
+            </Field> : null}
+            <Field label={builder ? 'Target field' : 'Variable name'}>
+                {builder ? <FieldInput value={element.messageSegment ?? ''} targetTrees={{ inbound: pickedInbound, outbound: pickedOutbound }}
+                    onRetry={reloadFields} MessageFieldPicker={MessageFieldPicker} ariaLabel="Message Segment" placeholder="msg['PID']['PID.5']['PID.5.1']"
+                    onValue={(value: string) => { element.messageSegment = value; change(); }} />
+                    : <input type="text" className="mono" aria-label="Variable" placeholder="variableName" value={name}
+                        onChange={(e: any) => { element.variable = e.target.value; element.name = e.target.value; change(); }} />}
+                {builder ? isBlank(element.messageSegment) ? <div className="hint map-warn">The message segment value cannot be blank.</div> : null
+                    : isBlank(name) ? <div className="hint map-warn">The variable name cannot be blank.</div>
+                        : dupes.length ? <div className="hint map-warn">{`Also set by step ${dupes.map((v: any) => v.step).join(', ')}.`}</div> : null}
+            </Field>
+            <Field label="Value">
+                <ValueEditor element={element} onChange={change} inbound={pickedInbound} variables={variables} defaultMode="field" onRetry={reloadFields} MessageFieldPicker={MessageFieldPicker} />
+            </Field>
+            <Field label="Default">
+                <input type="text" className="mono" aria-label="Default Value" value={element.defaultValue ?? ''}
+                    onChange={(e: any) => { element.defaultValue = e.target.value; change(); }} />
+            </Field>
+            {!builder && contexts.length ? <div className="hint">This Mapper stores an array of iteration results.</div> : null}
+            <details className="map-more-options"><summary>More options <span className="hint">{summary}</span></summary>
+                <div className="map-options-body">
+                    {!builder ? <Field label="Store in">
+                        <select aria-label="Add to" value={scope} onChange={(e: any) => { element.scope = e.target.value; change(); }}>
+                            {!card ? <option value={scope}>{scope}</option> : null}
+                            {SCOPE_CARDS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                        </select><div className="hint">{card?.hint}</div>
+                    </Field> : null}
+                    <StringReplacementEditor element={element} onChange={change} />
+                    <div className="hint">Expressions applied in order after the default. Include quotes around literal patterns and text.</div>
+                </div>
+            </details>
+        </div>
+    );
+}
+function MapperEditor(props: any) { return <MappingEditor {...props} />; }
+function MessageBuilderEditor(props: any) { return <MappingEditor {...props} builder />; }
 
 function XsltEditor({ element, onChange }: any) {
     const force = useRerender();

@@ -317,7 +317,7 @@ test('the real platform registry enforces unique custom classes and retains olde
     const exported = { exports: {} }, events = [];
     new Function('require', 'module', 'exports', code)(() => ({ emit: (...args) => events.push(args) }), exported, exported.exports);
     const { platform, OIE_API_VERSION, apiCompatible } = exported.exports;
-    assert.equal(OIE_API_VERSION, '4.10.0');
+    assert.equal(OIE_API_VERSION, '4.11.0');
     assert.equal(apiCompatible(OIE_API_VERSION, '4.9'), true);
     assert.equal(apiCompatible('4.9.0', '4.10'), false);
     platform.registerCodeTemplateType('sample', sample);

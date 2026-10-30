@@ -40,14 +40,16 @@ import { parseFilterTransformerImport, normalizeImportTypes, alignDestinationTyp
  * banner) but keep the code-template completion scope in both modes.
  */
 
-import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { h, modal, detailModal, toast, loading, saveFile, pickFile, contextMenu } from '@oie/web-ui';
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
+import { h, modal, detailModal, toast, loading, saveFile, pickFile, contextMenu, confirmDialog } from '@oie/web-ui';
 import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
 import { createCodeEditor } from '@oie/web-ui';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import { generateElementScript } from '../../core/step-script.js';
+import { MAPPER_TYPE, MSGBUILDER_TYPE, JAVASCRIPT_TYPE, literalString, indexTree, previewMapping, variablesSet, orderWarnings, replacementPairs, iteratorExpression, rebindIteratorStep } from '../../core/mapping-model.js';
+import type { IteratorContext, MappingPreviewOptions } from '../../core/mapping-model.js';
 import { normalizeLineEndings } from '../../core/content-highlight.js';
 import * as router from '../../core/router.js';
 import { routeUrl } from '../../core/deployment.js';
@@ -120,6 +122,28 @@ function pathOf(target: any, list: any, parent: any[] = []): any {
 }
 const pathEquals = (a: any, b: any) => !!a && !!b && a.length === b.length && a.every((v: any, i: any) => v === b[i]);
 const isAncestorPath = (anc: any, p: any) => anc.length < p.length && anc.every((v: any, i: any) => v === p[i]);
+
+const iteratorIds = new WeakMap<object, number>();
+let nextIteratorId = 0;
+function iteratorId(iterator: object) {
+    if (!iteratorIds.has(iterator)) iteratorIds.set(iterator, ++nextIteratorId);
+    return iteratorIds.get(iterator)!;
+}
+
+function iteratorContextsFor(elements: any[], element: any): IteratorContext[] {
+    const path = pathOf(element, elements);
+    if (!path) return [];
+    const out: IteratorContext[] = [];
+    for (let depth = 1; depth < path.length; depth++) {
+        const parent = elementAtPath(elements, path.slice(0, depth));
+        const props = parent?.properties || {};
+        const prefixes = props.prefixSubstitutions?.string;
+        out.push({ id: iteratorId(parent), name: parent.name || `Iterator ${path.slice(0, depth).map((n: number) => n + 1).join('.')}`,
+            target: String(props.target ?? ''), indexVariable: String(props.indexVariable ?? 'i'),
+            prefixSubstitutions: (prefixes == null ? [] : Array.isArray(prefixes) ? prefixes : [prefixes]).map(String) });
+    }
+    return out;
+}
 
 // Flatten the tree to display rows in order, carrying each row's path/depth.
 function flattenRows(list: any, parentPath: any, depth: any, out: any) {
@@ -234,6 +258,10 @@ function resolveEditorAt(target: any) {
         !(target as any).readOnly && !(target as any).disabled) {
         return { el: target };
     }
+    // The folded path input is the model behind a Browse field, so a drop
+    // anywhere on the field replaces the path.
+    const path = target.closest('.map-field')?.querySelector('.map-raw-path input') as any;
+    if (path && !path.readOnly && !path.disabled) return { el: path, replace: true };
     return null;
 }
 
@@ -254,15 +282,20 @@ function makeAccessorDragOver(dragRef: any) {
     };
 }
 
-function makeAccessorDrop(dragRef: any) {
+function makeAccessorDrop(dragRef: any, transform: (token: string, event: any) => string = token => token) {
     return (e: any) => {
         if (!hasAccessorDrag(dragRef, e)) return;
         const editor = resolveEditorAt(e.target);
         if (!editor) return;
-        const token = dragRef.current ||
+        const rawToken = dragRef.current ||
             (e.dataTransfer && (e.dataTransfer.getData(ACCESSOR_FLAVOR) || e.dataTransfer.getData('text/plain')));
         dragRef.current = null;
-        if (!token) return;
+        if (!rawToken) return;
+        let token = transform(rawToken, e);
+        // Tree accessors are reads. Builder targets need the assignable path
+        // for either message object, while value/script drops keep the read.
+        if (editor.el?.hasAttribute('data-message-target') && /^\s*(?:msg|tmp)\b/.test(token))
+            token = token.replace(/\.toString\(\)\s*$/, '');
         e.preventDefault();
         if (editor.monaco) {
             const inst = editor.monaco;
@@ -279,8 +312,8 @@ function makeAccessorDrop(dragRef: any) {
             inst.focus();
         } else if (editor.el) {
             const t = editor.el;
-            const start = (t as any).selectionStart ?? (t as any).value.length;
-            const end = (t as any).selectionEnd ?? start;
+            const start = editor.replace ? 0 : (t as any).selectionStart ?? (t as any).value.length;
+            const end = editor.replace ? (t as any).value.length : (t as any).selectionEnd ?? start;
             const next = (t as any).value.slice(0, start) + token + (t as any).value.slice(end);
             // React-controlled fields wrap the instance `value` setter with a
             // change tracker that dedupes the dispatched event; write through
@@ -359,28 +392,68 @@ function xmlTree(text: any, varName: any, meta?: any) {
 function jsonValueNode(label: any, value: any, accessor: any): any {
     if (Array.isArray(value)) {
         return {
-            label, name: label, desc: '', value: null, accessor,
+            label, name: label, desc: '', value: null, accessor, valueType: 'array',
             children: value.map((item: any, i: any) => jsonValueNode(`[${i}]`, item, `${accessor}[${i}]`))
         };
     }
     if (value && typeof value === 'object') {
         return {
-            label, name: label, desc: '', value: null, accessor,
+            label, name: label, desc: '', value: null, accessor, valueType: 'object',
             children: Object.entries(value).map(([key, val]) =>
                 jsonValueNode(key, val, `${accessor}['${escapeKey(key)}']`))
         };
     }
-    return { label, name: label, desc: '', value: value === null ? 'null' : String(value), accessor, children: [] };
+    return { label, name: label, desc: '', value: value === null ? 'null' : String(value), accessor, children: [], valueType: value === null ? 'null' : typeof value };
 }
 
 function jsonTree(text: any, varName: any) {
     return [jsonValueNode(varName, JSON.parse(text), varName)];
 }
 
-/* Steps created from a tree node's accessor — the Swing TreePanel popup
-   ("Map to Variable" → Mapper, "Map to Message" → Message Builder). */
-const MAPPER_TYPE = 'com.mirth.connect.plugins.mapper.MapperStep';
-const MSGBUILDER_TYPE = 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep';
+/* The inbound (msg) or outbound (tmp) template as tree nodes, or null when
+   there is no template or the engine cannot serialize it. The engine
+   serializes the template through its own datatype serializers (byte-exact,
+   all data types); no local parsing. Cached per target and template state, so
+   the Message Trees tab, step editors and the mapping table share one call. */
+const treeCache = new WeakMap<object, Map<string, { key: string; promise: Promise<any> }>>();
+
+function messageTreeKey(target: any, side: 'inbound' | 'outbound') {
+    return JSON.stringify([side, target[`${side}DataType`] || 'RAW',
+        target[`${side}Properties`]?.serializationProperties || {}, String(target[`${side}Template`] ?? '')]);
+}
+
+function loadMessageTree(target: any, side: 'inbound' | 'outbound'): Promise<any> {
+    const template = target[`${side}Template`];
+    let cache = treeCache.get(target);
+    if (template == null || String(template).trim() === '') { cache?.delete(side); return Promise.resolve(null); }
+    const dataType = target[`${side}DataType`] || 'RAW';
+    const props = target[`${side}Properties`] || {};
+    const varName = side === 'inbound' ? 'msg' : 'tmp';
+    const tmpl = String(template);
+    const key = messageTreeKey(target, side);
+    if (!cache) { cache = new Map(); treeCache.set(target, cache); }
+    const hit = cache.get(side);
+    if (hit?.key === key) return hit.promise;
+    const promise = (async () => {
+        if (dataType === 'DICOM') {
+            // The DICOM template is already the serialized DICOM XML (Open
+            // File converted the binary), so build the tree from it directly.
+            // Re-serializing would fail — the engine's DICOM serialize expects
+            // raw binary, not the XML form.
+            try { return xmlTree(tmpl, varName); } catch { return null; }
+        }
+        const ser = await serializeTemplate(dataType, props.serializationProperties || {}, tmpl).catch(() => null);
+        if (!ser || ser.text == null) return null;
+        try {
+            return ser.format === 'json' ? jsonTree(ser.text, varName) : xmlTree(ser.text, varName, ser.meta);
+        } catch { return null; }
+    })();
+    // A failed load is retried on the next request (the engine may come back).
+    promise.then((nodes: any) => { if (!nodes && cache!.get(side)?.promise === promise) cache!.delete(side); });
+    // Keep only the latest template on each side, including in-flight loads.
+    cache.set(side, { key, promise });
+    return promise;
+}
 
 /* ---- element grid (top pane, classic grid) ------------------------------------ */
 
@@ -397,7 +470,7 @@ function elementNameOf(isFilter: any, el: any) {
    from per-keystroke commits never remount the inline inputs (focus survives).
    Clicks on the inline controls stay off the row handler so editing never
    changes the selection (Swing parity: select via the other cells). */
-function GridRow({ el, path, depth, isFilter, selected, typeOptions, onSelect, onCommit, onChangeType }: any) {
+function GridRow({ el, path, depth, isFilter, selected, typeOptions, canEdit, reorder, onSelect, onCommit, onChangeType }: any) {
     const idx = path[path.length - 1];
     const def = typeDefFor(isFilter, el.__type);
     const stop = (e: any) => e.stopPropagation();
@@ -405,8 +478,9 @@ function GridRow({ el, path, depth, isFilter, selected, typeOptions, onSelect, o
         ? typeOptions
         : [{ value: el.__type, label: oie.elementTypeLabel(el.__type) }, ...typeOptions];
     return (
-        <tr className={'cursor-pointer' + (selected ? ' selected' : '')} data-path={path.join('.')}
-            onClick={() => onSelect(path)}>
+        <tr className={'cursor-pointer' + (selected ? ' selected' : '') + reorder.dropClass(path)} data-path={path.join('.')}
+            onClick={() => onSelect(path)} {...reorder.dropProps(path)}>
+            <td className="mt-handle" title={canEdit ? 'Drag to reorder' : undefined} aria-label={`Move step ${path.map((i: number) => i + 1).join('.')}`} {...reorder.dragProps(path)}>{canEdit ? '⋮⋮' : ''}</td>
             <td className="text-center">
                 <input type="checkbox" checked={el.enabled !== false} onClick={stop}
                     onChange={(e: any) => { el.enabled = e.target.checked; onCommit(); }} />
@@ -442,7 +516,8 @@ function GridRow({ el, path, depth, isFilter, selected, typeOptions, onSelect, o
 }
 
 function ElementsGrid({ kind, isFilter, elements, selectedPath, typeOptions, canEdit,
-    onSelect, onCommit, onChangeType, onAdd, onImport }: any) {
+    onSelect, onCommit, onChangeType, onAdd, onImport, onMove }: any) {
+    const reorder = useStepReorder(canEdit, onMove);
     if (!elements.length) {
         // Empty landing state (matches the Alerts view): icon + title + the
         // two ways in, gated like their task-pane twins (channelEdit/doSaveChannel).
@@ -468,6 +543,7 @@ function ElementsGrid({ kind, isFilter, elements, selectedPath, typeOptions, can
         <table className="dt">
             <thead>
                 <tr>
+                    <th className="w-[24px]" aria-label="Move" />
                     <th className="w-[58px]">Enabled</th>
                     <th className="w-[32px]">#</th>
                     {isFilter && <th className="w-[81px]">Operator</th>}
@@ -479,9 +555,198 @@ function ElementsGrid({ kind, isFilter, elements, selectedPath, typeOptions, can
                 {flattenRows(elements, [], 0, []).map(({ el, path, depth }: any) => (
                     <GridRow key={path.join('.')} el={el} path={path} depth={depth}
                         isFilter={isFilter} selected={pathEquals(path, selectedPath)}
-                        typeOptions={typeOptions}
+                        typeOptions={typeOptions} canEdit={canEdit} reorder={reorder}
                         onSelect={onSelect} onCommit={onCommit} onChangeType={onChangeType} />
                 ))}
+            </tbody>
+        </table>
+    );
+}
+
+/* ---- mapping table (transformers: the step list as a table) -------------------
+   The same ordered step list as the grid, drawn as Set / Value / Default /
+   Replacements / Preview columns for Mapper and Message Builder steps. Other
+   steps keep their place as name rows; Iterator children stay nested. Row
+   order IS step order (persist() renumbers sequenceNumber from it), so
+   selection, the bottom Step editor and the context menu work as in the grid.
+   Rows drag to reorder within their own list; a move that makes a step read a
+   variable before the step that sets it asks first. */
+
+const STEP_FLAVOR = 'application/x-oie-step';
+
+const stepNumber = (path: any) => path.map((i: number) => i + 1).join('.');
+
+// Short form of a value expression: the last path segment of a msg/tmp path.
+function exprSummary(expr: any, showRoot = false) {
+    const s = String(expr ?? '').trim();
+    if (!s) return '';
+    const path = /^(?:msg|tmp)(?:\[(?:'(?:[^'\\]|\\.)*'|\d+|[A-Za-z_$][\w$]*)\])+(?:\.toString\(\))?$/.test(s)
+        ? s.replace(/\.toString\(\)\s*$/, '').match(/\[('(?:[^'\\]|\\.)*'|\d+|[A-Za-z_$][\w$]*)\]/g) : null;
+    if (path && path.length) {
+        const last = path[path.length - 1].slice(1, -1);
+        return `${s.startsWith('tmp') ? 'tmp › ' : showRoot ? 'msg › ' : ''}${last.startsWith("'") ? last.slice(1, -1) : `[${last}]`}`;
+    }
+    return s;
+}
+
+const SCOPE_LABELS: any = {
+    CONNECTOR: 'Connector', CHANNEL: 'Channel', GLOBAL_CHANNEL: 'Global Channel', GLOBAL: 'Global', RESPONSE: 'Response'
+};
+const MAP_LABELS: any = {
+    $c: 'Channel', $co: 'Connector', $gc: 'Global Channel', $g: 'Global', $r: 'Response', $s: 'Source', $cfg: 'Configuration', $: 'Any map'
+};
+const MAP_READ_RE = /^(\$(?:gc|co|cfg|g|c|r|s)?)\(\s*'((?:[^'\\]|\\.)*)'\s*\)$/;
+
+// Field names by path. Repetition indices do not change a field's name.
+const nameKey = (expr: any) => String(expr ?? '').trim().replace(/\.toString\(\)\s*$/, '').replace(/\[(?:\d+|[A-Za-z_$][\w$]*)\]/g, '');
+function addFieldNames(nodes: any, out: Map<string, string>, parent?: any) {
+    for (const node of nodes || []) {
+        // A lone .1 component is the field itself, as in the Message Trees rows.
+        const lone = parent?.children.length === 1 && node.name === `${parent.name}.1` && !node.children.length;
+        const desc = (lone && parent.desc) || node.desc;
+        if (desc) out.set(nameKey(node.accessor), desc);
+        addFieldNames(node.children, out, node);
+    }
+    return out;
+}
+
+function FieldLabel({ label, name }: any) {
+    return <>{label}{name ? <span className="mt-sub">{name}</span> : null}</>;
+}
+
+function MappingValue({ expr, names }: any) {
+    const text = String(expr ?? '').trim();
+    if (!text || literalString(text) === '') return <span className="mt-none">No value</span>;
+    const read = MAP_READ_RE.exec(text);
+    if (read) return <FieldLabel label={read[2]} name={MAP_LABELS[read[1]]} />;
+    const label = exprSummary(text, true);
+    return label !== text ? <FieldLabel label={label} name={names.get(nameKey(text))} />
+        : <span className={literalString(text) === null ? 'mt-code' : undefined}>{text}</span>;
+}
+
+/* Drag a row's handle to move it within its own list. */
+function useStepReorder(canEdit: boolean, onMove: (from: any, to: any, after: boolean) => void) {
+    const [dropAt, setDropAt] = useState<any>(null);   // { key, after }
+    const dragFrom = useRef<any>(null);
+    const sameList = (a: any, b: any) => a.length === b.length && pathEquals(a.slice(0, -1), b.slice(0, -1));
+    const dragProps = (path: any) => canEdit ? {
+        draggable: true,
+        onDragStart: (e: any) => {
+            dragFrom.current = path;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData(STEP_FLAVOR, path.join('.'));
+        },
+        onDragEnd: () => { dragFrom.current = null; setDropAt(null); }
+    } : {};
+    const dropProps = (path: any) => ({
+        onDragOver: (e: any) => {
+            const from = dragFrom.current;
+            if (!from || !sameList(from, path)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const r = e.currentTarget.getBoundingClientRect();
+            const after = e.clientY > r.top + r.height / 2;
+            const key = path.join('.');
+            if (!dropAt || dropAt.key !== key || dropAt.after !== after) setDropAt({ key, after });
+        },
+        onDrop: (e: any) => {
+            const from = dragFrom.current;
+            if (!from || !sameList(from, path)) return;
+            e.preventDefault();
+            const r = e.currentTarget.getBoundingClientRect();
+            const after = e.clientY > r.top + r.height / 2;
+            dragFrom.current = null;
+            setDropAt(null);
+            onMove(from, path, after);
+        }
+    });
+    const dropClass = (path: any) => dropAt && dropAt.key === path.join('.') ? (dropAt.after ? ' mt-drop-after' : ' mt-drop-before') : '';
+    return { dragProps, dropProps, dropClass };
+}
+
+function MappingTable({ isFilter, elements, selectedPath, target, canEdit, onSelect, onCommit, onMove }: any) {
+    const rows = flattenRows(elements, [], 0, []);
+    const warnings = orderWarnings(rows.map((r: any) => r.el));
+    const [names, setNames] = useState<Map<string, string>>(() => new Map());
+    const namesKey = messageTreeKey(target, 'inbound') + messageTreeKey(target, 'outbound');
+
+    useEffect(() => {
+        let alive = true;
+        Promise.all(['inbound', 'outbound'].map(side => loadMessageTree(target, side as any).catch(() => null))).then(trees => {
+            if (alive) setNames(trees.reduce((out, nodes) => addFieldNames(nodes, out), new Map()));
+        });
+        return () => { alive = false; };
+    }, [target, namesKey]);
+
+    const reorder = useStepReorder(canEdit, onMove);
+
+    const warningTags = (w: any[]) => w.map((x: any) => (
+        <span key={x.name} className="tag amber ml-1.5"
+            title={`Reads ${x.name} before step ${stepNumber(rows[x.setBy].path)} sets it`}>
+            {`${x.name} set later (step ${stepNumber(rows[x.setBy].path)})`}
+        </span>
+    ));
+
+    return (
+        <table className="dt map-table">
+            <thead>
+                <tr>
+                    <th className="w-[24px]" aria-label="Move" />
+                    <th className="w-[30px]" aria-label="Enabled" />
+                    <th className="w-[40px]">#</th>
+                    <th className="w-[17%]">Name</th>
+                    <th className="w-[116px]">Type</th>
+                    <th>From</th>
+                    <th>To</th>
+                    <th className="w-[12%]">Default</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows.map(({ el, path, depth }: any, i: number) => {
+                    const key = path.join('.');
+                    const isMap = el.__type === MAPPER_TYPE || el.__type === MSGBUILDER_TYPE;
+                    const def = typeDefFor(isFilter, el.__type);
+                    const typeLabel = def ? def.label : oie.elementTypeLabel(el.__type);
+                    const w = warnings[i];
+                    const pad = { paddingLeft: `${8 + depth * 16}px` };
+                    return (
+                        <tr key={key} data-path={key}
+                            className={'cursor-pointer' + (isMap ? '' : ' mt-other') + (isIteratorType(el.__type) ? ' mt-group' : '') + (pathEquals(path, selectedPath) ? ' selected' : '') + reorder.dropClass(path)}
+                            onClick={() => onSelect(path)} {...reorder.dropProps(path)}>
+                            <td className="mt-handle" title={canEdit ? 'Drag to reorder' : undefined} aria-label={`Move step ${stepNumber(path)}`} {...reorder.dragProps(path)}>{canEdit ? '⋮⋮' : ''}</td>
+                            <td className="text-center">
+                                <input type="checkbox" checked={el.enabled !== false} disabled={!canEdit}
+                                    aria-label={`Step ${stepNumber(path)} enabled`}
+                                    onClick={(e: any) => e.stopPropagation()}
+                                    onChange={(e: any) => { el.enabled = e.target.checked; onCommit(); }} />
+                            </td>
+                            <td className="num">{stepNumber(path)}</td>
+                            <td className="mt-cell" style={pad} title={el.name || ''}>{el.name || ''}</td>
+                            <td className="mt-cell" title={typeLabel}>{typeLabel}</td>
+                            {isMap ? (
+                                <>
+                                    <td className={'mono mt-cell' + (w.length ? ' mt-warned' : '')} title={el.mapping || ''}>
+                                        <MappingValue expr={el.mapping} names={names} />
+                                        {warningTags(w)}
+                                    </td>
+                                    <td className="mono mt-cell" title={el.__type === MAPPER_TYPE ? el.variable : el.messageSegment}>
+                                        {el.__type === MAPPER_TYPE
+                                            ? (el.variable ? <FieldLabel label={el.variable} name={SCOPE_LABELS[el.scope || 'CHANNEL']} /> : <span className="mt-none">No variable</span>)
+                                            : (el.messageSegment ? <FieldLabel label={exprSummary(el.messageSegment, true)} name={names.get(nameKey(el.messageSegment))} /> : <span className="mt-none">No target</span>)}
+                                    </td>
+                                    <td className="mono mt-cell" title={el.defaultValue || ''}>{el.defaultValue || ''}</td>
+                                </>
+                            ) : (
+                                <td colSpan={3} className={'mt-cell' + (w.length ? ' mt-warned' : '')}>
+                                    {isIteratorType(el.__type) && el.properties && el.properties.target
+                                        ? <span className="mono">{`for each ${el.properties.target}`}</span>
+                                        : null}
+                                    {warningTags(w)}
+                                </td>
+                            )}
+                        </tr>
+                    );
+                })}
             </tbody>
         </table>
     );
@@ -491,12 +756,13 @@ function ElementsGrid({ kind, isFilter, elements, selectedPath, typeOptions, can
    The plugin editor is an imperative island: mountReact's flushSync render is
    bracketed with the `settling` flag (via settlingRef) so plugins that
    onChange() defaults during mount don't mark the channel dirty. The island
-   remounts only when the selected ELEMENT (identity or type) changes — never
-   on rev bumps, so plugin editor state (Monaco etc.) survives grid edits. */
-function StepEditorPanel({ kind, isFilter, element, headerIndex, settlingRef, onChange, onReplaceElement, destinations }: any) {
+   remounts when the selected element or its message/iterator context changes,
+   so plugin editor state (Monaco etc.) survives ordinary grid edits. */
+function StepEditorPanel({ kind, isFilter, element, headerIndex, settlingRef, onChange, onReplaceElement, destinations, stepTools, templateKey }: any) {
     const hostRef = useRef<any>(null);
     const def = element ? typeDefFor(isFilter, element.__type) : null;
     const hasComponent = !!(def && typeof def.component === 'function');
+    const contextKey = JSON.stringify(stepTools?.iteratorContext(element) || []);
 
     useEffect(() => {
         if (!element || !hasComponent) return undefined;
@@ -514,7 +780,16 @@ function StepEditorPanel({ kind, isFilter, element, headerIndex, settlingRef, on
         try {
             teardown = mountReact(host,
                 <SettleGuard settlingRef={settlingRef}>
-                    <PluginSlot def={def} ctx={{ element, platform, onChange, destinations }} />
+                    <PluginSlot def={def} ctx={{
+                        element, platform, onChange, destinations,
+                        ...(stepTools ? {
+                            messageTree: stepTools.messageTree,
+                            MessageFieldPicker: stepTools.MessageFieldPicker,
+                            previewMapping: (step: any, options?: MappingPreviewOptions) => stepTools.previewMapping(element, step, options),
+                            iteratorContext: () => stepTools.iteratorContext(element),
+                            variables: () => stepTools.variablesExcept(element)
+                        } : null)
+                    }} />
                 </SettleGuard>);
         } catch (e: any) {
             settlingRef.current = false;
@@ -528,9 +803,10 @@ function StepEditorPanel({ kind, isFilter, element, headerIndex, settlingRef, on
             settlingRef.current = false;   // unmounted before the render flushed
             try { teardown(); } catch { /* ignore */ }
         };
-        // Remount on the element itself (selection/type change), not on repaints.
+        // Refresh template-backed pickers/previews when their inputs change.
+        // Ordinary step edits do not remount the plugin or lose its drafts.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [element, element && element.__type]);
+    }, [element, element && element.__type, contextKey, templateKey]);
 
     if (!element) {
         return (
@@ -1003,57 +1279,11 @@ function copyAccessor(text: string) {
     navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard'), () => toast('Clipboard unavailable', 'warn'));
 }
 
-function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef, onAddStep }: any) {
-    const [parse, setParse] = useState<any>({ status: 'idle' });   // idle | parsing | ready | failed | empty
-    const [collapsed, setCollapsed] = useState<Set<string>>(NO_KEYS);
+/* The parts both message tree views share: the right panel and the step
+   editor's field picker draw the same bar, columns and table. */
+function useTreeKeys(query: string, initial: () => Set<string> = () => NO_KEYS) {
+    const [collapsed, setCollapsed] = useState<Set<string>>(initial);
     const [filterCollapsed, setFilterCollapsed] = useState<any>({ q: '', keys: NO_KEYS });
-    const [selected, setSelected] = useState<any>(null);
-
-    const template = target[`${side}Template`];
-    const dataType = target[`${side}DataType`] || 'RAW';
-    const props = target[`${side}Properties`] || {};
-    const dtLabel = (dataTypeDef(dataType) || { label: dataType }).label;
-    const regionLabel = `${side === 'inbound' ? 'Inbound' : 'Outbound'} message tree (${varName})`;
-
-    useEffect(() => {
-        if (template == null || String(template).trim() === '') { setParse({ status: 'empty' }); return undefined; }
-        let stale = false;
-        setParse({ status: 'parsing' });
-        const tmpl = String(template);
-        // The engine serializes the template through its own datatype serializers
-        // (byte-exact, all data types, strict + non-strict); the tree is built from
-        // that output. No local parsing — this depends on the connected engine.
-        (async () => {
-            let nodes: any = null;
-            if (dataType === 'DICOM') {
-                // The DICOM template is already the serialized DICOM XML (Open
-                // File converted the binary), so build the tree from it directly.
-                // Re-serializing would fail — the engine's DICOM serialize expects
-                // raw binary, not the XML form.
-                try { nodes = xmlTree(tmpl, varName); } catch { nodes = null; }
-            } else {
-                const ser = await serializeTemplate(dataType, props.serializationProperties || {}, tmpl).catch(() => null);
-                if (ser && ser.text != null) {
-                    try {
-                        nodes = ser.format === 'json' ? jsonTree(ser.text, varName) : xmlTree(ser.text, varName, ser.meta);
-                    } catch { nodes = null; }
-                }
-            }
-            if (stale) return;
-            if (!nodes) { setParse({ status: 'failed' }); return; }
-            // Like the Swing tree, only the message root starts expanded.
-            const rows = messageRows(nodes[0], side, dataType === 'HL7V2');
-            const keys = branchKeys(rows);
-            if (rows[0]?.node === nodes[0]) keys.delete(rows[0].key);
-            setCollapsed(keys);
-            setParse({ status: 'ready', root: nodes[0], rows });
-        })();
-        return () => { stale = true; };
-        // The template/type/props live on the mutable target; the section mounts
-        // fresh per side-tab activation, which is when the tree re-reads them.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
     // A filter expands every match; twisties then fold that filtered view only.
     const q = query.trim().toLowerCase();
     const openKeys = q ? (filterCollapsed.q === q ? filterCollapsed.keys : NO_KEYS) : collapsed;
@@ -1065,12 +1295,199 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
     const setBranches = (rows: any[], open: boolean) => updateKeys(keys => {
         for (const key of branchKeys(rows)) { if (open) keys.delete(key); else keys.add(key); }
     });
+    return { q, openKeys, updateKeys, setBranches, setCollapsed };
+}
+
+// Like the Swing tree, only the message root starts expanded.
+function initialKeys(rows: any[], root: any) {
+    const keys = branchKeys(rows);
+    if (rows[0]?.node === root) keys.delete(rows[0].key);
+    return keys;
+}
+
+function MessageTreeBar({ side, onSide, query, onQuery, hideEmpty, onHideEmpty }: any) {
+    return (
+        <div className="mt-bar">
+            {onSide ? <SegPill label="Message template" value={side} onChange={onSide} options={[
+                { value: 'inbound', label: 'Inbound', title: 'Inbound message template (msg)' },
+                { value: 'outbound', label: 'Outbound', title: 'Outbound message template (tmp)' }
+            ]} /> : null}
+            <input type="text" placeholder="Filter fields…" aria-label="Filter fields" value={query}
+                onChange={(e: any) => onQuery(e.target.value)} />
+            <button type="button" className="icon-btn" aria-pressed={hideEmpty}
+                title={hideEmpty ? 'Show empty fields' : 'Hide empty fields'} aria-label="Hide empty fields"
+                onClick={() => onHideEmpty((v: boolean) => !v)}><Icon name={hideEmpty ? 'eyeOff' : 'eye'} size={14} /></button>
+        </div>
+    );
+}
+
+function treeColumns(rows: any[], onMore?: (row: any, rect: DOMRect) => void) {
+    const hasNames = (function anyDesc(list: any[]): boolean {
+        return list.some((r: any) => r.desc || anyDesc(r.children));
+    })(rows);
+    const valueText = (row: any) => {
+        if (row.count) {
+            const noun = row.count.total === 1 ? 'field' : 'fields';
+            return row.count.filled === row.count.total ? `${row.count.total} ${noun}` : `${row.count.filled} of ${row.count.total} ${noun}`;
+        }
+        return row.value ?? '';
+    };
+    return [
+        {
+            key: 'field', label: 'Field', tree: true,
+            render: (row: any) => <span className="mono" title={row.source.accessor}>{row.field}</span>
+        },
+        ...(hasNames ? [{ key: 'name', label: 'Name', render: (row: any) => <span title={row.desc || undefined}>{row.desc}</span> }] : []),
+        {
+            key: 'value', label: 'Sample value',
+            render: (row: any) => (
+                <span className="mt-value">
+                    <span className={'mt-text' + (row.count ? ' mt-count' : row.joined ? ' mt-joined' : '')}
+                        title={row.count ? undefined : (row.value || undefined)}>{valueText(row)}</span>
+                    {onMore ? <button type="button" className="mt-more" aria-label={`Actions for ${row.field}`} title="Actions"
+                        // Enter/Space press the button; the treegrid would take them as row keys.
+                        onKeyDown={(e: any) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
+                        onClick={(e: any) => {
+                            e.stopPropagation();
+                            onMore(row, e.currentTarget.getBoundingClientRect());
+                        }}>⋯</button> : null}
+                </span>
+            )
+        }
+    ];
+}
+
+function MessageTreeTable({ rows, root, varName, dtLabel, keys, hideEmpty, rootProps, onMore, selectedKey, onSelect, tableProps, foot }: any) {
+    const { q, openKeys, updateKeys, setBranches } = keys;
+    const matches = (hideEmpty || q)
+        ? (row: any) => (!hideEmpty || !row.empty) && (!q || rowText(row).includes(q))
+        : undefined;
+    return (
+        <>
+            <div className="mt-root">
+                <span className="mt-root-label" {...rootProps}>{root.label !== varName ? root.label : dtLabel}</span>
+                <button type="button" className="icon-btn" title="Expand All" aria-label="Expand all"
+                    onClick={() => setBranches(rows, true)}><Icon name="plus" size={14} /></button>
+                <button type="button" className="icon-btn" title="Collapse All" aria-label="Collapse all"
+                    onClick={() => setBranches(rows, false)}><Icon name="minus" size={14} /></button>
+            </div>
+            <div className="mt-table">
+                <TreeTable
+                    data={rows}
+                    columns={treeColumns(rows, onMore)}
+                    getChildren={(row: any) => row.children}
+                    rowKey={(row: any) => row.key}
+                    rowClassName={(row: any) => [row.group ? 'group-row' : '', row.empty ? 'mt-empty' : ''].filter(Boolean).join(' ')}
+                    autoGroupRow={false}
+                    selectedKey={selectedKey}
+                    onSelect={onSelect}
+                    matches={matches}
+                    collapsedKeys={openKeys}
+                    onToggleCollapse={(key: any) => updateKeys((open: Set<string>) => { if (open.has(key)) open.delete(key); else open.add(key); })}
+                    columnsKey="ft-message-tree"
+                    columnWidths={{ field: 124, name: 150 }}
+                    pinnedKeys={['field', 'value']}
+                    emptyText={q ? 'No matching fields' : 'No fields'}
+                    {...tableProps} />
+            </div>
+            <div className="mt-foot">{foot}</div>
+        </>
+    );
+}
+
+const pathKey = (accessor: any) => String(accessor ?? '').replace(/\.toString\(\)\s*$/, '');
+
+// The rows from the top of the tree down to the row that reads this path.
+function rowTrail(rows: any[], accessor: string): any[] {
+    for (const row of rows) {
+        if (pathKey(row.source.accessor) === accessor) return [row];
+        const below = rowTrail(row.children, accessor);
+        if (below.length) return [row, ...below];
+    }
+    return [];
+}
+
+function FieldPickerTree({ nodes, side, varName, hl7, dtLabel, value, query, hideEmpty, onPick }: any) {
+    const rows = useMemo(() => messageRows(nodes[0], side, hl7), [nodes, side, hl7]);
+    const trail = rowTrail(rows, pathKey(value));
+    const keys = useTreeKeys(query, () => {
+        const closed = initialKeys(rows, nodes[0]);
+        for (const row of trail) closed.delete(row.key);
+        return closed;
+    });
+    const current = trail[trail.length - 1];
+    return (
+        <MessageTreeTable rows={rows} root={nodes[0]} varName={varName} dtLabel={dtLabel} keys={keys} hideEmpty={hideEmpty}
+            selectedKey={current ? current.key : null} onSelect={(row: any) => onPick(row.source)}
+            foot={current
+                ? <code title={current.source.accessor}>{current.source.accessor}</code>
+                : 'Select a row to use its field.'} />
+    );
+}
+
+/* The step editor's field picker (ctx.MessageFieldPicker). `nodes` is undefined
+   while loading and null when the template is unavailable. */
+function MessageFieldPicker({ target, side, onSide, nodes, value, onPick, onRetry }: any) {
+    const [query, setQuery] = useState('');
+    const [hideEmpty, setHideEmpty] = useState(false);
+    const dataType = target[`${side}DataType`] || 'RAW';
+    return (
+        <div className="mtree">
+            <MessageTreeBar side={side} onSide={onSide} query={query} onQuery={setQuery} hideEmpty={hideEmpty} onHideEmpty={setHideEmpty} />
+            {nodes?.length ? (
+                <section className="mt-section" aria-label={`${side === 'inbound' ? 'Inbound' : 'Outbound'} fields`}>
+                    <FieldPickerTree key={side} nodes={nodes} side={side} varName={side === 'inbound' ? 'msg' : 'tmp'}
+                        hl7={dataType === 'HL7V2'} dtLabel={(dataTypeDef(dataType) || { label: dataType }).label}
+                        value={value} query={query} hideEmpty={hideEmpty} onPick={onPick} />
+                </section>
+            ) : (
+                <div className="mt-note">
+                    {nodes === undefined ? 'Loading template fields…' : nodes ? 'No fields' : 'Template unavailable. Add or check it in Message Templates.'}
+                    {nodes === null && onRetry ? <div><button type="button" className="btn btn-sm" onClick={onRetry}>Retry fields</button></div> : null}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef, onAddStep }: any) {
+    const [answer, setParse] = useState<any>(null);
+    const [retry, retryTree] = useReducer((x: number) => x + 1, 0);
+    const keys = useTreeKeys(query);
+    const [selected, setSelected] = useState<any>(null);
+
+    const template = target[`${side}Template`];
+    const dataType = target[`${side}DataType`] || 'RAW';
+    const dtLabel = (dataTypeDef(dataType) || { label: dataType }).label;
+    const regionLabel = `${side === 'inbound' ? 'Inbound' : 'Outbound'} message tree (${varName})`;
+    const key = messageTreeKey(target, side);
+    const empty = template == null || String(template).trim() === '';
+    const parse = answer?.key === key ? answer : { status: empty ? 'empty' : 'parsing' };
+
+    useEffect(() => {
+        if (empty) { setParse({ key, status: 'empty' }); return undefined; }
+        let stale = false;
+        setParse({ key, status: 'parsing' });
+        loadMessageTree(target, side).then((nodes: any) => {
+            if (stale) return;
+            if (!nodes) { setParse({ key, status: 'failed' }); return; }
+            // Like the Swing tree, only the message root starts expanded.
+            const rows = messageRows(nodes[0], side, dataType === 'HL7V2');
+            keys.setCollapsed(initialKeys(rows, nodes[0]));
+            setSelected(null);
+            setParse({ key, status: 'ready', root: nodes[0], rows });
+        });
+        return () => { stale = true; };
+        // The host notifies this separate root when the mutable target changes.
+        // Keying the answer also hides stale fields before effect cleanup runs.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [target, side, key, retry]);
 
     const menuItems = (node: any, source: any, rows: any[]) => {
         const items: any[] = [];
         if (branchKeys(rows).size) {
-            items.push({ label: 'Expand All', onClick: () => setBranches(rows, true) },
-                { label: 'Collapse All', onClick: () => setBranches(rows, false) }, '-');
+            items.push({ label: 'Expand All', onClick: () => keys.setBranches(rows, true) },
+                { label: 'Collapse All', onClick: () => keys.setBranches(rows, false) }, '-');
         }
         const name = String(node.label || 'value');
         const lval = source.accessor.replace(/\.toString\(\)\s*$/, '');   // assignment target, not a read
@@ -1097,50 +1514,16 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
                 <div className="mt-note">
                     {parse.status === 'empty' && '(no template — set one on the Message Templates tab)'}
                     {(parse.status === 'parsing' || parse.status === 'idle') && 'Parsing…'}
-                    {parse.status === 'failed' && `Could not build the message tree — the engine could not serialize this ${dtLabel} template.`}
+                    {parse.status === 'failed' && <>
+                        {`Could not build the message tree — the engine could not serialize this ${dtLabel} template.`}
+                        <button type="button" className="btn btn-sm" onClick={retryTree}>Retry {varName} fields</button>
+                    </>}
                 </div>
             </section>
         );
     }
 
     const { root, rows } = parse;
-    const matches = (hideEmpty || q)
-        ? (row: any) => (!hideEmpty || !row.empty) && (!q || rowText(row).includes(q))
-        : undefined;
-    const hasNames = (function anyDesc(list: any[]): boolean {
-        return list.some((r: any) => r.desc || anyDesc(r.children));
-    })(rows);
-    const valueText = (row: any) => {
-        if (row.count) {
-            const noun = row.count.total === 1 ? 'field' : 'fields';
-            return row.count.filled === row.count.total ? `${row.count.total} ${noun}` : `${row.count.filled} of ${row.count.total} ${noun}`;
-        }
-        return row.value ?? '';
-    };
-    const columns = [
-        {
-            key: 'field', label: 'Field', tree: true,
-            render: (row: any) => <span className="mono" title={row.source.accessor}>{row.field}</span>
-        },
-        ...(hasNames ? [{ key: 'name', label: 'Name', render: (row: any) => <span title={row.desc || undefined}>{row.desc}</span> }] : []),
-        {
-            key: 'value', label: 'Sample value',
-            render: (row: any) => (
-                <span className="mt-value">
-                    <span className={'mt-text' + (row.count ? ' mt-count' : row.joined ? ' mt-joined' : '')}
-                        title={row.count ? undefined : (row.value || undefined)}>{valueText(row)}</span>
-                    <button type="button" className="mt-more" aria-label={`Actions for ${row.field}`} title="Actions"
-                        // Enter/Space press the button; the treegrid would take them as row keys.
-                        onKeyDown={(e: any) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
-                        onClick={(e: any) => {
-                            e.stopPropagation();
-                            const r = e.currentTarget.getBoundingClientRect();
-                            rowMenu(row, r.left, r.bottom + 2);
-                        }}>⋯</button>
-                </span>
-            )
-        }
-    ];
     const rootMenu = (e: any) => {
         e.preventDefault();
         contextMenu(e.clientX, e.clientY, menuItems(root, root, rows));
@@ -1148,46 +1531,22 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
 
     return (
         <section className="mt-section" style={{ display: hidden ? 'none' : undefined }} aria-label={regionLabel}>
-            <div className="mt-root">
-                <span className="mt-root-label" title={`Drag into a script editor: ${root.accessor}`}
-                    {...accessorDragProps(dragRef, root.accessor)} onContextMenu={rootMenu}>
-                    {root.label !== varName ? root.label : dtLabel}
-                </span>
-                <button type="button" className="icon-btn" title="Expand All" aria-label="Expand all"
-                    onClick={() => setBranches(rows, true)}><Icon name="plus" size={14} /></button>
-                <button type="button" className="icon-btn" title="Collapse All" aria-label="Collapse all"
-                    onClick={() => setBranches(rows, false)}><Icon name="minus" size={14} /></button>
-            </div>
-            <div className="mt-table">
-                <TreeTable
-                    data={rows}
-                    columns={columns}
-                    getChildren={(row: any) => row.children}
-                    rowKey={(row: any) => row.key}
-                    rowClassName={(row: any) => [row.group ? 'group-row' : '', row.empty ? 'mt-empty' : ''].filter(Boolean).join(' ')}
-                    autoGroupRow={false}
-                    selectedKey={selected ? selected.key : null}
-                    onSelect={(row: any) => setSelected(row)}
-                    onRowContextMenu={(row: any, e: any) => { e.preventDefault(); rowMenu(row, e.clientX, e.clientY); }}
-                    rowDraggable={() => true}
-                    onRowDragStart={(row: any, e: any) => accessorDragProps(dragRef, row.source.accessor).onDragStart(e)}
-                    onRowDragEnd={() => { dragRef.current = null; }}
-                    matches={matches}
-                    collapsedKeys={openKeys}
-                    onToggleCollapse={(key: any) => updateKeys(keys => { if (keys.has(key)) keys.delete(key); else keys.add(key); })}
-                    columnsKey="ft-message-tree"
-                    columnWidths={{ field: 124, name: 150 }}
-                    pinnedKeys={['field', 'value']}
-                    emptyText={q ? 'No matching fields' : 'No fields'} />
-            </div>
-            <div className="mt-foot">
-                {selected
+            <MessageTreeTable rows={rows} root={root} varName={varName} dtLabel={dtLabel} keys={keys} hideEmpty={hideEmpty}
+                rootProps={{ title: `Drag into a script editor: ${root.accessor}`, ...accessorDragProps(dragRef, root.accessor), onContextMenu: rootMenu }}
+                onMore={(row: any, r: any) => rowMenu(row, r.left, r.bottom + 2)}
+                selectedKey={selected ? selected.key : null} onSelect={setSelected}
+                tableProps={{
+                    onRowContextMenu: (row: any, e: any) => { e.preventDefault(); rowMenu(row, e.clientX, e.clientY); },
+                    rowDraggable: () => true,
+                    onRowDragStart: (row: any, e: any) => accessorDragProps(dragRef, row.source.accessor).onDragStart(e),
+                    onRowDragEnd: () => { dragRef.current = null; }
+                }}
+                foot={selected
                     ? <>
                         <code title={selected.source.accessor}>{selected.source.accessor}</code>
                         <button type="button" className="btn btn-sm" onClick={() => copyAccessor(selected.source.accessor)}>Copy</button>
                     </>
-                    : 'Drag a row into a script editor or field. Right-click a row for actions.'}
-            </div>
+                    : 'Drag a row into a script editor or field. Right-click a row for actions.'} />
         </section>
     );
 }
@@ -1198,17 +1557,7 @@ function TreesTab({ target, dragRef, onAddStep }: any) {
     const [hideEmpty, setHideEmpty] = useState(false);
     return (
         <div className="mtree">
-            <div className="mt-bar">
-                <SegPill label="Message template" value={side} onChange={setSide} options={[
-                    { value: 'inbound', label: 'Inbound', title: 'Inbound message template (msg)' },
-                    { value: 'outbound', label: 'Outbound', title: 'Outbound message template (tmp)' }
-                ]} />
-                <input type="text" placeholder="Filter fields…" aria-label="Filter fields" value={query}
-                    onChange={(e: any) => setQuery(e.target.value)} />
-                <button type="button" className="icon-btn" aria-pressed={hideEmpty}
-                    title={hideEmpty ? 'Show empty fields' : 'Hide empty fields'} aria-label="Hide empty fields"
-                    onClick={() => setHideEmpty(v => !v)}><Icon name={hideEmpty ? 'eyeOff' : 'eye'} size={14} /></button>
-            </div>
+            <MessageTreeBar side={side} onSide={setSide} query={query} onQuery={setQuery} hideEmpty={hideEmpty} onHideEmpty={setHideEmpty} />
             <TreeSection side="inbound" varName="msg" hidden={side !== 'inbound'} query={query} hideEmpty={hideEmpty}
                 target={target} dragRef={dragRef} onAddStep={onAddStep} />
             <TreeSection side="outbound" varName="tmp" hidden={side !== 'outbound'} query={query} hideEmpty={hideEmpty}
@@ -1225,6 +1574,7 @@ function TreesTab({ target, dragRef, onAddStep }: any) {
    MAIN tree (this is a separate root), so the flag is mirrored out through
    ctx.onSideCollapsed for the wrapper to follow. */
 function SidePanel({ ctx }: any) {
+    useSyncExternalStore(ctx.subscribe, ctx.getRevision);
     const [active, setActive] = useState(0);
     const [collapsed, setCollapsed] = useSideCollapse('ft-reference');
     const { isFilter } = ctx;
@@ -1326,6 +1676,12 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
 
     /* ---- state + execution-time mirrors ---- */
     const elementsRef = useRef(setupRef.current.elements);
+    const iteratorSnapshots = useRef<WeakMap<object, IteratorContext[]> | null>(null);
+    if (!iteratorSnapshots.current) {
+        iteratorSnapshots.current = new WeakMap();
+        for (const { el } of flattenRows(elementsRef.current, [], 0, []))
+            iteratorSnapshots.current.set(el, iteratorContextsFor(elementsRef.current, el));
+    }
     const mountedRef = useRef(true);
     const importingRef = useRef(false);
     useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
@@ -1334,7 +1690,19 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     const selectedPathRef = useRef(selectedPath);
     const setSelected = (path: any) => { selectedPathRef.current = path; setSelectedPathState(path); };
     const [rev, bump] = useReducer((x: any) => x + 1, 0);
+    const modelRevision = useRef(0);
+    const sideSubscribers = useRef(new Set<() => void>());
     const [bottomTab, setBottomTab] = useState(0);
+    // Transformers show the step list as the classic grid or the mapping table.
+    const stepViewKey = store.scopedKey('webadmin-transformer-step-view');
+    const [stepView, setStepViewState] = useState(() => {
+        if (isFilter) return 'list';
+        try { return localStorage.getItem(stepViewKey) === 'table' ? 'table' : 'list'; } catch { return 'list'; }
+    });
+    const setStepView = (v: any) => {
+        setStepViewState(v);
+        try { localStorage.setItem(stepViewKey, v); } catch { /* private mode */ }
+    };
     // True only while a step plugin's flushSync mount runs (see StepEditorPanel).
     const settlingRef = useRef(false);
     // Live accessor-drag token (reference rows / tree nodes → editors).
@@ -1371,11 +1739,26 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // channel editor reads, so unsaved step edits prompt on exit. The rev bump
     // repaints the grid and regenerates the script preview.
     function commit() {
+        if (!isFilter && !settlingRef.current) {
+            let review = false;
+            const bindings = (stack: IteratorContext[]) => JSON.stringify(stack.map(({ name: _name, target: _target, ...rest }) => rest));
+            // Preorder matters: changing an outer index first updates nested
+            // iterator targets/prefixes, then the paths of their children.
+            for (const { el } of flattenRows(elementsRef.current, [], 0, [])) {
+                const before = iteratorSnapshots.current!.get(el) || [];
+                const after = iteratorContextsFor(elementsRef.current, el);
+                if (bindings(before) !== bindings(after)) review = rebindIteratorStep(el, before, after) || review;
+                iteratorSnapshots.current!.set(el, after);
+            }
+            if (review) toast('Iterator context changed. Custom expressions were preserved; review their index variables.', 'warn');
+        }
         persist();
         if (settlingRef.current) return;            // plugin initialization, not a user edit
         store.setState('editingChannelDirty', true);
         onTasksChange();
         bump();
+        modelRevision.current++;
+        sideSubscribers.current.forEach(notify => notify());
     }
     const commitRef = useRef(commit);
     commitRef.current = commit;
@@ -1534,30 +1917,70 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                     h('div', def.label || oie.elementTypeLabel(type))));
             item.addEventListener('click', () => {
                 m.close();
-                const element = def.create ? def.create() : { __type: type, name: '', enabled: true };
-                if (!element.__type) element.__type = type;
-                // Match the Swing client: if an Iterator is selected, add the
-                // new element as its child; otherwise insert as a sibling right
-                // after the selection (or append to the top level if none).
-                const elements = elementsRef.current;
-                const selPath = selectedPathRef.current;
-                const sel = elementAtPath(elements, selPath);
-                if (sel && isIteratorType(sel.__type)) {
-                    childrenOf(sel).push(element);
-                    setSelected([...selPath!, childrenOf(sel).length - 1]);
-                } else if (selPath && selPath.length) {
-                    const list = listAtPath(elements, selPath);
-                    const idx = selPath[selPath.length - 1];
-                    list.splice(idx + 1, 0, element);
-                    setSelected([...selPath.slice(0, -1), idx + 1]);
-                } else {
-                    elements.push(element);
-                    setSelected([elements.length - 1]);
-                }
-                commitRef.current();
+                insertElement(type);
             });
             items.appendChild(item);
         }
+    }
+
+    function insertElement(type: any) {
+        const def = typeDef(type);
+        const element = def && def.create ? def.create() : { __type: type, name: '', enabled: true };
+        if (!element.__type) element.__type = type;
+        placeElement(element);
+    }
+
+    function placeElement(element: any) {
+        // Match the Swing client: if an Iterator is selected, add the
+        // new element as its child; otherwise insert as a sibling right
+        // after the selection (or append to the top level if none).
+        const elements = elementsRef.current;
+        const selPath = selectedPathRef.current;
+        const sel = elementAtPath(elements, selPath);
+        if (sel && isIteratorType(sel.__type)) {
+            childrenOf(sel).push(element);
+            setSelected([...selPath!, childrenOf(sel).length - 1]);
+        } else if (selPath && selPath.length) {
+            const list = listAtPath(elements, selPath);
+            const idx = selPath[selPath.length - 1];
+            list.splice(idx + 1, 0, element);
+            setSelected([...selPath.slice(0, -1), idx + 1]);
+        } else {
+            elements.push(element);
+            setSelected([elements.length - 1]);
+        }
+        commitRef.current();
+    }
+
+    // Mapping-table drag: move the step at `from` before/after the step at `to`
+    // (same list). Asks first when the move makes a step read a variable
+    // before the step that sets it.
+    async function moveRow(from: any, to: any, after: boolean) {
+        const elements = elementsRef.current;
+        const list = listAtPath(elements, from);
+        const el = elementAtPath(elements, from);
+        const anchor = elementAtPath(elements, to);
+        if (!list || !el || !anchor || el === anchor) return;
+        const beforeRows = flattenRows(elements, [], 0, []).map((r: any) => r.el);
+        const beforeWarnings = orderWarnings(beforeRows);
+        const before = new Map<any, Set<string>>(beforeRows.map((row: any, i: number): [any, Set<string>] => [row, new Set(beforeWarnings[i].map(w => w.name))]));
+        const original = list.slice();
+        list.splice(list.indexOf(el), 1);
+        list.splice(list.indexOf(anchor) + (after ? 1 : 0), 0, el);
+        const afterRows = flattenRows(elements, [], 0, []).map((r: any) => r.el);
+        const introduced = orderWarnings(afterRows).some((warnings, i) => warnings.some(w => !before.get(afterRows[i])?.has(w.name)));
+        if (introduced) {
+            list.splice(0, list.length, ...original);
+            const ok = await confirmDialog('Move Step',
+                'After this move, a step reads a variable before the step that sets it. Move anyway?',
+                { okLabel: 'Move Anyway' });
+            if (!ok || !mountedRef.current || listAtPath(elementsRef.current, from) !== list
+                || list.indexOf(el) < 0 || list.indexOf(anchor) < 0) return;
+            list.splice(list.indexOf(el), 1);
+            list.splice(list.indexOf(anchor) + (after ? 1 : 0), 0, el);
+        }
+        setSelected(pathOf(el, elements));
+        commitRef.current();
     }
 
     // Convert a step/rule to another type in place, preserving its name, enabled
@@ -1654,6 +2077,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 Object.assign(target, imported);
                 elementsRef.current = cleaned;
             }
+            // Imported paths already encode the author's intent, including
+            // deliberately fixed targets within loops. Only subsequent changes
+            // to membership or iterator settings should rebind these paths.
+            for (const { el } of flattenRows(cleaned, [], 0, []))
+                iteratorSnapshots.current!.set(el, iteratorContextsFor(elementsRef.current, el));
             setSelected(elementsRef.current.length ? [0] : null);
             commitRef.current();
             toast(`Imported ${cleaned.length} ${kind.noun.toLowerCase()}${cleaned.length === 1 ? '' : 's'}`);
@@ -1788,8 +2216,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     }
 
     function moveIntoIterator(el: any, iterator: any) {
-        const selPath = selectedPathRef.current;
-        listAtPath(elementsRef.current, selPath).splice(selPath![selPath!.length! - 1], 1);
+        const elements = elementsRef.current;
+        const from = pathOf(el, elements), into = pathOf(iterator, elements);
+        if (!from || !into || pathEquals(from, into) || isAncestorPath(from, into)
+            || pathEquals(from.slice(0, -1), into)) return;
+        listAtPath(elements, from).splice(from[from.length - 1], 1);
         childrenOf(iterator).push(isFilter ? { ...el, operator: 'AND' } : el);
         setSelected(pathOf(iterator.__children[iterator.__children.length - 1], elementsRef.current));
         commitRef.current();
@@ -1835,9 +2266,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         el.name = baseName || label;
         el.enabled = true;
         setup(el);
-        elementsRef.current.push(el);
-        setSelected([elementsRef.current.length - 1]);
-        commitRef.current();
+        placeElement(el);
         toast(`Added ${label} "${el.name}"`);
     }
     const addTreeStepRef = useRef(addTreeStep);
@@ -1906,8 +2335,39 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         };
     }
 
+    // Transformer step editors (and the mapping table) read the message trees,
+    // the variables other steps set, and value previews. Filters have no trees.
+    const stepTools = useMemo(() => isFilter ? null : {
+        messageTree: (side: 'inbound' | 'outbound') => loadMessageTree(target, side === 'outbound' ? 'outbound' : 'inbound'),
+        MessageFieldPicker: (props: any) => <MessageFieldPicker target={target} {...props} />,
+        iteratorContext: (self: any) => iteratorContextsFor(elementsRef.current, self),
+        previewMapping: async (self: any, step: any, options?: MappingPreviewOptions) => {
+            const contexts = iteratorContextsFor(elementsRef.current, self);
+            const snapshot = { mapping: step?.mapping, defaultValue: step?.defaultValue,
+                replacements: replacementPairs(step?.replacements) };
+            const sampleOptions = { iteratorIndices: { ...options?.iteratorIndices } };
+            const nodes = await loadMessageTree(target, 'inbound');
+            if (JSON.stringify(contexts) !== JSON.stringify(iteratorContextsFor(elementsRef.current, self)))
+                throw new Error('Iterator context changed. Retry the preview.');
+            return previewMapping(snapshot, indexTree(nodes), contexts, sampleOptions);
+        },
+        variablesExcept: (self: any) => {
+            const out: Array<{ name: string; step: string }> = [];
+            for (const { el, path } of flattenRows(elementsRef.current, [], 0, [])) {
+                if (el === self) continue;
+                for (const name of variablesSet(el)) out.push({ name, step: path.map((i: number) => i + 1).join('.') });
+            }
+            return out;
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const onAccessorDragOver = useMemo(() => makeAccessorDragOver(dragRef), []);
-    const onAccessorDrop = useMemo(() => makeAccessorDrop(dragRef), []);
+    const onAccessorDrop = useMemo(() => makeAccessorDrop(dragRef, (token, event) => {
+        const element = elementAtPath(elementsRef.current, selectedPathRef.current);
+        return !isFilter && event.target.closest?.('.step-editor-fill')
+            ? iteratorExpression(token, iteratorContextsFor(elementsRef.current, element)) : token;
+    }), [isFilter]);
 
     apiRef.current = {
         taskState,
@@ -1950,6 +2410,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             target, version, connectorType, channel,
             dragRef,
             getElements: () => elementsRef.current,
+            getRevision: () => modelRevision.current,
+            subscribe: (notify: () => void) => {
+                sideSubscribers.current.add(notify);
+                return () => { sideSubscribers.current.delete(notify); };
+            },
             commit: () => commitRef.current(),
             onAddStep: (typeId: any, label: any, baseName: any, setup: any) => addTreeStepRef.current(typeId, label, baseName, setup),
             // The panel's collapse flag, mirrored onto the wrapper the MAIN tree
@@ -2027,13 +2492,39 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                         {/* Fills the pane so right-clicking anywhere in the step
                             area (not just on a row) opens the context menu. */}
                         <div className="min-h-full panel overflow-auto" onContextMenu={gridContextMenu}>
-                            <ElementsGrid kind={kind} isFilter={isFilter} elements={elements}
-                                selectedPath={selectedPath} typeOptions={typeOptions} canEdit={canEdit}
-                                onSelect={selectElement}
-                                onCommit={() => commitRef.current()}
-                                onChangeType={changeElementType}
-                                onAdd={addElement} onImport={importElements}
-                                onMenu={showStepMenu} />
+                            {!isFilter && elements.length > 0 && (
+                                <div className="map-insert">
+                                    <SegPill label="Step list view" value={stepView} onChange={setStepView} options={[
+                                        { value: 'list', label: 'List' },
+                                        { value: 'table', label: 'Mapping table' }
+                                    ]} />
+                                    {stepView === 'table' && canEdit && (
+                                        <button type="button" className="btn btn-sm ml-auto" title={!selectedElement ? 'Add a step' : isIteratorType(selectedElement.__type) ? `Add inside Iterator step ${stepNumber(selectedPath)}` : `Insert after step ${stepNumber(selectedPath)}`} onClick={(e: any) => {
+                                            const r = e.currentTarget.getBoundingClientRect();
+                                            contextMenu(r.left, r.bottom + 2, [
+                                                ...[MAPPER_TYPE, MSGBUILDER_TYPE, JAVASCRIPT_TYPE].map(t => [t, typeDef(t)] as const).filter(([, d]) => d)
+                                                    .map(([t, d]) => ({ label: d!.label, onClick: () => insertElement(t) })),
+                                                { label: 'Other…', onClick: addElement }
+                                            ]);
+                                        }}><Icon name="plus" size={12} />Add step</button>
+                                    )}
+                                </div>
+                            )}
+                            {stepView === 'table' && elements.length > 0 ? (
+                                <MappingTable isFilter={isFilter} elements={elements}
+                                    selectedPath={selectedPath} target={target} canEdit={canEdit}
+                                    onSelect={selectElement}
+                                    onCommit={() => commitRef.current()}
+                                    onMove={moveRow} />
+                            ) : (
+                                <ElementsGrid kind={kind} isFilter={isFilter} elements={elements}
+                                    selectedPath={selectedPath} typeOptions={typeOptions} canEdit={canEdit}
+                                    onSelect={selectElement}
+                                    onCommit={() => commitRef.current()}
+                                    onChangeType={changeElementType}
+                                    onAdd={addElement} onImport={importElements} onMove={moveRow}
+                                    onMenu={showStepMenu} />
+                            )}
                         </div>
                     </div>
                     <div className="split-handle" data-editor-overtake="" />
@@ -2044,7 +2535,8 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                                 className: 'step-editor-fill py-3 px-3.5',
                                 node: <StepEditorPanel kind={kind} isFilter={isFilter}
                                     element={selectedElement}
-                                    headerIndex={selectedPath ? selectedPath[selectedPath.length - 1] + 1 : 0}
+                                    templateKey={isFilter ? '' : JSON.stringify([messageTreeKey(target, 'inbound'), messageTreeKey(target, 'outbound')])}
+                                    headerIndex={selectedPath ? selectedPath.map((i: number) => i + 1).join('.') : 0}
                                     settlingRef={settlingRef}
                                     onChange={() => commitRef.current()}
                                     onReplaceElement={(parsed: any) => {
@@ -2052,7 +2544,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                                         const list = listAtPath(elementsRef.current, selPath);
                                         if (list) { list[selPath![selPath!.length! - 1]] = parsed; commitRef.current(); }
                                     }}
-                                    destinations={stepDestinations} />
+                                    destinations={stepDestinations} stepTools={stepTools} />
                             },
                             {
                                 label: 'Generated Script',

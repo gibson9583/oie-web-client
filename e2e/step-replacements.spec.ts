@@ -33,6 +33,7 @@ for (const type of ['mapper.MapperStep', 'messagebuilder.MessageBuilderStep']) {
             }
         });
         await page.goto(`/channels/${id}/transformer/0`);
+        await page.locator('.map-more-options > summary').click();
         const group = page.getByRole('group', { name: 'String Replacement', exact: true });
         await expect(group.getByRole('textbox', { name: 'Regular Expression 1', exact: true })).toHaveValue('"^s3://"');
         await expect(group.getByRole('textbox', { name: 'Regular Expression 2', exact: true })).toHaveCount(0);
@@ -81,6 +82,7 @@ for (const type of ['mapper.MapperStep', 'messagebuilder.MessageBuilderStep']) {
             });
             const open = async () => {
                 await page.goto(`/channels/${id}/${surface.route}`);
+                await page.locator('.map-more-options > summary').click();
                 await expect(page.getByRole('group', { name: 'String Replacement', exact: true })).toBeVisible();
             };
             await open();

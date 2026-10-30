@@ -2,7 +2,7 @@
  * Type regression guard for @oie/web-shell — the plugin extension surface.
  */
 import { platform } from '@oie/web-shell';
-import type { Platform, PluginContext, EditorLanguageProvider, EditorLanguageDefinition } from '@oie/web-shell';
+import type { Platform, PluginContext, EditorLanguageProvider, EditorLanguageDefinition, MessageTreeNode, MappingPreview } from '@oie/web-shell';
 import { h } from '@oie/web-ui';
 
 // A plugin's register(platform) entry point typed against the public contract.
@@ -40,6 +40,18 @@ export function register(p: Platform, context: PluginContext) {
     p.registerChannelTab({
         id: 'demo-tab', label: 'Demo Tab',
         component: ({ channel, onChange }) => { void channel; void onChange; return null; },
+    });
+    // API 4.11 transformer step editors may read trees, variables and previews.
+    p.registerStepType('com.example.DemoStep', {
+        label: 'Demo Step',
+        create: () => ({ __type: 'com.example.DemoStep' }),
+        component: ({ element, messageTree, variables, previewMapping, iteratorContext }) => {
+            if (iteratorContext) iteratorContext().forEach(parent => parent.prefixSubstitutions.forEach(prefix => prefix.toUpperCase()));
+            if (messageTree) void messageTree('inbound').then((nodes: MessageTreeNode[] | null) => nodes?.[0]?.accessor);
+            if (variables) void variables().map(v => `${v.name}@${v.step}`);
+            if (previewMapping) void previewMapping({ mapping: element.mapping }, { iteratorIndices: { i: 1 } }).then((r: MappingPreview) => r.status === 'ok' ? r.value : r.reason);
+            return null;
+        },
     });
     // API 4.10 template properties keep their custom serialized class while
     // using an existing engine execution behavior.

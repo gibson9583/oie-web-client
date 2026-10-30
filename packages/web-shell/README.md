@@ -28,6 +28,7 @@ export function register() {
 - `platform.registerConnectorPanel(...)` / `platform.registerConnectorPropertiesPanel(...)` — connector editor panels
 - `platform.registerDashboardTab(...)` / `platform.registerDashboardColumn(...)` — dashboard tabs and columns
 - `platform.registerChannelTab(...)`, `platform.registerAttachmentViewer(...)`, `platform.registerStepType(...)` / `registerRuleType(...)`, `platform.registerResourceType(...)`
+- Transformer step editors get `messageTree(side)`, `MessageFieldPicker`, `variables()`, `iteratorContext()` and `previewMapping(step)` (API 4.11). See the [API 4.11 contract](../../web-administrator/PLUGINS.md#api-411-step-editor-context).
 - `platform.registerReferences(category, items)` / `platform.references()` — add Reference/autocomplete entries and inspect plugin registrations (API 4.8)
 - `platform.registerCodeTemplateType(id, definition)` / `platform.codeTemplateTypes()` — custom code-template properties, editors, supported contexts, and optional language validation (API 4.10). Stored classes select the editor; missing plugins preserve templates read-only. See the [API 4.10 contract](../../web-administrator/PLUGINS.md#api-410-plugin-contracts).
 - `platform.registerEditorLanguage(id, provider)` — load a plugin-owned editor language only when requested (API 4.10). The optional second `register(platform, context)` argument supplies `context.getAssetText(path)` for plugin-owned text assets, including authenticated engine assets in Node and WAR deployments.
@@ -50,7 +51,7 @@ for plugin registrations across all contexts. Built-in catalog entries and
 channel code templates are not included. The array is a copy; treat its entries
 as read-only. Use an editor's `completionScope` to select its completion context.
 
-The framework implements API **4.10.0**, independently of the engine
+The framework implements API **4.11.0**, independently of the engine
 version. Script references remain available from API 4.8; declare
 `"oie": { "apiMin": "4.8" }` when using these additions. See
 [Script references](../../web-administrator/PLUGINS.md#script-references) and the

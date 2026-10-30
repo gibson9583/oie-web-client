@@ -135,7 +135,7 @@ test('loads and registers a plugin served by the engine over /api/webplugins', a
     await expect(page.getByRole('button', { name: 'Demo Engine Plugin' })).toBeVisible();
 });
 
-for (const apiMin of ['4.6', '4.7', '4.8', '4.9', '4.10']) test(`loads an engine plugin that declares compatible @oie apiMin ${apiMin}`, async ({ page }) => {
+for (const apiMin of ['4.6', '4.7', '4.8', '4.9', '4.10', '4.11']) test(`loads an engine plugin that declares compatible @oie apiMin ${apiMin}`, async ({ page }) => {
     await mockEngine(page, {
         'GET /webplugins': ['okplug'],
         'GET /webplugins/okplug/plugin.json': {
@@ -248,7 +248,7 @@ test('skips (before import) an engine plugin that needs a newer @oie apiMin', as
         'GET /webplugins': ['newplug'],
         'GET /webplugins/newplug/plugin.json': {
             id: 'new-plug', name: 'Too New Plugin', version: '1.0.0',
-            oie: { apiMin: '4.11' }, client: { entry: 'web/plugin.js' }
+            oie: { apiMin: '4.12' }, client: { entry: 'web/plugin.js' }
         }
     });
     // If the gate works, this module is never imported (its code never runs).
@@ -288,7 +288,7 @@ test('API 4.9 plugins can require command visibility and action-time rechecks', 
     }));
     await page.goto('/dashboard');
     await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
-    expect(await page.evaluate(() => (window as any).__commandApiVersion)).toBe('4.10.0');
+    expect(await page.evaluate(() => (window as any).__commandApiVersion)).toBe('4.11.0');
 
     await page.keyboard.press('Control+k');
     await expect(page.locator('.cmdk')).toBeVisible();

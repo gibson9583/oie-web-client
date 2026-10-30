@@ -1,14 +1,8 @@
 // plugins/transformer-steps/web/plugin.tsx
 import { platform } from "@oie/web-shell";
+import { iteratorTree, iteratorSampleCount } from "/core/mapping-model.js";
 import { replacementPairs, replacementsToWire } from "/core/step-replacements.js";
 var React = platform.React;
-var SCOPES = [
-  { value: "CHANNEL", label: "Channel Map" },
-  { value: "CONNECTOR", label: "Connector Map" },
-  { value: "GLOBAL_CHANNEL", label: "Global Channel Map" },
-  { value: "GLOBAL", label: "Global Map" },
-  { value: "RESPONSE", label: "Response Map" }
-];
 var CONDITIONS = [
   { value: "EXISTS", label: "Exists" },
   { value: "NOT_EXIST", label: "Not Exist" },
@@ -238,91 +232,344 @@ function StringReplacementEditor({ element, onChange }) {
     }
   ))))) : /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 2 }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "No replacements \u2014 use New"))))))));
 }
-function MapperEditor({ element, onChange }) {
-  const force = useRerender();
-  return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: "Variable" }, /* @__PURE__ */ React.createElement(
+var mapUid = 0;
+var SCOPE_CARDS = [
+  { value: "CONNECTOR", label: "Connector Map", hint: "This connector, this message", read: "$co" },
+  { value: "CHANNEL", label: "Channel Map", hint: "All connectors, this message", read: "$c" },
+  { value: "GLOBAL_CHANNEL", label: "Global Channel Map", hint: "Shared across messages in this channel. Clearing on deploy depends on channel settings.", read: "$gc" },
+  { value: "GLOBAL", label: "Global Map", hint: "Shared across channels. Clearing on server start depends on server settings.", read: "$g" },
+  { value: "RESPONSE", label: "Response Map", hint: "Response variables, this message", read: "$r" }
+];
+var VAR_FNS = [
+  { value: "$c", label: "Channel" },
+  { value: "$co", label: "Connector" },
+  { value: "$gc", label: "Global Channel" },
+  { value: "$g", label: "Global" },
+  { value: "$r", label: "Response" },
+  { value: "$s", label: "Source" },
+  { value: "$cfg", label: "Configuration" },
+  { value: "$", label: "Any map" }
+];
+var VALUE_MODES = [
+  { value: "field", label: "Message field" },
+  { value: "text", label: "Text" },
+  { value: "variable", label: "Variable" },
+  { value: "js", label: "{ } JavaScript" }
+];
+var INBOUND_PATH_RE = /^msg(?:\[(?:'(?:[^'\\]|\\.)*'|\d+|[A-Za-z_$][\w$]*)\])+(?:\.toString\(\))?$/;
+var VARIABLE_RE = /^(\$(?:gc|co|cfg|g|c|r|s)?)\(\s*'((?:[^'\\]|\\.)*)'\s*\)$/;
+function literalValue(expr) {
+  const m = /^(['"])((?:\\.|(?!\1)[^\\\n])*)\1$/.exec(String(expr ?? "").trim());
+  if (!m) return null;
+  return m[2].replace(/\\(u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|.)/g, (_all, c) => {
+    if (c[0] === "u" || c[0] === "x") return c.length > 1 ? String.fromCharCode(parseInt(c.slice(1), 16)) : c;
+    return { n: "\n", t: "	", r: "\r", b: "\b", f: "\f", v: "\v", 0: "\0" }[c] ?? c;
+  });
+}
+function quoted(value) {
+  return `'${String(value ?? "").replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, "\\n").replace(/\r/g, "\\r")}'`;
+}
+function parseValue(src) {
+  const s = String(src ?? "").trim();
+  if (!s) return { mode: "" };
+  if (INBOUND_PATH_RE.test(s)) return { mode: "field", field: s };
+  const lit = literalValue(s);
+  if (lit !== null) return { mode: "text", text: lit };
+  const v = VARIABLE_RE.exec(s);
+  if (v) return { mode: "variable", fn: v[1], name: literalValue(`'${v[2]}'`) ?? v[2] };
+  return { mode: "js" };
+}
+function flattenTree(nodes, parent = null, out = []) {
+  for (const n of nodes || []) {
+    out.push({ node: n, parent });
+    flattenTree(n.children, n, out);
+  }
+  return out;
+}
+function fieldLabel({ node, parent }) {
+  const lone = parent?.desc && parent.children.length === 1 && node.name === `${parent.name}.1` && !node.children.length;
+  return lone ? `${node.name} (${parent.desc})` : node.label;
+}
+function useMessageTree(messageTree, side, revision = 0) {
+  const [nodes, setNodes] = React.useState(void 0);
+  React.useEffect(() => {
+    if (typeof messageTree !== "function") return void 0;
+    let alive = true;
+    setNodes(void 0);
+    Promise.resolve().then(() => messageTree(side)).then((n) => {
+      if (alive) setNodes(n || null);
+    }, () => {
+      if (alive) setNodes(null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [messageTree, side, revision]);
+  return nodes;
+}
+function PathPicker({ MessageFieldPicker, nodes, title, value, onPick, onClose, messageSide, onMessageSide, onRetry }) {
+  const boxRef = React.useRef(null);
+  React.useEffect(() => {
+    boxRef.current.scrollIntoView({ block: "nearest" });
+  }, []);
+  React.useEffect(() => {
+    const away = (e) => {
+      if (boxRef.current && !boxRef.current.contains(e.target)) onClose();
+    };
+    const esc = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [onClose]);
+  return /* @__PURE__ */ React.createElement("div", { className: "map-picker", ref: boxRef, role: "dialog", "aria-label": title }, /* @__PURE__ */ React.createElement(MessageFieldPicker, { side: messageSide, onSide: onMessageSide, nodes, value, onPick, onRetry }));
+}
+function FieldInput({ value, nodes, side, placeholder, ariaLabel, onValue, targetTrees, onRetry, MessageFieldPicker }) {
+  const [open, setOpen] = React.useState(false);
+  const targetSide = /^\s*tmp\b/.test(value) ? "outbound" : "inbound";
+  const [browseSide, setBrowseSide] = React.useState(targetSide);
+  const close = React.useCallback(() => setOpen(false), []);
+  const selected = flattenTree((targetTrees ? targetTrees[targetSide] : nodes) || []).find(({ node }) => String(node.accessor).replace(/\.toString\(\)\s*$/, "") === String(value).replace(/\.toString\(\)\s*$/, ""));
+  return /* @__PURE__ */ React.createElement("div", { className: "map-field" }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      className: "map-field-choice",
+      "aria-expanded": open,
+      title: selected ? `${fieldLabel(selected)}
+${value}` : value,
+      "aria-label": `Browse ${targetTrees ? "target" : side} fields`,
+      onClick: () => {
+        if (!open) setBrowseSide(targetSide);
+        setOpen((o) => !o);
+      }
+    },
+    /* @__PURE__ */ React.createElement("span", null, selected ? `${targetTrees ? `${targetSide === "outbound" ? "tmp" : "msg"} \u203A ` : ""}${fieldLabel(selected)}` : value || "Choose a field\u2026"),
+    /* @__PURE__ */ React.createElement("span", null, "Browse\u2026")
+  ), /* @__PURE__ */ React.createElement("details", { className: "map-raw-path" }, /* @__PURE__ */ React.createElement("summary", null, "Edit path expression"), /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
-      value: element.variable ?? "",
+      className: "mono",
+      placeholder,
+      "aria-label": ariaLabel,
+      "data-message-target": targetTrees ? true : void 0,
+      value,
+      onChange: (e) => onValue(e.target.value)
+    }
+  )), open && MessageFieldPicker ? /* @__PURE__ */ React.createElement(
+    PathPicker,
+    {
+      MessageFieldPicker,
+      nodes: targetTrees ? targetTrees[browseSide] : nodes,
+      title: targetTrees ? "Target fields" : side === "outbound" ? "Outbound fields" : "Inbound fields",
+      onClose: close,
+      value,
+      messageSide: targetTrees ? browseSide : side,
+      onMessageSide: targetTrees ? setBrowseSide : void 0,
+      onRetry,
+      onPick: (node) => {
+        const acc = String(node.accessor);
+        onValue(targetTrees || side === "outbound" ? acc.replace(/\.toString\(\)\s*$/, "") : acc);
+        setOpen(false);
+      }
+    }
+  ) : null);
+}
+function ValueEditor({ element, onChange, inbound, variables, defaultMode, onRetry, MessageFieldPicker }) {
+  const force = useRerender();
+  const initial = React.useMemo(() => parseValue(element.mapping), []);
+  const [mode, setMode] = React.useState(initial.mode || defaultMode);
+  const drafts = React.useRef({
+    field: initial.mode === "field" ? initial.field : "",
+    text: initial.mode === "text" ? initial.text : "",
+    fn: initial.mode === "variable" ? initial.fn : "$c",
+    name: initial.mode === "variable" ? initial.name : "",
+    js: String(element.mapping ?? "")
+  }).current;
+  const vars = typeof variables === "function" ? variables() : [];
+  const listId = React.useMemo(() => `map-vars-${++mapUid}`, []);
+  const expr = (m) => {
+    if (m === "field") return drafts.field;
+    if (m === "text") return quoted(drafts.text);
+    if (m === "variable") return drafts.name ? `${drafts.fn}(${quoted(drafts.name)})` : "";
+    return drafts.js;
+  };
+  const write = (m) => {
+    element.mapping = expr(m);
+    if (m !== "js") drafts.js = element.mapping;
+    onChange();
+    force();
+  };
+  const setDraft = (key, v, m) => {
+    drafts[key] = v;
+    write(m);
+  };
+  const setters = vars.filter((v) => v.name === drafts.name);
+  return /* @__PURE__ */ React.createElement("div", { className: "map-value" }, /* @__PURE__ */ React.createElement(
+    "select",
+    {
+      "aria-label": "Value type",
+      value: mode,
+      onChange: (e) => {
+        const m = e.target.value;
+        if (m === mode) return;
+        setMode(m);
+        write(m);
+      }
+    },
+    VALUE_MODES.map((o) => /* @__PURE__ */ React.createElement("option", { key: o.value, value: o.value }, o.label))
+  ), mode === "field" && /* @__PURE__ */ React.createElement(
+    FieldInput,
+    {
+      value: drafts.field,
+      nodes: inbound,
+      side: "inbound",
+      ariaLabel: "Message field",
+      onRetry,
+      MessageFieldPicker,
+      placeholder: "msg['PID']['PID.3']['PID.3.1'].toString()",
+      onValue: (v) => setDraft("field", v, "field")
+    }
+  ), mode === "text" && /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "text",
+      "aria-label": "Text value",
+      placeholder: "Fixed text",
+      value: drafts.text,
+      onChange: (e) => setDraft("text", e.target.value, "text")
+    }
+  ), mode === "variable" && /* @__PURE__ */ React.createElement("div", { className: "map-field-row" }, /* @__PURE__ */ React.createElement("select", { "aria-label": "Map", value: drafts.fn, onChange: (e) => setDraft("fn", e.target.value, "variable") }, VAR_FNS.map((f) => /* @__PURE__ */ React.createElement("option", { key: f.value, value: f.value }, f.label))), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "text",
+      className: "mono",
+      "aria-label": "Variable name",
+      placeholder: "variableName",
+      list: listId,
+      value: drafts.name,
+      onChange: (e) => setDraft("name", e.target.value, "variable")
+    }
+  ), /* @__PURE__ */ React.createElement("datalist", { id: listId }, [...new Set(vars.map((v) => v.name))].map((n) => /* @__PURE__ */ React.createElement("option", { key: n, value: n })))), mode === "variable" && drafts.name && /* @__PURE__ */ React.createElement("div", { className: "hint" }, setters.length ? `Set by step ${setters.map((v) => v.step).join(", ")}` : "Not set by another step in this transformer."), mode === "js" && /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "text",
+      className: "mono",
+      "aria-label": "JavaScript value",
+      placeholder: "Any JavaScript expression",
+      value: drafts.js,
+      onChange: (e) => setDraft("js", e.target.value, "js")
+    }
+  ));
+}
+function MappingEditor({ element, onChange, messageTree, MessageFieldPicker, variables, iteratorContext, builder = false }) {
+  const [, bumpRev] = React.useReducer((x) => x + 1, 0);
+  const [iteratorIndices, setIndices] = React.useState({});
+  const [treeRevision, reloadTrees] = React.useReducer((x) => x + 1, 0);
+  const reloadFields = () => {
+    reloadTrees();
+    bumpRev();
+  };
+  const inbound = useMessageTree(messageTree, "inbound", treeRevision);
+  const outbound = useMessageTree(builder ? messageTree : null, "outbound", treeRevision);
+  const contexts = typeof iteratorContext === "function" ? iteratorContext() : [];
+  const sampleOptions = { iteratorIndices };
+  const pickedInbound = iteratorTree(inbound, contexts, sampleOptions);
+  const pickedOutbound = iteratorTree(outbound, contexts, sampleOptions);
+  const change = () => {
+    onChange();
+    bumpRev();
+  };
+  const name = String(element.variable ?? "");
+  const scope = element.scope || "CHANNEL";
+  const card = SCOPE_CARDS.find((s) => s.value === scope);
+  const dupes = !builder && typeof variables === "function" && name.trim() ? variables().filter((v) => v.name === name.trim()) : [];
+  const summary = [
+    !builder ? card?.label || scope : "",
+    replacementPairs(element).length ? `${replacementPairs(element).length} replacement(s)` : ""
+  ].filter(Boolean).join(" \xB7 ");
+  return /* @__PURE__ */ React.createElement("div", { className: "map-editor" }, contexts.length ? /* @__PURE__ */ React.createElement("div", { className: "map-iterator-context", "aria-label": "Iterator context" }, contexts.map((context, i) => {
+    const count = iteratorSampleCount(inbound, context, contexts, sampleOptions);
+    const index = iteratorIndices[context.indexVariable] ?? 0;
+    return /* @__PURE__ */ React.createElement("div", { key: `${i}:${context.indexVariable}` }, /* @__PURE__ */ React.createElement("span", { title: context.target }, "Inside ", /* @__PURE__ */ React.createElement("b", null, context.name), " \xB7 index ", /* @__PURE__ */ React.createElement("code", null, context.indexVariable)), count !== null && count > 0 ? /* @__PURE__ */ React.createElement(
+      "select",
+      {
+        "aria-label": `Sample for ${context.name}`,
+        value: index,
+        onChange: (e) => {
+          const next = { ...iteratorIndices, [context.indexVariable]: Number(e.target.value) };
+          for (const child of contexts.slice(i + 1)) delete next[child.indexVariable];
+          setIndices(next);
+        }
+      },
+      Array.from({ length: count }, (_, n) => /* @__PURE__ */ React.createElement("option", { key: n, value: n }, `Sample ${n + 1} of ${count}`))
+    ) : /* @__PURE__ */ React.createElement("span", { className: "hint" }, count === 0 ? "No template repetitions" : "Sample unavailable"));
+  })) : null, builder ? /* @__PURE__ */ React.createElement(Field, { label: "Step name" }, /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      "aria-label": "Step name",
+      placeholder: "Uses the target path",
+      value: element.name ?? "",
+      onChange: (e) => {
+        element.name = e.target.value;
+        change();
+      }
+    }
+  )) : null, /* @__PURE__ */ React.createElement(Field, { label: builder ? "Target field" : "Variable name" }, builder ? /* @__PURE__ */ React.createElement(
+    FieldInput,
+    {
+      value: element.messageSegment ?? "",
+      targetTrees: { inbound: pickedInbound, outbound: pickedOutbound },
+      onRetry: reloadFields,
+      MessageFieldPicker,
+      ariaLabel: "Message Segment",
+      placeholder: "msg['PID']['PID.5']['PID.5.1']",
+      onValue: (value) => {
+        element.messageSegment = value;
+        change();
+      }
+    }
+  ) : /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "text",
+      className: "mono",
+      "aria-label": "Variable",
+      placeholder: "variableName",
+      value: name,
       onChange: (e) => {
         element.variable = e.target.value;
-        onChange();
-        force();
+        element.name = e.target.value;
+        change();
       }
     }
-  )), /* @__PURE__ */ React.createElement(Field, { label: "Add to" }, /* @__PURE__ */ React.createElement(
-    Select,
-    {
-      options: SCOPES,
-      value: element.scope || "CHANNEL",
-      onChange: (e) => {
-        element.scope = e.target.value;
-        onChange();
-        force();
-      }
-    }
-  )), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Mapping" }, /* @__PURE__ */ React.createElement(
+  ), builder ? isBlank(element.messageSegment) ? /* @__PURE__ */ React.createElement("div", { className: "hint map-warn" }, "The message segment value cannot be blank.") : null : isBlank(name) ? /* @__PURE__ */ React.createElement("div", { className: "hint map-warn" }, "The variable name cannot be blank.") : dupes.length ? /* @__PURE__ */ React.createElement("div", { className: "hint map-warn" }, `Also set by step ${dupes.map((v) => v.step).join(", ")}.`) : null), /* @__PURE__ */ React.createElement(Field, { label: "Value" }, /* @__PURE__ */ React.createElement(ValueEditor, { element, onChange: change, inbound: pickedInbound, variables, defaultMode: "field", onRetry: reloadFields, MessageFieldPicker })), /* @__PURE__ */ React.createElement(Field, { label: "Default" }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
-      value: element.mapping ?? "",
-      onChange: (e) => {
-        element.mapping = e.target.value;
-        onChange();
-        force();
-      }
-    }
-  ))), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Default Value" }, /* @__PURE__ */ React.createElement(
-    "input",
-    {
-      type: "text",
+      className: "mono",
+      "aria-label": "Default Value",
       value: element.defaultValue ?? "",
       onChange: (e) => {
         element.defaultValue = e.target.value;
-        onChange();
-        force();
+        change();
       }
     }
-  ))), /* @__PURE__ */ React.createElement(StringReplacementEditor, { element, onChange }));
+  )), !builder && contexts.length ? /* @__PURE__ */ React.createElement("div", { className: "hint" }, "This Mapper stores an array of iteration results.") : null, /* @__PURE__ */ React.createElement("details", { className: "map-more-options" }, /* @__PURE__ */ React.createElement("summary", null, "More options ", /* @__PURE__ */ React.createElement("span", { className: "hint" }, summary)), /* @__PURE__ */ React.createElement("div", { className: "map-options-body" }, !builder ? /* @__PURE__ */ React.createElement(Field, { label: "Store in" }, /* @__PURE__ */ React.createElement("select", { "aria-label": "Add to", value: scope, onChange: (e) => {
+    element.scope = e.target.value;
+    change();
+  } }, !card ? /* @__PURE__ */ React.createElement("option", { value: scope }, scope) : null, SCOPE_CARDS.map((s) => /* @__PURE__ */ React.createElement("option", { key: s.value, value: s.value }, s.label))), /* @__PURE__ */ React.createElement("div", { className: "hint" }, card?.hint)) : null, /* @__PURE__ */ React.createElement(StringReplacementEditor, { element, onChange: change }), /* @__PURE__ */ React.createElement("div", { className: "hint" }, "Expressions applied in order after the default. Include quotes around literal patterns and text."))));
 }
-function MessageBuilderEditor({ element, onChange }) {
-  const force = useRerender();
-  return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Message Segment" }, /* @__PURE__ */ React.createElement(
-    "input",
-    {
-      type: "text",
-      placeholder: "tmp['MSH']['MSH.3']['MSH.3.1']",
-      value: element.messageSegment ?? "",
-      onChange: (e) => {
-        element.messageSegment = e.target.value;
-        onChange();
-        force();
-      }
-    }
-  ))), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Mapping" }, /* @__PURE__ */ React.createElement(
-    "input",
-    {
-      type: "text",
-      value: element.mapping ?? "",
-      onChange: (e) => {
-        element.mapping = e.target.value;
-        onChange();
-        force();
-      }
-    }
-  ))), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Default Value" }, /* @__PURE__ */ React.createElement(
-    "input",
-    {
-      type: "text",
-      value: element.defaultValue ?? "",
-      onChange: (e) => {
-        element.defaultValue = e.target.value;
-        onChange();
-        force();
-      }
-    }
-  ))), /* @__PURE__ */ React.createElement(StringReplacementEditor, { element, onChange }));
+function MapperEditor(props) {
+  return /* @__PURE__ */ React.createElement(MappingEditor, { ...props });
+}
+function MessageBuilderEditor(props) {
+  return /* @__PURE__ */ React.createElement(MappingEditor, { ...props, builder: true });
 }
 function XsltEditor({ element, onChange }) {
   const force = useRerender();

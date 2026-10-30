@@ -188,10 +188,55 @@ export interface AttachmentViewer {
     component: PluginComponent<{ attachment: OieObject; channelId: string; messageId: string | number; platform: Platform }>;
     [key: string]: any;
 }
+/** A node of a transformer's message tree, as shown on the Message Trees tab. */
+export interface MessageTreeNode {
+    /** Node name, with the data type's description when it has one, e.g. `PID.3 (Patient ID List)`. */
+    label: string;
+    /** Leaf text from the template, or null for a node with children. */
+    value: string | null;
+    /** The E4X or JSON accessor, e.g. `msg['PID']['PID.3']['PID.3.1'].toString()`. */
+    accessor: string;
+    children: MessageTreeNode[];
+    /** JSON runtime type; `value` remains sample display text. */
+    valueType?: 'string' | 'number' | 'boolean' | 'null' | 'object' | 'array';
+}
+/** Design-time result of a Mapper or Message Builder value against the inbound template. */
+export type MappingPreview =
+    | { status: 'ok'; raw: string; usedDefault: boolean; missing: boolean; steps: Array<{ find: string; replace: string; value: string }>; value: string }
+    | { status: 'runtime'; reason: string }
+    | { status: 'error'; reason: string };
+export type { IteratorContext, MappingPreviewOptions } from './mapping-model.js';
+import type { IteratorContext, MappingPreviewOptions } from './mapping-model.js';
 export interface StepRuleType {
     label: string;
     create(): OieObject;
-    component: PluginComponent<{ element: OieObject; onChange(): void; platform: Platform }>;
+    /** Transformer step editors also get `messageTree`, `MessageFieldPicker`, `variables` and
+     * `previewMapping` (API 4.11). Filter rule editors do not. */
+    component: PluginComponent<{
+        element: OieObject;
+        onChange(): void;
+        platform: Platform;
+        /** The channel's destinations. */
+        destinations?: Array<{ metaDataId: number | string; name: string }>;
+        /** The inbound or outbound template as a tree, or null when there is no template or the engine cannot serialize it. */
+        messageTree?(side: 'inbound' | 'outbound'): Promise<MessageTreeNode[] | null>;
+        /** The host's Message Trees table as a field picker. `nodes` is undefined while loading and null when the template is unavailable. Pass `onSide` to offer Inbound and Outbound. */
+        MessageFieldPicker?: PluginComponent<{
+            side: 'inbound' | 'outbound';
+            onSide?(side: 'inbound' | 'outbound'): void;
+            nodes: MessageTreeNode[] | null | undefined;
+            value?: string;
+            onPick(node: MessageTreeNode): void;
+            onRetry?(): void;
+        }>;
+        /** Map variables set by the other enabled steps, with their step numbers (`3`, or `5.2` inside an Iterator). */
+        variables?(): Array<{ name: string; step: string }>;
+        /** Current parent iterators, outermost first. Read again at action time;
+         * membership and configured prefixes can change while editing. */
+        iteratorContext?(): IteratorContext[];
+        /** Evaluates `mapping`, `defaultValue` and `replacements` against the inbound template. */
+        previewMapping?(step: { mapping?: string; defaultValue?: string; replacements?: unknown }, options?: MappingPreviewOptions): Promise<MappingPreview>;
+    }>;
     [key: string]: any;
 }
 /** A custom properties class backed by an installed engine plugin. The engine
@@ -387,7 +432,7 @@ export interface PluginManifest {
  * plugin built for 4.6 keeps working on 4.7, 4.9, … (older APIs never removed
  * within a major); it's rejected only when THIS web admin is too old (its apiMin
  * is newer than us) or a major bump dropped what it relies on. */
-export const OIE_API_VERSION = '4.10.0';   // 4.10: plugin code-template types and on-demand editor languages
+export const OIE_API_VERSION = '4.11.0';   // 4.11: message trees, variables and mapping preview for step editors
 
 function parseApiVersion(v: unknown): { major: number; minor: number } {
     const [major, minor] = String(v == null ? '' : v).split('.');

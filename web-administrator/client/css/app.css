@@ -1959,6 +1959,75 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 .tree .tree-node.selected { background: var(--accent-glow); color: var(--accent); }
 .tree .tree-node .twisty { width: 13px; flex: none; color: var(--text-faint); transition: transform 0.12s; }
 .tree .tree-node .twisty.open { transform: rotate(90deg); }
+
+/* Compact Mapper / Message Builder step forms. Iterator context comes from
+   the host step tree; preview indices are local UI state. */
+.map-editor { display: flex; flex-direction: column; gap: 16px; min-width: 0; font-size: 12px; }
+[data-theme="light"] .map-editor, [data-theme="light"] .map-table { --map-ok: #236e36; --map-warn: #805600; }
+.map-editor > .field { display: grid; grid-template-columns: 116px minmax(0, 1fr); gap: 6px 14px; margin: 0; }
+.map-editor > .field > label { grid-column: 1; padding-top: 7px; font-size: 12px; }
+.map-editor > .field > :not(label) { grid-column: 2; min-width: 0; }
+.map-editor input, .map-editor select { font-size: 12px; min-width: 0; }
+.map-warn { color: var(--map-warn, var(--warn)); }
+.map-value { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 6px 8px; align-items: start; }
+.map-value > select { width: 100%; }
+.map-value > .hint { grid-column: 2; }
+.map-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.map-field-choice { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--bg0); color: var(--text); padding: 6px 9px; min-height: 30px; font: inherit; text-align: left; cursor: pointer; }
+.map-field-choice:hover { background: var(--bg3); }
+.map-field-choice > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.map-field-choice > span:last-child { color: var(--text-dim); flex: none; }
+.map-raw-path { font-size: 12px; color: var(--text-dim); }
+.map-raw-path > summary { cursor: pointer; }
+.map-raw-path input { margin-top: 6px; width: 100%; }
+.map-field-row { display: flex; gap: 6px; align-items: center; }
+.map-field-row > input { flex: 1; min-width: 0; }
+.map-field-row > select { flex: none; width: auto; max-width: 45%; }
+.map-value .map-field { display: contents; }
+.map-value .map-field-choice, .map-value .map-raw-path { grid-column: 2; min-width: 0; }
+.map-value .map-picker { grid-column: 1 / -1; }
+.map-picker { background: var(--bg2); border: 1px solid var(--line-strong); border-radius: 5px; height: 340px; overflow: hidden; }
+.map-more-options > summary { cursor: pointer; font-size: 12px; }
+.map-more-options { border-top: 1px solid var(--line); padding-top: 12px; }
+.map-more-options > summary > span { margin-left: 8px; }
+.map-options-body { display: flex; flex-direction: column; gap: 14px; padding-top: 16px; }
+.map-options-body .field { margin: 0; }
+.map-options-body .field > label { font-size: 12px; }
+.map-repl { display: flex; flex-direction: column; gap: 6px; }
+.map-repl .dt td { padding: 3px 5px; }
+.map-repl .dt { table-layout: fixed; }
+.map-iterator-context { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-dim); }
+.map-iterator-context > div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.map-iterator-context b { color: var(--text); font-weight: 500; }
+.map-iterator-context select { width: auto; font-size: 12px; }
+@media (max-width: 700px) {
+    .map-editor > .field { display: flex; flex-direction: column; gap: 6px; }
+    .map-editor > .field > label { padding-top: 0; }
+    .map-value { grid-template-columns: 1fr; }
+    .map-value > select { width: auto; max-width: 100%; justify-self: start; }
+    .map-value > .hint { grid-column: 1; }
+    .map-value .map-field-choice, .map-value .map-raw-path { grid-column: 1; }
+    .map-more-options > summary > span { display: block; margin: 4px 0 0; }
+}
+
+/* Transformer mapping table (the step list as a table). */
+.map-table { table-layout: fixed; width: 100%; min-width: 560px; }
+.map-table td.mt-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.map-table td.mt-warned { white-space: normal; }
+.map-table td.mono, .map-table .mono { font-family: var(--font-mono); font-size: 10.5px; }
+.map-table tr.mt-other td { background: color-mix(in srgb, var(--text) 3%, transparent); }
+.map-table tr.mt-other:not(.mt-group) td, .map-table tr.mt-other:not(.mt-group) .mt-title { color: var(--text-dim); font-weight: 400; }
+tr.mt-drop-before td { box-shadow: inset 0 2px 0 var(--accent); }
+tr.mt-drop-after td { box-shadow: inset 0 -2px 0 var(--accent); }
+.mt-handle { cursor: grab; color: var(--text-faint); user-select: none; }
+.map-table .mt-sub { color: var(--text-dim); font-family: var(--font-ui); margin-left: 7px; }
+.map-table .mt-title { font-weight: 600; }
+.map-table .mt-code { color: var(--text-dim); }
+.map-table .mt-none { color: var(--text-dim); font-family: var(--font-ui); font-style: italic; }
+.map-table tr.mt-group td { background: color-mix(in srgb, var(--text) 5%, transparent); }
+.map-table .mt-cell { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.map-insert { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 9px; border-bottom: 1px solid var(--line); }
+.map-insert .hint { font-size: 10.5px; color: var(--text-faint); margin-right: 4px; }
 .tree .tree-children { margin-left: 16px; }
 
 /* Message Trees tab (transformer side panel): toolbar, root caption, tree-table,

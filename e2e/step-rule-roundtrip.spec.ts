@@ -103,7 +103,7 @@ test('accessor drop into a step editor field survives React control', async ({ p
     // Drop an accessor token at the end of the Mapper's Variable field, the way
     // makeAccessorDrop receives it from a Reference/Message Trees drag.
     const token = "msg['MSH']['MSH.3']['MSH.3.1'].toString()";
-    const variable = page.locator('.step-editor-fill .field:has(label:text-is("Variable")) input');
+    const variable = page.locator('.step-editor-fill .field:has(label:text-is("Variable name")) input');
     await expect(variable).toHaveValue(element.variable);
     await variable.evaluate((el: any, tok: any) => {
         el.focus();

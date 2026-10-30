@@ -62,7 +62,7 @@ import { addReferences, registeredReferences, registerTemplateCompletionSource }
  * plugin built for 4.6 keeps working on 4.7, 4.9, … (older APIs never removed
  * within a major); it's rejected only when THIS web admin is too old (its apiMin
  * is newer than us) or a major bump dropped what it relies on. */
-export const OIE_API_VERSION = '4.10.0'; // 4.10: plugin code-template types and on-demand editor languages
+export const OIE_API_VERSION = '4.11.0'; // 4.11: message trees, variables and mapping preview for step editors
 function parseApiVersion(v) {
     const [major, minor] = String(v == null ? '' : v).split('.');
     return { major: parseInt(major, 10) || 0, minor: parseInt(minor, 10) || 0 };

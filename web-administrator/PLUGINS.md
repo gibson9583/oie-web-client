@@ -233,7 +233,7 @@ export function register() {
 
 The framework surface — the `platform` registries plus the `@oie/web-*` exports —
 is versioned by an **API contract version**, `platform.apiVersion`. Web Administrator
-implements **4.10.0** against OIE **4.6.0**. The API minor can advance independently
+implements **4.11.0** against OIE **4.6.0**. The API minor can advance independently
 when exports are added; it is not the application or engine version. It follows
 major.minor (the patch is ignored for compatibility): the **minor** bumps when the
 surface *grows* (new registry, export or supported descriptor field), the **major** bumps on any *breaking*
@@ -263,6 +263,8 @@ Guidance:
   host degrades gracefully instead of throwing on a missing API. `registerMessageAction`,
   for example, arrived in API `4.7`, so a plugin that calls it declares `"apiMin": "4.7"`.
 - `registerReferences` arrived in API `4.8`. A plugin that calls it declares `"apiMin": "4.8"`.
+- Step editor `messageTree`, `MessageFieldPicker`, `variables`, `iteratorContext` and `previewMapping` arrived in API `4.11`.
+  A step editor that relies on them declares `"apiMin": "4.11"`.
 - Command `visible` predicates arrived in API `4.9`. A plugin that relies on them
   declares `"apiMin": "4.9"`; older hosts silently ignore this field.
 - Settings panel save declarations accept `Promise<boolean>` as well as `boolean`,
@@ -271,6 +273,62 @@ Guidance:
 - For runtime feature-detection, read `platform.apiVersion` directly (import
   `OIE_API_VERSION` / `apiCompatible` from `@oie/web-shell` if you need the raw value
   or the comparison helper).
+
+### API 4.11 step editor context
+
+API **4.11.0** gives transformer step editors template and iterator props. Filter rule
+editors do not get them. Declare `"oie": { "apiMin": "4.11" }` when your step
+editor needs them, or check that each prop is a function before you call it.
+
+| Prop | Returns |
+|---|---|
+| `messageTree(side)` | `Promise<MessageTreeNode[] \| null>` for `'inbound'` (`msg`) or `'outbound'` (`tmp`). Each node has `label`, `value` (sample display text or null), `accessor` and `children`. Optional `valueType` preserves the JSON kind: `string`, `number`, `boolean`, `null`, `object`, or `array`. The result is null when there is no template or the engine cannot serialize it. |
+| `MessageFieldPicker` | A React component. It draws the Message Trees table as a field picker. Props: `side`, `onSide` (optional, shows Inbound and Outbound), `nodes` (from `messageTree`; `undefined` while loading, `null` when unavailable), `value`, `onPick(node)`, and `onRetry` (optional). |
+| `variables()` | `Array<{ name, step }>`: the map variables that the other enabled steps set. `step` is the step number, for example `3`, or `5.2` inside an Iterator. |
+| `iteratorContext()` | Parent iterators from outermost to innermost, with `name`, `target`, `indexVariable`, and `prefixSubstitutions`. Read at action time; moving a step or editing a parent can change it. |
+| `previewMapping({ mapping, defaultValue, replacements }, { iteratorIndices }?)` | `Promise<MappingPreview>`. The host evaluates the expressions against the inbound template, using the default-then-replacements order of the engine's `validate()`; it does not execute JavaScript or Java regex. `status` is `ok` (with `value`, `raw`, `usedDefault`, `missing` and the replacement `steps`), `runtime` (the value needs message data) or `error`. |
+
+```ts
+component: ({ element, onChange, messageTree, previewMapping }) => {
+    const [result, setResult] = React.useState(null);
+    React.useEffect(() => {
+        if (typeof previewMapping === 'function') previewMapping(element).then(setResult);
+    }, [element.mapping]);
+    // …
+}
+```
+
+`MessageTreeNode`, `MappingPreview`, `IteratorContext`, and `MappingPreviewOptions`
+are exported types of `@oie/web-shell`. Preview options use a record such as
+`{ iteratorIndices: { i: 1, j: 0 } }`. These select template samples only; they
+never change saved expressions or iterator properties. Unknown targets, missing
+repetitions, runtime variables, and arbitrary JavaScript remain unavailable for
+preview. Template accessors returned by `messageTree` are unchanged.
+
+JSON `value` remains display text. A field with a nonstring JSON `valueType`
+returns `runtime` when read by the preview, including null, object, and array
+nodes. The preview does not coerce that text or predict defaults and replacements
+for those values. JSON paths without an exact template node also return `runtime`;
+XML occurrence aliases and missing-field default assumptions do not apply.
+Numeric, boolean, and null samples remain visible and searchable in the built-in
+pickers.
+
+The built-in Mapper and Message Builder derive context from actual parent steps.
+Builder targets can use `msg` or `tmp`; its target picker offers both message
+trees and preserves the current expression until a field is selected. The
+Message Trees panel, template-backed pickers, and sample results refresh when
+templates, data types, or serialization settings change, including imports.
+Failed field loads can be retried without a page reload. Pickers apply only configured
+prefix substitutions. For matching complete field paths, assignment, removal,
+and parent index changes update inherited indices, including nested iterator
+targets. Custom expressions stay intact. If they still reference a removed or
+renamed index, the host warns for review; this includes complete paths outside
+the configured prefixes. An outbound path repeats only when its prefix is
+configured or its expression explicitly contains the index.
+
+Append and Replace imports preserve authored expressions, including fixed,
+numeric, and symbolic targets inside iterators. Rebinding applies only after a
+subsequent change to iterator membership or settings.
 
 ### API 4.10 plugin contracts
 
@@ -688,7 +746,8 @@ platform.registerAttachmentViewer({ id,
 platform.registerStepType('com.example.MyStep', {
     label: 'My Step',
     create() { return { __type: 'com.example.MyStep', name: 'New Step', enabled: true }; },
-    // ctx: { element, platform, onChange }. Mutate `element` in place, then onChange().
+    // ctx: { element, platform, onChange }, plus messageTree, variables and
+    // previewMapping for transformer steps (API 4.11). Mutate `element` in place, then onChange().
     component: ({ element, platform, onChange }) => <div>…</div> });
 platform.registerRuleType('com.example.MyRule', { /* same contract */ });
 
@@ -769,7 +828,7 @@ platform.setAuthorizationController({
 
 | API | Purpose |
 |---|---|
-| `platform.apiVersion` | The `@oie/*` API contract version this web administrator implements — is `"4.10.0"`, independently of the engine version. Read it for runtime feature-detection; declare your minimum via `oie.apiMin` in `plugin.json`. See [API version compatibility](#api-version-compatibility). |
+| `platform.apiVersion` | The `@oie/*` API contract version this web administrator implements — is `"4.11.0"`, independently of the engine version. Read it for runtime feature-detection; declare your minimum via `oie.apiMin` in `plugin.json`. See [API version compatibility](#api-version-compatibility). |
 | `platform.React` | The host's React instance — `const React = platform.React` at module scope, then write JSX. Sharing it is mandatory (one instance app-wide); never `import 'react'`. |
 | `platform.reactView(Component)` | Wraps a React component as a routed-view handler for `registerView(path, platform.reactView(Component), { title })`. The component gets `{ params, query }` props. |
 | `platform.api` | Full engine REST client (`api.channels`, `api.messages`, `api.status`, … plus raw `api.get/post/put/del`). All calls share the user's session. |

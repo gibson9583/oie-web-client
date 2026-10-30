@@ -8,7 +8,7 @@ export type {
     RouterApi, StoreApi, EventsApi,
     NavItem, ViewContext, ViewResult, ViewHandler, ViewMeta, ConnectorMode,
     DashboardTab, DashboardColumn, ChannelTab, SettingsPanel, AttachmentViewer,
-    StepRuleType, CodeTemplateType, ConnectorPanel, ConnectorPropertiesPanel,
+    StepRuleType, MessageTreeNode, MappingPreview, IteratorContext, MappingPreviewOptions, CodeTemplateType, ConnectorPanel, ConnectorPropertiesPanel,
     DataTypeDef, TransmissionModeDef, ResourceTypeDef,
     ChannelAction, ChannelActionContext, CodeTemplateAction, CodeTemplateActionContext,
     MessageAction, MessageActionContext, ReferenceItem

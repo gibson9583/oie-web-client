@@ -70,6 +70,7 @@ const tree = (page: Page, varName = 'msg') =>
 const row = (page: Page, field: string, varName = 'msg') =>
     tree(page, varName).getByRole('row').filter({ has: page.getByText(field, { exact: true }) });
 const stepField = (page: Page, label: string) => page.locator(`.step-editor-fill .field:has(label:text-is("${label}")) input`);
+const stepInput = (page: Page, label: string) => page.locator('.map-editor').getByLabel(label, { exact: true });
 
 test('message tree table shows segments, joined values, folded fields and filters', async ({ page }) => {
     await openTrees(page);
@@ -119,11 +120,11 @@ test('message tree rows map, drag and copy their accessors', async ({ page, brow
     await expect(tree(page)).toContainText("msg['PID']['PID.5']['PID.5.1'].toString()");
     await row(page, 'PID.5.1').getByRole('button', { name: 'Actions for PID.5.1' }).press('Enter');
     await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
-    await expect(stepField(page, 'Mapping')).toHaveValue("msg['PID']['PID.5']['PID.5.1'].toString()");
+    await expect(stepInput(page, 'Message field')).toHaveValue("msg['PID']['PID.5']['PID.5.1'].toString()");
 
     // Drag a row into a step editor field: the accessor lands at the drop point.
-    await row(page, 'PID.8').dragTo(stepField(page, 'Default Value'));
-    await expect(stepField(page, 'Default Value')).toHaveValue("msg['PID']['PID.8']['PID.8.1'].toString()");
+    await row(page, 'PID.8').dragTo(stepInput(page, 'Default Value'));
+    await expect(stepInput(page, 'Default Value')).toHaveValue("msg['PID']['PID.8']['PID.8.1'].toString()");
 
     if (browserName === 'chromium') {
         await context.grantPermissions(['clipboard-read', 'clipboard-write']);
@@ -138,7 +139,7 @@ test('message tree rows map, drag and copy their accessors', async ({ page, brow
     await row(page, 'PID.3', 'tmp').click({ button: 'right' });
     await expect(page.getByRole('menuitem', { name: 'Map to Variable' })).toHaveCount(0);
     await page.getByRole('menuitem', { name: 'Map to Message' }).click();
-    await expect(stepField(page, 'Message Segment')).toHaveValue("tmp['PID']['PID.3']");
+    await expect(stepInput(page, 'Message Segment')).toHaveValue("tmp['PID']['PID.3']");
 
     await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
     await expect.poll(() => writes.length).toBe(1);
@@ -185,8 +186,8 @@ test('a folded field keeps its own name for Map to Variable', async ({ page }) =
     await row(page, 'PID.8').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
     // The row's name, not its folded component's ("PID.8.1 (Value)"): the variable is the channel-map key.
-    await expect(stepField(page, 'Variable')).toHaveValue('PID.8 (Administrative Sex)');
-    await expect(stepField(page, 'Mapping')).toHaveValue("msg['PID']['PID.8']['PID.8.1'].toString()");
+    await expect(stepField(page, 'Variable name')).toHaveValue('PID.8 (Administrative Sex)');
+    await expect(stepInput(page, 'Message field')).toHaveValue("msg['PID']['PID.8']['PID.8.1'].toString()");
 });
 
 test('XML text stays visible beside attributes and through Hide empty fields', async ({ page }) => {
@@ -255,7 +256,7 @@ test('a strict-parser segment with one field keeps its own row and accessor', as
 
     await row(page, 'RCP').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
-    await expect(stepField(page, 'Mapping')).toHaveValue("msg['RCP'].toString()");
+    await expect(stepInput(page, 'Message field')).toHaveValue("msg['RCP'].toString()");
     await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
     await expect.poll(() => writes.length).toBe(1);
     expect(writes[0].sourceConnector.transformer.elements[MAPPER][0].mapping).toBe("msg['RCP'].toString()");

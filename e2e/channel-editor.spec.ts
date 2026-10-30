@@ -682,7 +682,7 @@ test.describe('Channel editor', () => {
         await expect(page.getByRole('columnheader', { name: 'Operator', exact: true })).toHaveCount(0);
 
         // The Mapper's plugin editor mounted against the RESPONSE step.
-        await expect(page.locator('.step-editor-fill .field:has(label:text-is("Variable")) input'))
+        await expect(page.locator('.step-editor-fill .field:has(label:text-is("Variable name")) input'))
             .toHaveValue('ackCode');
 
         // Swing-parity banner, built from the fetched channel + resolved connector.

@@ -103,7 +103,7 @@ for (const fallback of [false, true]) {
             // The persistent preview must regenerate after an in-place form edit.
             await page.getByRole('tab', { name: filter ? 'Rule' : 'Step', exact: true }).click();
             const field = page.locator('.step-editor-fill .field').filter({
-                has: page.locator('label').filter({ hasText: filter ? /^Field$/ : /^Variable$/ }),
+                has: page.locator('label').filter({ hasText: filter ? /^Field$/ : /^Variable name$/ }),
             }).locator('input');
             await field.fill(filter ? "msg['OBX']" : 'updated_target');
             await tab.click();
