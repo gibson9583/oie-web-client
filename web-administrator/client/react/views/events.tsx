@@ -205,6 +205,7 @@ export function EventsView() {
     // the pager bar. `params` are the criteria of the LAST run search, so
     // Prev/Next page through those, not whatever is typed now (classic behavior).
     const [events, setEvents] = useState([] as any[]);
+    const [searching, setSearching] = useState(true);
     const [page, setPage] = useState<any>({ offset: 0, limit: Number(getPref('eventPageSize')) || PREF_DEFAULTS.eventPageSize, total: 0, params: null });
 
     // Best-effort id -> username cache. A ref (not state) because the table's
@@ -247,6 +248,7 @@ export function EventsView() {
 
     async function runSearch(params: any, offset: any, limit: any) {
         const gen = ++searchGenRef.current;
+        setSearching(true);
         let rows: any[] = [];
         let total = 0;
         try {
@@ -261,6 +263,7 @@ export function EventsView() {
             toast(`Event search failed: ${shortError(e)}`, 'error');
         }
         if (gen !== searchGenRef.current) return;   // superseded by a newer search
+        setSearching(false);
         setEvents(rows);
         setPage({ offset, limit, total, params });
         // Keep the selection when the same event is still in the new page.
@@ -435,7 +438,10 @@ export function EventsView() {
                     )}
                 </div>
                 <div className="flex-1 overflow-auto min-h-0 flex flex-col oie-elev border border-line rounded-[9px] mx-[13px] mb-3">
-                    <DataTableHost columns={COLUMNS} options={options} rows={events} />
+                    {searching && !events.length && <div className="loading-block" role="status"><div className="spinner" />Loading events…</div>}
+                    <div className={searching && !events.length ? 'hidden' : 'contents'}>
+                        <DataTableHost columns={COLUMNS} options={options} rows={events} />
+                    </div>
                 </div>
                 <div className="filterbar panel overflow-visible mx-[13px] mb-3">
                     <button className="btn" disabled={page.offset <= 0}
