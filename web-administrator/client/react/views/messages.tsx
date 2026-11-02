@@ -962,8 +962,14 @@ function sourceChain(message: any, cm: any) {
 function SourceTrail({ chain, message, channelId, channelNames }: any) {
     const canOpen = platform.checkTask('view', 'doShowMessages');
     const name = (id: string) => channelNames?.get(id) || id.slice(0, 8);
+    const navRef = useRef<HTMLElement>(null);
+    const key = `${message.messageId}|${chain.map((r: any) => `${r.channelId}:${r.messageId}`).join(',')}`;
+    useLayoutEffect(() => {
+        const el = navRef.current;
+        if (el) el.scrollLeft = el.scrollWidth;
+    }, [key, channelNames]);
     return (
-        <nav className="msg-trail" aria-label="Message source trail">
+        <nav ref={navRef} className="msg-trail" aria-label="Message source trail">
             {chain.map((ref: any, index: number) => {
                 const label = <>{name(ref.channelId)} <span className="msg-trail-id">{`#${ref.messageId}`}</span></>;
                 return <span key={index}>

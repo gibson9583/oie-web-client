@@ -493,6 +493,33 @@ test('the trail preserves repeated channels and source-only history on destinati
     await expectSourceContent(page, ORIGIN, '42');
 });
 
+test('a trail wider than the header opens scrolled to the current message', async ({ page }) => {
+    const references = map([
+        { string: ['sourceChannelId', UPSTREAM] },
+        { string: 'sourceMessageId', long: '43' },
+        { string: 'sourceChannelIds', list: { string: [UPSTREAM, ORIGIN, UPSTREAM] } },
+        { string: 'sourceMessageIds', list: { long: ['41', '42', '43'] } },
+    ]);
+    await setup(page, [message(ORIGIN, ORIGINAL_ID, references)], {
+        'GET /channels/idsAndNames': { map: { entry: [
+            { string: [ORIGIN, 'Origin Laboratory Results Outbound Router'] },
+            { string: [UPSTREAM, 'Upstream Laboratory Results Inbound Intake'] },
+        ] } },
+    });
+    await page.setViewportSize({ width: 1000, height: 900 });
+    await page.goto(`/messages/${ORIGIN}`);
+    await page.getByRole('cell', { name: ORIGINAL_ID, exact: true }).click();
+    const nav = trail(page);
+    await expect(nav.locator('[aria-current="step"]')).toContainText(`#${ORIGINAL_ID}`);
+    expect(await nav.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+    await expect.poll(() => nav.evaluate(el => Math.ceil(el.scrollLeft + el.clientWidth) >= el.scrollWidth)).toBe(true);
+    const bounds = (await nav.boundingBox())!;
+    const current = (await nav.locator('[aria-current="step"]').boundingBox())!;
+    const oldest = (await nav.getByRole('link').first().boundingBox())!;
+    expect(current.x + current.width).toBeLessThanOrEqual(bounds.x + bounds.width + 1);
+    expect(oldest.x).toBeLessThan(bounds.x);
+});
+
 test('malformed pairs and references outside the source map remain ordinary mapping values', async ({ page }) => {
     const origin = message(ORIGIN, ORIGINAL_ID, map([
         { string: ['sourceChannelId', UPSTREAM] },
