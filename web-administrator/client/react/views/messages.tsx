@@ -926,8 +926,64 @@ function messagePath(channelId: string, messageId: string) {
     return `/messages/${encodeURIComponent(channelId)}?messageId=${encodeURIComponent(messageId)}`;
 }
 
-function MappingsTable({ cm, channelId, messageId }: any) {
-    const references = useMemo(() => sourceMessageReferences(cm.sourceMapContent), [cm]);
+function SourceLink({ reference, channelId, messageId, children }: any) {
+    const path = messagePath(reference.channelId, reference.messageId);
+    return (
+        <a href={routeUrl(path)} className="msg-trail-link"
+            title={`Open message ${reference.messageId} in channel ${reference.channelId}`}
+            onAuxClick={e => {
+                try { captureEngineSession()(); } catch { e.preventDefault(); }
+            }}
+            onClick={e => {
+                try { captureEngineSession()(); } catch { e.preventDefault(); return; }
+                if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+                e.preventDefault();
+                // Back returns to this message, even if it was selected from a broad search.
+                const originId = messageIdString(messageId);
+                if (originId) history.replaceState(history.state, '', routeUrl(messagePath(channelId, originId)));
+                router.navigate(path);
+            }}>{children}</a>
+    );
+}
+
+/* Oldest first. A single hop sets only sourceChannelId; longer chains also set
+   the lists, whose last entry is that same parent. */
+function sourceChain(message: any, cm: any) {
+    for (const candidate of [cm, sourceOf(message), ...connectorMessagesOf(message)]) {
+        const { parent, ancestors } = sourceMessageReferences(candidate?.sourceMapContent);
+        if (!parent && !ancestors.length) continue;
+        const last = ancestors[ancestors.length - 1];
+        const parentIsLast = parent && last && last.channelId === parent.channelId && last.messageId === parent.messageId;
+        return parent && !parentIsLast ? [...ancestors, parent] : ancestors;
+    }
+    return [];
+}
+
+function SourceTrail({ chain, message, channelId, channelNames }: any) {
+    const canOpen = platform.checkTask('view', 'doShowMessages');
+    const name = (id: string) => channelNames?.get(id) || id.slice(0, 8);
+    const navRef = useRef<HTMLElement>(null);
+    const key = `${message.messageId}|${chain.map((r: any) => `${r.channelId}:${r.messageId}`).join(',')}`;
+    useLayoutEffect(() => {
+        const el = navRef.current;
+        if (el) el.scrollLeft = el.scrollWidth;
+    }, [key, channelNames]);
+    return (
+        <nav ref={navRef} className="msg-trail" aria-label="Message source trail">
+            {chain.map((ref: any, index: number) => {
+                const label = <>{name(ref.channelId)} <span className="msg-trail-id">{`#${ref.messageId}`}</span></>;
+                return <span key={index}>
+                    {canOpen ? <SourceLink reference={ref} channelId={channelId} messageId={message.messageId}>{label}</SourceLink>
+                        : <span title={ref.channelId}>{label}</span>}
+                    <span className="msg-trail-sep" aria-hidden="true">›</span>
+                </span>;
+            })}
+            <span aria-current="step" className="msg-trail-current" title={`Current message ${message.messageId} in channel ${channelId}`}>{name(channelId)} <span className="msg-trail-id">{`#${message.messageId}`}</span></span>
+        </nav>
+    );
+}
+
+function MappingsTable({ cm }: any) {
     // Scope, deserialized map content. Matches the Swing browser exactly:
     // Source / Connector / Channel / Response only — no Custom Metadata.
     const rows = useMemo(() => {
@@ -957,33 +1013,6 @@ function MappingsTable({ cm, channelId, messageId }: any) {
         ? [...rows].sort((a: any, b: any) => String(a[sort.key]).localeCompare(String(b[sort.key]), undefined, { numeric: true }) * sort.dir)
         : rows;
 
-    function mappingValue(row: any) {
-        if (row.scope !== 'Source' || !platform.checkTask('view', 'doShowMessages')) return row.value;
-        const plural = row.variable === 'sourceChannelIds' || row.variable === 'sourceMessageIds';
-        const singular = row.variable === 'sourceChannelId' || row.variable === 'sourceMessageId';
-        const refs = plural ? references.ancestors : singular && references.parent ? [references.parent] : [];
-        if (!refs.length) return row.value;
-        const key = row.variable.startsWith('sourceChannel') ? 'channelId' : 'messageId';
-        return <>{plural && '['}{refs.map((ref, index) => {
-            const path = messagePath(ref.channelId, ref.messageId);
-            return <span key={index}>{index > 0 && ', '}<a href={routeUrl(path)} className="text-accent underline"
-                title={`Open message ${ref.messageId} in channel ${ref.channelId}`}
-                onDoubleClick={e => e.stopPropagation()}
-                onAuxClick={e => {
-                    try { captureEngineSession()(); } catch { e.preventDefault(); }
-                }}
-                onClick={e => {
-                    try { captureEngineSession()(); } catch { e.preventDefault(); return; }
-                    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-                    e.preventDefault();
-                    // Back returns to this message, even if it was selected from a broad search.
-                    const originId = messageIdString(messageId);
-                    if (originId) history.replaceState(history.state, '', routeUrl(messagePath(channelId, originId)));
-                    router.navigate(path);
-                }}>{ref[key]}</a></span>;
-        })}{plural && ']'}</>;
-    }
-
     // No inner overflow wrapper: the table scrolls in the tab body
     // (flex-1 min-h-0 overflow-auto), so the sticky header sticks to the pane
     // top and reads as a static banner instead of scrolling away with a nested
@@ -1007,7 +1036,7 @@ function MappingsTable({ cm, channelId, messageId }: any) {
                         onDoubleClick={() => openMappingValue(r.value)}>
                         <td className="w-[108px]">{r.scope}</td>
                         <td className="mono w-[30%]">{r.variable}</td>
-                        <td className="mono whitespace-pre-wrap break-all">{mappingValue(r)}</td>
+                        <td className="mono whitespace-pre-wrap break-all">{r.value}</td>
                     </tr>
                 ))}
             </tbody>
@@ -1323,7 +1352,7 @@ function ConnectorTabs({ message, cm, channelId, channelName, platform, anchor, 
         });
     }
 
-    defs.push({ label: 'Mappings', node: <MappingsTable cm={cm} channelId={channelId} messageId={message.messageId} /> });
+    defs.push({ label: 'Mappings', node: <MappingsTable cm={cm} /> });
     // Keep the tab visible on a failed attachment request so the failure cannot
     // masquerade as a message with no attachments.
     if (message.__attachmentsError || (message.__attachments && message.__attachments.length)) {
@@ -1345,7 +1374,7 @@ function ConnectorTabs({ message, cm, channelId, channelName, platform, anchor, 
    connector tabs. The connector shown is chosen by selecting the source or
    destination row in the tree above, so the header is just the message label —
    no status pill or connector dropdown. */
-function DetailBody({ detail, channelId, channelName, platform, anchor, onActiveStage, onStageMenu }: any) {
+function DetailBody({ detail, channelId, channelName, channelNames, platform, anchor, onActiveStage, onStageMenu }: any) {
     if (detail.status === 'empty') {
         return <div className="text-text-faint flex-none py-[8px] px-3.5">Select a message to view its contents.</div>;
     }
@@ -1366,9 +1395,13 @@ function DetailBody({ detail, channelId, channelName, platform, anchor, onActive
         );
     }
     const cm = cms.find(c => Number(c.metaDataId) === Number(metaDataId)) || cms[0];
+    const chain = sourceChain(message, cm);
     return (
         <>
-            <div className="panel-header flex-none">{`Message ${message.messageId}`}</div>
+            <div className="panel-header flex-none">
+                {chain.length ? <SourceTrail chain={chain} message={message} channelId={channelId} channelNames={channelNames} />
+                    : <div className="msg-trail"><span className="msg-trail-current">{`Message ${message.messageId}`}</span></div>}
+            </div>
             <ConnectorTabs key={`${message.messageId}:${cm.metaDataId}`}
                 message={message} cm={cm} channelId={channelId} channelName={channelName} platform={platform}
                 anchor={anchor} onActiveStage={onActiveStage} onStageMenu={onStageMenu} />
@@ -2196,6 +2229,7 @@ export function MessagesView({ params, query }: any) {
     const [columnsRev, setColumnsRev] = useState(0);
 
     const allCols = useMemo(() => buildColumns(channelName, metaDataColumns), [channelName, metaDataColumns]);
+    const channelNames = useMemo(() => new Map(channelList.map((c: any): [string, string] => [c.id, c.name])), [channelList]);
     const visibleCols = useMemo(() => {
         const present = allCols.filter(c => isVisible(c, columnVis));
         return mgr.order(present.map(c => c.key)).map((k: any) => present.find(c => c.key === k));
@@ -3384,7 +3418,7 @@ export function MessagesView({ params, query }: any) {
 
                 <div className="split-handle mx-[13px]" data-orient="v" data-resize="next" />
                 <div ref={detailPaneRef} className="flex-none h-[32px] overflow-hidden flex flex-col panel mx-[13px] mb-3">
-                    <DetailBody detail={detail} channelId={channelId} channelName={channelName} platform={platform}
+                    <DetailBody detail={detail} channelId={channelId} channelName={channelName} channelNames={channelNames} platform={platform}
                         anchor={anchor} onActiveStage={onActiveStage} onStageMenu={stageContextMenu} />
                 </div>
             </div>
