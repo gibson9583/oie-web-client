@@ -2351,6 +2351,8 @@ export function MessagesView({ params, query }: any) {
         // Swing accepts a three-digit page size, applied only on a new search.
         // Validate before invalidating the active search or requesting metadata.
         if (resetOffset && (!/^\d{1,3}$/.test(pageSize) || Number(pageSize) < 1)) {
+            // Bootstrap is finished even when validation prevents its first search.
+            if (automatic && searchGenRef.current === 0) setSearching(false);
             toast('Page size must be a whole number from 1 to 999.', 'error');
             return;
         }

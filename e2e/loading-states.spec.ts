@@ -50,6 +50,37 @@ test('the message browser shows loading until a response, then keeps rows during
     }
 });
 
+test('invalid page size during bootstrap clears loading and allows a corrected search', async ({ page }) => {
+    const hold = holdable();
+    let searches = 0;
+    await mockEngine(page, {
+        [`GET /channels/${CID}/connectorNames`]: async () => {
+            await hold.wait();
+            return { map: { entry: { int: 0, string: 'Source' } } };
+        },
+        [`GET /channels/${CID}/messages`]: () => {
+            searches++;
+            return { list: { message: [message('42')] } };
+        },
+    });
+    hold.gate();
+    try {
+        await page.goto(`/messages/${CID}`);
+        await expect(page.getByText('Loading messages…')).toBeVisible();
+        await page.getByRole('spinbutton', { name: 'Page Size', exact: true }).fill('');
+        hold.release();
+        await expect(page.getByText('Page size must be a whole number from 1 to 999.')).toBeVisible();
+        await expect(page.getByText('Loading messages…')).toHaveCount(0);
+        expect(searches).toBe(0);
+        await page.getByRole('dialog', { name: 'Error', exact: true }).getByRole('button', { name: 'Close', exact: true }).last().click();
+        await page.getByRole('spinbutton', { name: 'Page Size', exact: true }).fill('20');
+        await page.getByRole('button', { name: 'Search', exact: true }).click();
+        await expect(page.getByRole('cell', { name: '42', exact: true })).toBeVisible();
+    } finally {
+        hold.release();
+    }
+});
+
 test('events show loading until a response, then keep rows during a later search', async ({ page }) => {
     const hold = holdable();
     let empty = false;
