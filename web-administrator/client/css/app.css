@@ -798,6 +798,7 @@ table.dt tbody tr.group-row td {
 }
 .dt-empty .empty-icon { opacity: 0.45; margin-bottom: 9px; }
 .dt-empty .empty-icon svg { width: 27px; height: 27px; }
+.dt-empty .loading-block { padding: 0; }
 
 /* ---- Error boundary fallback ----------------------------------------------------------------- */
 

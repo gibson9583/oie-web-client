@@ -621,7 +621,7 @@ function Cell({ value, cls, indent }: any) {
  * out through callbacks — the table renders pure state.
  */
 function ResultsTable({
-    cols, mgr, rows, expandedIds, allExpanded, selKey, anchorKey,
+    cols, mgr, rows, loading, expandedIds, allExpanded, selKey, anchorKey,
     sortKey, sortDir, onSort, onToggleAll, onToggleRow, onSelect, onRowMenu,
     onColumnMenu, onColumnsChange
 }: any) {
@@ -741,7 +741,7 @@ function ResultsTable({
                         {colgroup}{thead}
                     </table>
                 </div>
-                <div className="dt-empty">No messages found</div>
+                {loading ? <Loading text="Loading messages…" /> : <div className="dt-empty">No messages found</div>}
             </>
         );
     }
@@ -2175,6 +2175,7 @@ export function MessagesView({ params, query }: any) {
     const [metaDataReady, setMetaDataReady] = useState(!channelId);
     const [metaDataError, setMetaDataError] = useState<string | null>(null);
     const [messages, setMessages] = useState([] as any[]);
+    const [searching, setSearching] = useState(!!channelId && !invalidTarget);
     // shown: null = no search has completed yet (blank counts label, legacy
     // parity) — distinct from a completed search with zero rows ('No results').
     const [pager, setPager] = useState<any>({ offset: 0, shown: null, total: null, hasNext: false });
@@ -2384,11 +2385,14 @@ export function MessagesView({ params, query }: any) {
         // Swing accepts a three-digit page size, applied only on a new search.
         // Validate before invalidating the active search or requesting metadata.
         if (resetOffset && (!/^\d{1,3}$/.test(pageSize) || Number(pageSize) < 1)) {
+            // Bootstrap is finished even when validation prevents its first search.
+            if (automatic && searchGenRef.current === 0) setSearching(false);
             toast('Page size must be a whole number from 1 to 999.', 'error');
             return;
         }
         const gen = ++searchGenRef.current;
         searchPendingRef.current = true;
+        setSearching(true);
         // A navigation target positions the opening page; it never becomes a
         // search filter. Explicit Search/Refresh supersedes that navigation.
         const openingTarget = automatic ? pendingTargetRef.current : null;
@@ -2517,7 +2521,10 @@ export function MessagesView({ params, query }: any) {
             if (gen !== searchGenRef.current) return;   // superseded — its results are on screen
             toast(`Search failed: ${e.message}`, 'error');
         } finally {
-            if (gen === searchGenRef.current) searchPendingRef.current = false;
+            if (gen === searchGenRef.current) {
+                searchPendingRef.current = false;
+                setSearching(false);
+            }
         }
     }
     searchRef.current = runSearch;
@@ -3150,6 +3157,8 @@ export function MessagesView({ params, query }: any) {
             // Nothing to search until a channel is chosen.
             if (!cancelled && channelId && metaDataReadyRef.current && !invalidTarget && searchGenRef.current === 0) {
                 searchRef.current(true, { automatic: true });
+            } else if (!cancelled && searchGenRef.current === 0) {
+                setSearching(false);
             }
         })();
         if (channelId && query.send === '1') setTimeout(() => { if (!cancelled) sendMessageTask(); }, 200);
@@ -3375,7 +3384,7 @@ export function MessagesView({ params, query }: any) {
                         </div>
                     ) : (
                     <ResultsTable
-                        cols={visibleCols} mgr={mgr} rows={sortedMessages}
+                        cols={visibleCols} mgr={mgr} rows={sortedMessages} loading={searching}
                         expandedIds={expandedIds} allExpanded={allExpanded}
                         selKey={selected ? `${selected.m.messageId}:${selected.metaDataId}` : null}
                         anchorKey={anchor && String(anchor.channelId) === String(channelId)

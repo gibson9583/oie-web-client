@@ -95,7 +95,8 @@ for (const delayed of ['statuses', 'groups'] as const) {
         try {
             await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
             await expect.poll(() => calls).toBeGreaterThan(before);
-            await expect(rows).toHaveCount(delayed === 'statuses' ? 1 : COUNT + 1);
+            await expect(rows).toHaveCount(delayed === 'statuses' ? 0 : COUNT + 1);
+            if (delayed === 'statuses') await expect(page.getByRole('status').filter({ hasText: 'Loading channels…' })).toBeVisible();
             await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
         } finally {
             releaseResponse();

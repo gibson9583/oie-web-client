@@ -1130,11 +1130,11 @@ function DashboardView({ onToggleView }: any) {
     const tabCtx = { selection: selectionForTabs, platform };
 
     /* ---- status board (<TreeTable>) data + collapse/selection state ---- */
-    const treeData = buildTreeData();
+    const treeData = loaded ? buildTreeData() : [];
     const collapsedKeys = buildCollapsedKeys();
     const selectedKeys = buildSelectedKeys();
     const channelsText = `${statuses.length} Deployed Channel${statuses.length === 1 ? '' : 's'}`;
-    const countsText = viewMode === 'channel'
+    const countsText = !loaded ? '' : viewMode === 'channel'
         ? channelsText
         : (() => { const rows = groupedStatuses(); return `${rows.length} Group${rows.length === 1 ? '' : 's'}, ${channelsText}`; })();
     const emptyText = loaded
@@ -1145,7 +1145,7 @@ function DashboardView({ onToggleView }: any) {
                 <div className="text-text-faint mt-[13px]">Deploy a channel from the Channels view to see it here.</div>
             </div>
         )
-        : 'Contacting engine…';
+        : <div className="loading-block" role="status"><div className="spinner" />Loading channels…</div>;
 
     return (
         <div className="view dash-shadcn">
