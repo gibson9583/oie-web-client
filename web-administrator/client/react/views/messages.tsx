@@ -1400,7 +1400,7 @@ function DetailBody({ detail, channelId, channelName, channelNames, platform, an
         <>
             <div className="panel-header flex-none">
                 {chain.length ? <SourceTrail chain={chain} message={message} channelId={channelId} channelNames={channelNames} />
-                    : `Message ${message.messageId}`}
+                    : <div className="msg-trail"><span className="msg-trail-current">{`Message ${message.messageId}`}</span></div>}
             </div>
             <ConnectorTabs key={`${message.messageId}:${cm.metaDataId}`}
                 message={message} cm={cm} channelId={channelId} channelName={channelName} platform={platform}
