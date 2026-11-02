@@ -328,6 +328,8 @@ test('a hidden tag still reports stale filtering after its refresh fails', async
     await expect(alert).toContainText('Tag refresh unavailable');
     await expect(alert).toContainText(/stale/i);
     await dismissError(page);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0))));
     // Clearing the tag filter removes the only displayed effect of the old
     // tags; the error remains, but the freshly loaded rows are not stale.
     await filter.clear();
