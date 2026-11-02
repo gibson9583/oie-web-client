@@ -931,7 +931,6 @@ function SourceLink({ reference, channelId, messageId, children }: any) {
     return (
         <a href={routeUrl(path)} className="msg-trail-link"
             title={`Open message ${reference.messageId} in channel ${reference.channelId}`}
-            onDoubleClick={e => e.stopPropagation()}
             onAuxClick={e => {
                 try { captureEngineSession()(); } catch { e.preventDefault(); }
             }}
@@ -960,21 +959,20 @@ function sourceChain(message: any, cm: any) {
     return [];
 }
 
-function SourceTrail({ message, cm, channelId, channelName, channelNames }: any) {
-    const chain = useMemo(() => sourceChain(message, cm), [message, cm]);
-    if (!chain.length) return null;
+function SourceTrail({ chain, message, channelId, channelNames }: any) {
     const canOpen = platform.checkTask('view', 'doShowMessages');
+    const name = (id: string) => channelNames?.get(id) || id.slice(0, 8);
     return (
         <nav className="msg-trail" aria-label="Message source trail">
-            {chain.map((ref, index) => {
-                const label = <>{channelNames?.get(ref.channelId) || ref.channelId.slice(0, 8)} <span className="msg-trail-id">{`#${ref.messageId}`}</span></>;
+            {chain.map((ref: any, index: number) => {
+                const label = <>{name(ref.channelId)} <span className="msg-trail-id">{`#${ref.messageId}`}</span></>;
                 return <span key={index}>
                     {canOpen ? <SourceLink reference={ref} channelId={channelId} messageId={message.messageId}>{label}</SourceLink>
                         : <span title={ref.channelId}>{label}</span>}
                     <span className="msg-trail-sep" aria-hidden="true">›</span>
                 </span>;
             })}
-            <span aria-current="step" className="msg-trail-current" title={`Current message ${message.messageId} in channel ${channelId}`}>{channelName} <span className="msg-trail-id">{`#${message.messageId}`}</span></span>
+            <span aria-current="step" className="msg-trail-current" title={`Current message ${message.messageId} in channel ${channelId}`}>{name(channelId)} <span className="msg-trail-id">{`#${message.messageId}`}</span></span>
         </nav>
     );
 }
@@ -1391,11 +1389,12 @@ function DetailBody({ detail, channelId, channelName, channelNames, platform, an
         );
     }
     const cm = cms.find(c => Number(c.metaDataId) === Number(metaDataId)) || cms[0];
+    const chain = sourceChain(message, cm);
     return (
         <>
             <div className="panel-header flex-none">
-                <span className="flex-none">{`Message ${message.messageId}`}</span>
-                <SourceTrail message={message} cm={cm} channelId={channelId} channelName={channelName} channelNames={channelNames} />
+                {chain.length ? <SourceTrail chain={chain} message={message} channelId={channelId} channelNames={channelNames} />
+                    : `Message ${message.messageId}`}
             </div>
             <ConnectorTabs key={`${message.messageId}:${cm.metaDataId}`}
                 message={message} cm={cm} channelId={channelId} channelName={channelName} platform={platform}

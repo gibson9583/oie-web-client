@@ -455,8 +455,10 @@ test('the source trail shows a single hop from a destination row, and hides with
     await page.getByRole('cell', { name: ORIGINAL_ID, exact: true }).click();
     await page.locator('table.msg-table tr.selected + tr').getByRole('cell', { name: 'HTTP Sender', exact: true }).click();
     await expect(trail(page)).toHaveText(`Upstream #42›Origin #${ORIGINAL_ID}`);
+    await expect(page.locator('.panel-header', { has: trail(page) })).toHaveText(`Upstream #42›Origin #${ORIGINAL_ID}`);
     await page.getByRole('cell', { name: '7', exact: true }).click();
     await expect(trail(page)).toHaveCount(0);
+    await expect(page.locator('.panel-header', { hasText: 'Message 7' })).toBeVisible();
 });
 
 test('the trail preserves repeated channels and source-only history on destination rows', async ({ page }, testInfo) => {
