@@ -24,6 +24,12 @@ connector and engine data, tabs can include Raw, Processed Raw, Transformed,
 Encoded, Sent, Response, Mappings, Errors, and Attachments. **Copy** uses the
 currently visible content.
 
+When a message came from another channel, the detail header shows its source
+trail, oldest first, for example `Lab Intake #199 › Router #71478 › Results #722855`. The
+last name is the current channel. Select a link to open that message. **Back**
+returns to the current message. A channel you cannot see shows the start of its
+ID. Mapping IDs remain plain values; double-click a value to view its full contents.
+
 Message Trees appear when native engine endpoints or Web Support provide exact
 serialization. Text formatting is client-side and can be controlled in
 Administrator preferences.

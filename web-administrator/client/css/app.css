@@ -693,6 +693,13 @@ code, pre, .mono { font-family: var(--font-mono); }
     color: var(--text-dim);
 }
 
+.msg-trail { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font-size: 11.5px; font-weight: 400; letter-spacing: normal; text-transform: none; }
+.msg-trail-link { color: var(--text-dim); text-decoration: none; border-radius: var(--radius); text-underline-offset: 2px; }
+.msg-trail-link:hover, .msg-trail-link:focus-visible { color: var(--accent); background: var(--accent-glow); text-decoration: underline; }
+.msg-trail-id { font-family: var(--font-mono); font-size: 10.5px; }
+.msg-trail-sep { margin: 0 6px; color: var(--text-dim); }
+.msg-trail-current { color: var(--text); font-weight: 600; }
+
 .panel-header .panel-tools { margin-left: auto; display: flex; gap: 5px; align-items: center; text-transform: none; letter-spacing: normal; }
 
 .panel-body { padding: 13px; }

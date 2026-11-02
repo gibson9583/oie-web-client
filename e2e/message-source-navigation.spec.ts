@@ -225,7 +225,7 @@ for (const action of ['Enter', 'Refresh']) {
             message(ORIGIN, ORIGINAL_ID, singular()), message(UPSTREAM, '42'), message(UPSTREAM, '43'),
         ]);
         await openOriginMappings(page);
-        await mappingTable(page).getByRole('link', { name: '42', exact: true }).click();
+        await trail(page).getByRole('link', { name: 'Upstream #42', exact: true }).click();
         await expectSourceContent(page, UPSTREAM, '42');
         await expect(page.getByRole('cell', { name: '43', exact: true })).toBeVisible();
         expectPageSearch(searches[1], UPSTREAM, '43');
@@ -364,8 +364,16 @@ test('singular source links from a destination open source content and preserve 
         message(ORIGIN, ORIGINAL_ID, singular()), message(UPSTREAM, '42'),
     ]);
     await openOriginMappings(page, true);
-    const links = mappingTable(page).getByRole('link');
-    await expect(links).toHaveText([UPSTREAM, '42']);
+    await expect(mappingTable(page).getByRole('link')).toHaveCount(0);
+    await expect(mappingTable(page).getByRole('cell', { name: UPSTREAM, exact: true })).toBeVisible();
+    const value = mappingTable(page).getByRole('cell', { name: '42', exact: true });
+    await expect(value).toBeVisible();
+    await value.dblclick();
+    const dialog = page.getByRole('dialog', { name: 'Mapping Value', exact: true });
+    await expect(dialog).toContainText('42');
+    await dialog.getByRole('button', { name: 'Close', exact: true }).last().click();
+    const links = trail(page).getByRole('link');
+    await expect(links).toHaveText(['Upstream #42']);
     for (const link of await links.all()) {
         await expect(link).toHaveAttribute('href', `/messages/${UPSTREAM}?messageId=42`);
         await expect(link).toHaveAttribute('title', `Open message 42 in channel ${UPSTREAM}`);
@@ -399,20 +407,88 @@ test('plural references pair repeated channels by index and support keyboard nav
     ]);
     await openOriginMappings(page);
     const rows = mappingTable(page).locator('tbody tr');
-    const channels = rows.filter({ has: page.getByRole('cell', { name: 'sourceChannelIds', exact: true }) }).getByRole('link');
-    const ids = rows.filter({ has: page.getByRole('cell', { name: 'sourceMessageIds', exact: true }) }).getByRole('link');
-    await expect(channels).toHaveText([UPSTREAM, ORIGIN, UPSTREAM]);
-    await expect(ids).toHaveText(['41', '42', '43']);
+    await expect(mappingTable(page).getByRole('link')).toHaveCount(0);
+    await expect(rows.filter({ has: page.getByRole('cell', { name: 'sourceChannelIds', exact: true }) }).locator('td').last()).toHaveText(`[${UPSTREAM}, ${ORIGIN}, ${UPSTREAM}]`);
+    await expect(rows.filter({ has: page.getByRole('cell', { name: 'sourceMessageIds', exact: true }) }).locator('td').last()).toHaveText('[41, 42, 43]');
+    const links = trail(page).getByRole('link');
+    await expect(links).toHaveText(['Upstream #41', 'Origin #42', 'Upstream #43']);
     for (const [i, channelId] of [UPSTREAM, ORIGIN, UPSTREAM].entries()) {
-        const href = `/messages/${channelId}?messageId=${41 + i}`;
-        await expect(channels.nth(i)).toHaveAttribute('href', href);
-        await expect(ids.nth(i)).toHaveAttribute('href', href);
+        await expect(links.nth(i)).toHaveAttribute('href', `/messages/${channelId}?messageId=${41 + i}`);
     }
-    await ids.nth(1).focus();
+    await links.nth(1).focus();
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(new RegExp(`/messages/${ORIGIN}\\?messageId=42$`));
     await expectSourceContent(page, ORIGIN, '42');
     expectPageSearch(searches[1], ORIGIN, ORIGINAL_ID);
+});
+
+const trail = (page: Page) => page.getByRole('navigation', { name: 'Message source trail' });
+
+test('the source trail shows a chain on every tab and follows it with Back', async ({ page }) => {
+    const unknown = 'aaaaaaaa-0000-0000-0000-000000000000';
+    const references = map([
+        { string: ['sourceChannelId', UPSTREAM] },
+        { string: 'sourceMessageId', long: '43' },
+        { string: 'sourceChannelIds', list: { string: [unknown, UPSTREAM] } },
+        { string: 'sourceMessageIds', list: { long: ['41', '43'] } },
+    ]);
+    await setup(page, [message(ORIGIN, ORIGINAL_ID, references), message(UPSTREAM, '43')]);
+    await page.goto(`/messages/${ORIGIN}`);
+    await page.getByRole('cell', { name: ORIGINAL_ID, exact: true }).click();
+    await expect(trail(page)).toHaveText(`aaaaaaaa #41›Upstream #43›Origin #${ORIGINAL_ID}`);
+    for (const tab of ['Mappings', 'Raw']) {
+        await page.getByRole('tab', { name: tab, exact: true }).click();
+        await expect(trail(page)).toBeVisible();
+    }
+    await trail(page).getByRole('link', { name: 'Upstream #43' }).click();
+    await expect(page).toHaveURL(new RegExp(`/messages/${UPSTREAM}\\?messageId=43$`));
+    await expectSourceContent(page, UPSTREAM, '43');
+    await expect(trail(page)).toHaveCount(0);
+    await page.goBack();
+    await expectSourceContent(page, ORIGIN, ORIGINAL_ID);
+    await expect(trail(page)).toContainText('Upstream #43');
+});
+
+test('the source trail shows a single hop from a destination row, and hides without a source', async ({ page }) => {
+    await setup(page, [message(ORIGIN, ORIGINAL_ID, singular()), message(ORIGIN, '7')]);
+    await page.goto(`/messages/${ORIGIN}`);
+    await page.getByRole('cell', { name: ORIGINAL_ID, exact: true }).click();
+    await page.locator('table.msg-table tr.selected + tr').getByRole('cell', { name: 'HTTP Sender', exact: true }).click();
+    await expect(trail(page)).toHaveText(`Upstream #42›Origin #${ORIGINAL_ID}`);
+    await page.getByRole('cell', { name: '7', exact: true }).click();
+    await expect(trail(page)).toHaveCount(0);
+});
+
+test('the trail preserves repeated channels and source-only history on destination rows', async ({ page }, testInfo) => {
+    const references = map([
+        { string: ['sourceChannelId', UPSTREAM] },
+        { string: 'sourceMessageId', long: '43' },
+        { string: 'sourceChannelIds', list: { string: [UPSTREAM, ORIGIN, UPSTREAM] } },
+        { string: 'sourceMessageIds', list: { long: ['41', '42', '43'] } },
+    ]);
+    const origin = message(ORIGIN, ORIGINAL_ID, references);
+    origin.connectorMessages.entry[1].connectorMessage.sourceMapContent = map([]);
+    await setup(page, [origin, message(ORIGIN, '42')]);
+    await page.goto(`/messages/${ORIGIN}`);
+    await page.getByRole('cell', { name: ORIGINAL_ID, exact: true }).click();
+    await page.locator('table.msg-table tr.selected + tr').getByRole('cell', { name: 'HTTP Sender', exact: true }).click();
+    await expect(trail(page)).toHaveText(`Upstream #41›Origin #42›Upstream #43›Origin #${ORIGINAL_ID}`);
+    await expect(trail(page).getByRole('link')).toHaveCount(3);
+    for (const width of [1440, 800]) {
+        await page.setViewportSize({ width, height: 900 });
+        await expect(trail(page)).toBeVisible();
+        if (width === 800) await page.getByRole('button', { name: 'Hide navigation', exact: true }).click();
+        // The shell animates its navigation width when collapsing the rail.
+        await expect.poll(async () => {
+            const bounds = await trail(page).boundingBox();
+            return bounds!.x + bounds!.width;
+        }).toBeLessThanOrEqual(width);
+        await page.screenshot({ path: testInfo.outputPath(`source-trail-${width}.png`) });
+    }
+    await trail(page).getByRole('link', { name: 'Origin #42', exact: true }).focus();
+    await expect(trail(page).getByRole('link', { name: 'Origin #42', exact: true })).toBeInViewport();
+    await page.keyboard.press('Enter');
+    await expectSourceContent(page, ORIGIN, '42');
 });
 
 test('malformed pairs and references outside the source map remain ordinary mapping values', async ({ page }) => {
@@ -441,7 +517,7 @@ test('Long.MAX_VALUE source IDs stay exact in links, XML searches, and detail UR
         message(ORIGIN, ORIGINAL_ID, singular(UPSTREAM, LARGE_ID)), message(UPSTREAM, LARGE_ID), message(UPSTREAM, previous),
     ]);
     await openOriginMappings(page);
-    const link = mappingTable(page).getByRole('link', { name: LARGE_ID, exact: true });
+    const link = trail(page).getByRole('link', { name: `Upstream #${LARGE_ID}`, exact: true });
     await expect(link).toHaveAttribute('href', `/messages/${UPSTREAM}?messageId=${LARGE_ID}`);
     await link.click();
     await expectSourceContent(page, UPSTREAM, LARGE_ID);
@@ -491,7 +567,7 @@ test('a delayed source detail cannot replace the originating message after Back'
     });
     try {
         await openOriginMappings(page);
-        await mappingTable(page).getByRole('link', { name: '42', exact: true }).click();
+        await trail(page).getByRole('link', { name: 'Upstream #42', exact: true }).click();
         await expect.poll(() => detailStarted).toBe(true);
         await page.goBack();
         await expectSourceContent(page, ORIGIN, ORIGINAL_ID);
@@ -553,7 +629,7 @@ test('source links block both middle and normal clicks after the browser session
     for (const [index, type] of ['auxclick', 'click'].entries()) {
         await page.context().clearCookies();
         await openOriginMappings(page);
-        const prevented = await mappingTable(page).getByRole('link', { name: '42', exact: true }).evaluate((link, eventType) => {
+        const prevented = await trail(page).getByRole('link', { name: 'Upstream #42', exact: true }).evaluate((link, eventType) => {
             document.cookie = `oie-login=replacement-navigation-${eventType}; path=/`;
             const event = new MouseEvent(eventType, { button: eventType === 'auxclick' ? 1 : 0, bubbles: true, cancelable: true });
             link.dispatchEvent(event);
