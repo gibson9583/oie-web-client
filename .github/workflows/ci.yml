@@ -89,7 +89,7 @@ jobs:
           compression-level: 0
 
   e2e:
-    name: Playwright · ${{ matrix.browser }} ${{ matrix.shard }}/4
+    name: Playwright · ${{ matrix.browser }} ${{ matrix.shard }}/${{ matrix.shardTotal }}
     needs: artifacts
     runs-on: ubuntu-latest
     container:
@@ -104,12 +104,36 @@ jobs:
           - browser: chromium
             project: ui
             workers: 4
+            shardTotal: 4
           - browser: firefox
             project: firefox
             workers: 2
+            shardTotal: 4
           - browser: webkit
             project: webkit
             workers: 2
+            shardTotal: 8
+          # Extra WebKit shards need their own complete matrix entries.
+          - browser: webkit
+            project: webkit
+            workers: 2
+            shard: 5
+            shardTotal: 8
+          - browser: webkit
+            project: webkit
+            workers: 2
+            shard: 6
+            shardTotal: 8
+          - browser: webkit
+            project: webkit
+            workers: 2
+            shard: 7
+            shardTotal: 8
+          - browser: webkit
+            project: webkit
+            workers: 2
+            shard: 8
+            shardTotal: 8
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -131,8 +155,9 @@ jobs:
           PROJECT: ${{ matrix.project }}
           WORKERS: ${{ matrix.workers }}
           SHARD: ${{ matrix.shard }}
+          SHARD_TOTAL: ${{ matrix.shardTotal }}
           PLAYWRIGHT_JSON_OUTPUT_FILE: release-artifacts/browser-results.json
-        run: npx playwright test --project="$PROJECT" --workers="$WORKERS" --shard="$SHARD/4" --reporter=github,json
+        run: npx playwright test --project="$PROJECT" --workers="$WORKERS" --shard="$SHARD/$SHARD_TOTAL" --reporter=github,json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         # A passing retry still needs its original trace for review.
         if: always()
