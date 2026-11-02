@@ -50,6 +50,20 @@ def stop(process):
             process.wait(10)
 
 
+def stop_container(container):
+    # The ID was created here, written to our unique cidfile and checked
+    # against our ownership label. Never select by a shared name/tag.
+    result = subprocess.run(['docker', 'inspect', '--format', '{{.State.Running}}', container], capture_output=True, text=True)
+    missing = {f'{prefix}no such {kind}: {container}'
+               for prefix in ('', 'error: ', 'error response from daemon: ')
+               for kind in ('object', 'container')}
+    if result.returncode and result.stderr.strip().lower() in missing:
+        return
+    result.check_returncode()
+    if result.stdout.strip() == 'true':
+        subprocess.run(['docker', 'stop', '--time', '15', container], check=True, capture_output=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--archive', required=True, type=Path)
@@ -106,16 +120,6 @@ def main():
             processes.append(process)
             receipt['processes'].append({'name': name, 'pid': process.pid, 'command': command})
             return process
-
-        def stop_container(container):
-            # The ID was created here, written to our unique cidfile and checked
-            # against our ownership label. Never select by a shared name/tag.
-            result = subprocess.run(['docker', 'inspect', '--format', '{{.State.Running}}', container], capture_output=True, text=True)
-            if result.returncode and 'No such' in result.stderr:
-                return
-            result.check_returncode()
-            if result.stdout.strip() == 'true':
-                subprocess.run(['docker', 'stop', '--time', '15', container], check=True, capture_output=True)
 
         def spawn_container(image, phase):
             receipt['containerLaunchPending'] = True
