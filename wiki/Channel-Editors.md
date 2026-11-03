@@ -103,7 +103,8 @@ preprocessing, including their source and literal map references.
 Each destination has Filter, Transform, Send, and Handle the response substeps.
 Send shows the payload the connector sends: the HTTP request body for POST, PUT
 and PATCH, the TCP template, the SMTP body and attachments, and the SOAP
-envelope and attachments. It also shows request headers, query parameters,
+envelope and attachments. A form-urlencoded HTTP request sends its parameters
+as the body, so Send shows the parameters and not the Content field. It also shows request headers, query parameters,
 recipients and authentication type. Header values with credential names are
 redacted.
 Source, destination, and response outbound templates are included even when no
@@ -111,6 +112,9 @@ transformer steps are configured. They initialize `tmp`, whose final value
 supplies that transformer's output.
 The source, each destination transformer, and each response transformer show
 their inbound and outbound data type properties.
+
+File Reader shows what happens to each file after processing, after a read
+error, and after an error response, including the move directory and file name.
 
 Polling sources show their schedule: the interval, the daily time, or each cron
 expression. The interval and daily time also show the days and hours the

@@ -4,6 +4,7 @@
  */
 
 import { replacementPairs } from './step-replacements.js';
+import { httpBodyMode } from './http-body.js';
 import { elementsToArray, elementTypeLabel, destinationsOf } from './oie.js';
 import { mappingEntries } from './xstream.js';
 import { configurationFacts, configurationText, isCredentialKey, redactEndpointCredentials } from './inspector-configuration.js';
@@ -340,13 +341,14 @@ function mapLines(map: any): string {
     }).join('\n');
 }
 
-/** HttpDispatcher sends content only for POST, PUT and PATCH. */
-const sendsBody = (p: any) => ['POST', 'PUT', 'PATCH'].includes(text(p.method).toUpperCase());
-
 /** Message bodies the engine sends, as configured. */
 function payloadOf(transport: string, p: any): [string, unknown][] {
     switch (transport) {
-        case 'HTTP Sender': return sendsBody(p) ? [['Request body', p.content]] : [];
+        case 'HTTP Sender': {
+            // A form body is the parameter list, shown with the settings; Content is not sent.
+            const body = httpBodyMode(p);
+            return body === 'content' ? [['Request body', p.content]] : body === 'multipart' ? [['Multipart file content', p.content]] : [];
+        }
         case 'TCP Sender': return [['Template', p.template]];
         case 'SMTP Sender': return [['Body', p.body], ...(truthy(p.isUseAttachmentsVariable) ? []
             : many(p.attachments?.['com.mirth.connect.connectors.smtp.Attachment']).map((a: any): [string, unknown] =>
@@ -385,6 +387,19 @@ function pollFacts(poll: any): Fact[] {
     return facts;
 }
 
+/** FileReceiver completion: read errors and error responses can replace the normal action and use the error move target. */
+function fileActionFacts(p: any): Fact[] {
+    const action = (value: unknown, directory: unknown, name: unknown) => text(value) === 'DELETE' ? 'Delete'
+        : text(value) !== 'MOVE' ? 'None'
+            : `Move to ${text(directory).trim() ? text(directory) : 'the file\'s current directory'}${text(name).trim() ? ` as ${text(name)}` : ' with its original name'}`;
+    const response = text(p.errorResponseAction || 'AFTER_PROCESSING');
+    return [
+        ['After processing', action(p.afterProcessingAction, p.moveToDirectory, p.moveToFileName)],
+        ['On read error', action(p.errorReadingAction, p.errorMoveToDirectory, p.errorMoveToFileName)],
+        ['On error response', response === 'AFTER_PROCESSING' ? 'Same as after processing' : action(response, p.errorMoveToDirectory, p.errorMoveToFileName)]
+    ];
+}
+
 function settingsOf(transport: string, p: any): Fact[] {
     const facts: Fact[] = [];
     const add = (k: string, v: unknown) => { if (text(v) !== '') facts.push([k, text(v)]); };
@@ -407,8 +422,9 @@ function settingsOf(transport: string, p: any): Fact[] {
             add('Method', text(p.method).toUpperCase());
             add('Content type', p.contentType);
             add('Headers', truthy(p.useHeadersVariable) ? `From map variable ${text(p.headersVariable)}` : mapLines(p.headers));
-            add('Query parameters', truthy(p.useParametersVariable) ? `From map variable ${text(p.parametersVariable)}` : mapLines(p.parameters));
-            if (sendsBody(p)) add('Multipart', truthy(p.multipart) ? 'Yes' : 'No');
+            add(httpBodyMode(p) === 'form' ? 'Request body · form parameters' : 'Query parameters',
+                truthy(p.useParametersVariable) ? `From map variable ${text(p.parametersVariable)}` : mapLines(p.parameters));
+            if (text(p.method).toUpperCase() === 'POST') add('Multipart', truthy(p.multipart) ? 'Yes' : 'No');
             add('Authentication', truthy(p.useAuthentication) ? `${text(p.authenticationType)}${truthy(p.usePreemptiveAuthentication) ? ' · preemptive' : ''}` : 'None');
             add('Socket timeout', p.socketTimeout != null ? `${text(p.socketTimeout)} ms` : '');
             break;
@@ -419,7 +435,7 @@ function settingsOf(transport: string, p: any): Fact[] {
         case 'File Reader':
             facts.push(...pollFacts(p.pollConnectorProperties));
             add('File filter', p.fileFilter);
-            add('After processing', p.afterProcessingAction);
+            facts.push(...fileActionFacts(p));
             break;
         case 'File Writer':
             add('If file exists', truthy(p.outputAppend) ? 'Append' : truthy(p.errorOnExists) ? 'Error' : 'Overwrite');

@@ -584,6 +584,41 @@ test.describe('Channel Inspector', () => {
         await expect(preview).not.toContainText('HEADER_SECRET');
     });
 
+    test('form HTTP bodies and File Reader completion actions match the engine on screen and in print', async ({ page }) => {
+        const channel = structuredClone(CHANNEL);
+        Object.assign(channel.sourceConnector, { transportName: 'File Reader' });
+        channel.sourceConnector.properties = {
+            '@class': 'com.mirth.connect.connectors.file.FileReceiverProperties', '@version': V,
+            scheme: 'FILE', host: '/intake', fileFilter: '*.hl7',
+            afterProcessingAction: 'MOVE', moveToDirectory: '/archive', moveToFileName: '',
+            errorReadingAction: 'DELETE', errorResponseAction: 'MOVE', errorMoveToDirectory: '/rejected', errorMoveToFileName: 'failed.hl7',
+            sourceConnectorProperties: channel.sourceConnector.properties.sourceConnectorProperties
+        };
+        channel.destinationConnectors.connector.push(tcpSender(9, 'Form API', {
+            transportName: 'HTTP Sender',
+            properties: {
+                '@class': 'com.mirth.connect.connectors.http.HttpDispatcherProperties', '@version': V,
+                host: 'https://forms.example/receive', method: 'post', contentType: 'application/x-www-form-urlencoded', multipart: false,
+                content: 'IGNORED_CONFIGURED_CONTENT',
+                parameters: { '@class': 'linked-hash-map', entry: { string: 'patient', list: { '@class': 'java.util.ArrayList', string: 'A B' } } },
+                destinationConnectorProperties: queue()
+            }
+        }));
+        await mockEngine(page, { ['GET /channels/' + ID]: { channel } });
+        await page.goto('/channels/' + ID + '/edit?tab=Inspector');
+        const form = page.locator('#ci-dest-9');
+        await expect(form).toContainText('Request body · form parameters');
+        await expect(form).toContainText('patient: A B');
+        await expect(form).not.toContainText('IGNORED_CONFIGURED_CONTENT');
+        const receive = page.locator('#ci-receive');
+        for (const text of ["Move to /archive with its original name", 'Delete', 'Move to /rejected as failed.hl7']) await expect(receive).toContainText(text);
+        await page.getByRole('button', { name: 'Print', exact: true }).click();
+        const preview = page.getByRole('dialog', { name: 'Print preview', exact: true });
+        await expect(preview).toContainText('Move to /rejected as failed.hl7');
+        await expect(preview).toContainText('patient: A B');
+        await expect(preview).not.toContainText('IGNORED_CONFIGURED_CONTENT');
+    });
+
     test('destination responses write their response map keys and destinations show data type properties', async ({ page }) => {
         const channel = structuredClone(CHANNEL);
         channel.postprocessingScript = "var a = $r('d1'); var b = responseMap.get('Clinical store'); return;";

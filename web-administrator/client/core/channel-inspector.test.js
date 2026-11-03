@@ -255,6 +255,43 @@ assert.deepEqual(sent[5].send, [['SOAP envelope', '<soap:Envelope/>', 'Template'
 // Payload templates are not JavaScript: no map claims and no routing.
 assert.equal(senders.maps.length, 0);
 
+// HttpDispatcher: form-urlencoded POST, PUT and PATCH send the parameters as the body and
+// ignore Content; POST multipart takes precedence; PUT and PATCH ignore the multipart flag.
+const http = (properties) => {
+    const d = inspectChannel({ destinationConnectors: { connector: sender(1, 'HTTP Sender', { content: 'CONFIGURED_CONTENT',
+        parameters: { entry: { string: 'patient', list: { string: 'A B' } } }, ...properties }) } }).destinations[0];
+    return { settings: Object.fromEntries(d.settings), send: d.send.map(el => [el.name, el.detail]) };
+};
+for (const method of ['post', 'PUT', 'patch']) {
+    const form = http({ method, contentType: 'application/x-www-form-urlencoded; charset=UTF-8' });
+    assert.deepEqual(form.send, [], method);
+    assert.equal(form.settings['Request body · form parameters'], 'patient: A B', method);
+    assert.equal(form.settings['Query parameters'], undefined, method);
+}
+const formVariable = http({ method: 'post', contentType: 'application/x-www-form-urlencoded', useParametersVariable: true, parametersVariable: 'formMap' });
+assert.equal(formVariable.settings['Request body · form parameters'], 'From map variable formMap');
+const multipartForm = http({ method: 'post', contentType: 'application/x-www-form-urlencoded', multipart: true });
+assert.deepEqual(multipartForm.send, [['Multipart file content', 'CONFIGURED_CONTENT']]);
+assert.equal(multipartForm.settings['Query parameters'], 'patient: A B');
+const putMultipart = http({ method: 'put', contentType: 'text/plain', multipart: true });
+assert.deepEqual(putMultipart.send, [['Request body', 'CONFIGURED_CONTENT']]);
+assert.equal(putMultipart.settings.Multipart, undefined);
+assert.equal(http({ method: 'delete' }).settings['Query parameters'], 'patient: A B');
+
+// FileReceiver: read errors use errorReadingAction; error responses use errorResponseAction unless
+// it is AFTER_PROCESSING. Only those error cases use the error move target; blank targets keep the file's place or name.
+const fileActions = (properties) => Object.fromEntries(inspectChannel({ sourceConnector: { transportName: 'File Reader', properties } }).source.settings);
+const configured = fileActions({ afterProcessingAction: 'MOVE', moveToDirectory: '/archive', moveToFileName: '${originalFilename}.done',
+    errorReadingAction: 'DELETE', errorResponseAction: 'MOVE', errorMoveToDirectory: '/rejected', errorMoveToFileName: '' });
+assert.equal(configured['After processing'], 'Move to /archive as ${originalFilename}.done');
+assert.equal(configured['On read error'], 'Delete');
+assert.equal(configured['On error response'], "Move to /rejected with its original name");
+const defaults = fileActions({ afterProcessingAction: 'MOVE', moveToDirectory: ' ', errorReadingAction: 'NONE', errorResponseAction: 'AFTER_PROCESSING', errorMoveToDirectory: '/unused' });
+assert.equal(defaults['After processing'], "Move to the file's current directory with its original name");
+assert.equal(defaults['On read error'], 'None');
+assert.equal(defaults['On error response'], 'Same as after processing');
+assert.deepEqual(['After processing', 'On read error', 'On error response'].map(k => fileActions({})[k]), ['None', 'None', 'Same as after processing']);
+
 // Enabled destinations write d<metaDataId>; ResponseMap.get also resolves their names.
 // Disabled destinations write nothing, so their keys keep the no-writer warning.
 const responseReads = inspectChannel({
