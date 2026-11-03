@@ -6,7 +6,7 @@
 import { replacementPairs } from './step-replacements.js';
 import { elementsToArray, elementTypeLabel, destinationsOf } from './oie.js';
 import { mappingEntries } from './xstream.js';
-import { configurationFacts, configurationText, redactEndpointCredentials } from './inspector-configuration.js';
+import { configurationFacts, configurationText, isCredentialKey, redactEndpointCredentials } from './inspector-configuration.js';
 const truthy = (v) => v === true || v === 'true';
 const text = (v) => (v == null ? '' : String(v));
 const list = (v) => {
@@ -233,6 +233,34 @@ function endpointValue(transport, p) {
         default: return listener(p) || text(p.host);
     }
 }
+const many = (v) => (v == null || v === '' ? [] : Array.isArray(v) ? v : [v]);
+/** Header and parameter maps, one "name: value" line per value; credential names are redacted. */
+function mapLines(map) {
+    return many(map?.entry).flatMap((entry) => {
+        const pair = many(entry?.string);
+        const key = text(pair[0]);
+        const values = entry?.list !== undefined ? many(entry.list?.string) : pair.slice(1);
+        return (values.length ? values : ['']).map(v => `${key}: ${isCredentialKey(key) ? '[redacted]' : text(v)}`);
+    }).join('\n');
+}
+/** HttpDispatcher sends content only for POST, PUT and PATCH. */
+const sendsBody = (p) => ['POST', 'PUT', 'PATCH'].includes(text(p.method).toUpperCase());
+/** Message bodies the engine sends, as configured. */
+function payloadOf(transport, p) {
+    switch (transport) {
+        case 'HTTP Sender': return sendsBody(p) ? [['Request body', p.content]] : [];
+        case 'TCP Sender': return [['Template', p.template]];
+        case 'SMTP Sender': return [['Body', p.body], ...(truthy(p.isUseAttachmentsVariable) ? []
+                : many(p.attachments?.['com.mirth.connect.connectors.smtp.Attachment']).map((a) => [`Attachment ${text(a?.name) || '(unnamed)'}${text(a?.mimeType) ? ` · ${text(a.mimeType)}` : ''}`, a?.content]))];
+        case 'Web Service Sender': {
+            const types = many(p.attachmentTypes?.string);
+            const contents = many(p.attachmentContents?.string);
+            return [['SOAP envelope', p.envelope], ...(truthy(p.isUseAttachmentsVariable) ? []
+                    : many(p.attachmentNames?.string).map((name, i) => [`Attachment ${text(name) || '(unnamed)'}${text(types[i]) ? ` · ${text(types[i])}` : ''}`, contents[i]]))];
+        }
+        default: return [];
+    }
+}
 function settingsOf(transport, p) {
     const facts = [];
     const add = (k, v) => { if (text(v) !== '')
@@ -252,10 +280,17 @@ function settingsOf(transport, p) {
             add('Response timeout', p.responseTimeout != null ? `${text(p.responseTimeout)} ms` : '');
             add('Receive timeout', p.receiveTimeout != null ? `${text(p.receiveTimeout)} ms` : '');
             add('Max connections', p.maxConnections);
+            if (transport === 'TCP Sender')
+                add('Ignore response', truthy(p.ignoreResponse) ? 'Yes' : 'No');
             break;
         case 'HTTP Sender':
             add('Method', text(p.method).toUpperCase());
             add('Content type', p.contentType);
+            add('Headers', truthy(p.useHeadersVariable) ? `From map variable ${text(p.headersVariable)}` : mapLines(p.headers));
+            add('Query parameters', truthy(p.useParametersVariable) ? `From map variable ${text(p.parametersVariable)}` : mapLines(p.parameters));
+            if (sendsBody(p))
+                add('Multipart', truthy(p.multipart) ? 'Yes' : 'No');
+            add('Authentication', truthy(p.useAuthentication) ? `${text(p.authenticationType)}${truthy(p.usePreemptiveAuthentication) ? ' · preemptive' : ''}` : 'None');
             add('Socket timeout', p.socketTimeout != null ? `${text(p.socketTimeout)} ms` : '');
             break;
         case 'HTTP Listener':
@@ -288,10 +323,25 @@ function settingsOf(transport, p) {
         case 'SMTP Sender':
             add('Subject', p.subject);
             add('From', p.from);
+            add('CC', p.cc);
+            add('BCC', p.bcc);
+            add('Reply to', p.replyTo);
+            add('Headers', truthy(p.isUseHeadersVariable) ? `From map variable ${text(p.headersVariable)}` : mapLines(p.headers));
+            add('Body format', truthy(p.html) ? 'HTML' : 'Plain text');
+            if (truthy(p.isUseAttachmentsVariable))
+                add('Attachments', `From list variable ${text(p.attachmentsVariable)}`);
             break;
         case 'Web Service Sender':
             add('Service', p.service);
+            add('Port', p.port);
             add('Operation', p.operation);
+            add('SOAP action', p.soapAction);
+            add('Invocation', truthy(p.oneWay) ? 'One-way' : 'Request and response');
+            add('Headers', truthy(p.isUseHeadersVariable) ? `From map variable ${text(p.headersVariable)}` : mapLines(p.headers));
+            add('Authentication', truthy(p.useAuthentication) ? 'Yes' : 'No');
+            add('MTOM', truthy(p.useMtom) ? 'Yes' : 'No');
+            if (truthy(p.isUseAttachmentsVariable))
+                add('Attachments', `From list variable ${text(p.attachmentsVariable)}`);
             break;
         default:
             facts.push(...configurationFacts(p, { omit: ['sourceConnectorProperties', 'destinationConnectorProperties', 'resourceIds'] }));
@@ -352,7 +402,8 @@ export function inspectChannel(channel, globals = {}) {
         const { facts, queued, sendFirst, filterTransformerInQueue } = queueOf(d);
         const send = [
             ...(d.transportName === 'JavaScript Writer' ? els.fromScript('Writer script', p.script, owner) : []),
-            ...(d.transportName === 'Database Writer' && truthy(p.useScript) ? els.fromScript('Database script', p.query, owner) : [])
+            ...(d.transportName === 'Database Writer' && truthy(p.useScript) ? els.fromScript('Database script', p.query, owner) : []),
+            ...payloadOf(text(d.transportName), p).flatMap(([name, value]) => els.fromText(name, value, owner + ' send', 'template'))
         ];
         return {
             metaDataId, label,

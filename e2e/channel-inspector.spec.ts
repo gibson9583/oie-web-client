@@ -556,6 +556,34 @@ test.describe('Channel Inspector', () => {
         await expect(preview.locator('details')).toHaveCount(0);
     });
 
+    test('shows sender payloads and request settings in the Send step and print', async ({ page }) => {
+        const channel = structuredClone(CHANNEL);
+        const tcp = channel.destinationConnectors.connector[0];
+        tcp.properties.template = 'TCP_PAYLOAD_MARKER ${message.encodedData}';
+        channel.destinationConnectors.connector.push(tcpSender(9, 'FHIR API', {
+            transportName: 'HTTP Sender',
+            properties: {
+                '@class': 'com.mirth.connect.connectors.http.HttpDispatcherProperties', '@version': V,
+                host: 'https://fhir.example/Bundle', method: 'post', contentType: 'application/fhir+json',
+                content: '{"marker":"HTTP_BODY_MARKER"}',
+                headers: { '@class': 'linked-hash-map', entry: { string: 'Authorization', list: { '@class': 'java.util.ArrayList', string: 'Bearer HEADER_SECRET' } } },
+                destinationConnectorProperties: queue()
+            }
+        }));
+        await mockEngine(page, { ['GET /channels/' + ID]: { channel } });
+        await page.goto('/channels/' + ID + '/edit?tab=Inspector');
+        const http = page.locator('#ci-dest-9');
+        await page.getByPlaceholder('Find in channel').fill('HTTP_BODY_MARKER');
+        await expect(http.locator('.ci-substep').nth(2).locator('.ci-item[open]')).toContainText('HTTP_BODY_MARKER');
+        await expect(http).toContainText('Authorization: [redacted]');
+        await expect(page.locator('#ci-dest-1 .ci-substep').nth(2)).toContainText('TCP_PAYLOAD_MARKER');
+        await page.getByRole('button', { name: 'Print', exact: true }).click();
+        const preview = page.getByRole('dialog', { name: 'Print preview', exact: true });
+        await expect(preview).toContainText('TCP_PAYLOAD_MARKER ${message.encodedData}');
+        await expect(preview).toContainText('{"marker":"HTTP_BODY_MARKER"}');
+        await expect(preview).not.toContainText('HEADER_SECRET');
+    });
+
     test('inspects replacement expressions and XSLT inputs through search, map links and print', async ({ page }) => {
         const channel = structuredClone(CHANNEL);
         const BUILDER = 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep';

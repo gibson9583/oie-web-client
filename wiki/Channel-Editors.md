@@ -101,6 +101,11 @@ the source and stylesheet expressions, their literal map reads, and an enabled
 custom transformer factory. JavaScript attachment handlers appear before
 preprocessing, including their source and literal map references.
 Each destination has Filter, Transform, Send, and Handle the response substeps.
+Send shows the payload the connector sends: the HTTP request body for POST, PUT
+and PATCH, the TCP template, the SMTP body and attachments, and the SOAP
+envelope and attachments. It also shows request headers, query parameters,
+recipients and authentication type. Header values with credential names are
+redacted.
 Source, destination, and response outbound templates are included even when no
 transformer steps are configured. They initialize `tmp`, whose final value
 supplies that transformer's output.

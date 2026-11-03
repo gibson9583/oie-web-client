@@ -216,6 +216,45 @@ for (const type of [MAPPER, 'com.mirth.connect.plugins.xsltstep.XsltStep']) {
 const fileWriter = inspectChannel({ destinationConnectors: { connector: destination(1, 'File', { transportName: 'File Writer', properties: { host: '/drop', outputPattern: 0 } }) } });
 assert.equal(fileWriter.destinations[0].endpoint, 'file:///drop/0');
 
+// Built-in senders show the payload the engine sends and their request settings.
+// HTTP content is sent only for POST, PUT and PATCH; credential-named headers are redacted.
+const sender = (metaDataId, transportName, properties) => destination(metaDataId, transportName, { transportName, properties: { ...properties, destinationConnectorProperties: {} } });
+const senders = inspectChannel({ destinationConnectors: { connector: [
+    sender(1, 'HTTP Sender', { method: 'post', content: '{"id":"${msgId}"}', multipart: false,
+        headers: { '@class': 'linked-hash-map', entry: [{ string: 'Accept', list: { string: ['a', 'b'] } }, { string: 'X-Api-Key', list: { string: 'secret' } }] },
+        useParametersVariable: true, parametersVariable: 'query', useAuthentication: true, authenticationType: 'Basic', usePreemptiveAuthentication: true }),
+    sender(2, 'HTTP Sender', { method: 'GET', content: 'ignored by the engine' }),
+    sender(3, 'TCP Sender', { template: 'MSH|${message.encodedData}', ignoreResponse: true }),
+    sender(4, 'SMTP Sender', { to: 'a@example', cc: 'cc@example', html: true, body: '<p>${message}</p>',
+        headers: { entry: { string: ['X-Token', 'secret'] } },
+        attachments: { '@class': 'java.util.ArrayList', 'com.mirth.connect.connectors.smtp.Attachment': { name: 'msg.hl7', content: '${message.encodedData}', mimeType: 'text/plain' } } }),
+    sender(5, 'SMTP Sender', { body: 'b', isUseAttachmentsVariable: true, attachmentsVariable: 'files',
+        attachments: { 'com.mirth.connect.connectors.smtp.Attachment': { name: 'skipped', content: 'skipped' } } }),
+    sender(6, 'Web Service Sender', { envelope: '<soap:Envelope/>', soapAction: 'urn:send', oneWay: true,
+        attachmentNames: { string: ['a', 'b'] }, attachmentContents: { string: ['A', 'B'] }, attachmentTypes: { string: 'text/xml' } })
+] } });
+const sent = senders.destinations.map(d => ({ settings: Object.fromEntries(d.settings), send: d.send.map(el => [el.name, el.detail, el.typeLabel]) }));
+assert.equal(sent[0].settings.Headers, 'Accept: a\nAccept: b\nX-Api-Key: [redacted]');
+assert.equal(sent[0].settings['Query parameters'], 'From map variable query');
+assert.equal(sent[0].settings.Authentication, 'Basic · preemptive');
+assert.equal(sent[0].settings.Multipart, 'No');
+assert.deepEqual(sent[0].send, [['Request body', '{"id":"${msgId}"}', 'Template']]);
+assert.deepEqual(sent[1].send, []);
+assert.equal(sent[1].settings.Multipart, undefined);
+assert.deepEqual(sent[2].send, [['Template', 'MSH|${message.encodedData}', 'Template']]);
+assert.equal(sent[2].settings['Ignore response'], 'Yes');
+assert.equal(sent[3].settings.CC, 'cc@example');
+assert.equal(sent[3].settings.Headers, 'X-Token: [redacted]');
+assert.equal(sent[3].settings['Body format'], 'HTML');
+assert.deepEqual(sent[3].send, [['Body', '<p>${message}</p>', 'Template'], ['Attachment msg.hl7 · text/plain', '${message.encodedData}', 'Template']]);
+assert.equal(sent[4].settings.Attachments, 'From list variable files');
+assert.deepEqual(sent[4].send.map(([name]) => name), ['Body']);
+assert.equal(sent[5].settings['SOAP action'], 'urn:send');
+assert.equal(sent[5].settings.Invocation, 'One-way');
+assert.deepEqual(sent[5].send, [['SOAP envelope', '<soap:Envelope/>', 'Template'], ['Attachment a · text/xml', 'A', 'Template'], ['Attachment b', 'B', 'Template']]);
+// Payload templates are not JavaScript: no map claims and no routing.
+assert.equal(senders.maps.length, 0);
+
 // Literal-looking calls in comments and strings are not map usage.
 assert.deepEqual(mapKeysIn('// $c("comment")\n/* channelMap.put("comment2", 1) */\nvar x = "$c(\'string\')"; $c("real");'), {
     reads: [{ map: 'channelMap', key: 'real' }], writes: []
