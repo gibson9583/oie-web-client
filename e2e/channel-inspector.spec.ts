@@ -584,6 +584,21 @@ test.describe('Channel Inspector', () => {
         await expect(preview).not.toContainText('HEADER_SECRET');
     });
 
+    test('destination responses write their response map keys and destinations show data type properties', async ({ page }) => {
+        const channel = structuredClone(CHANNEL);
+        channel.postprocessingScript = "var a = $r('d1'); var b = responseMap.get('Clinical store'); return;";
+        await mockEngine(page, { ['GET /channels/' + ID]: { channel } });
+        await page.goto('/channels/' + ID + '/edit?tab=Inspector');
+        for (const key of ['d1', 'Clinical store']) {
+            const row = page.locator('.ci-maps tr', { has: page.locator('td.mono', { hasText: new RegExp(`^${key}$`) }) });
+            await expect(row).not.toHaveClass(/flag/);
+            await row.getByRole('button', { name: 'D1 Clinical store · destination response', exact: true }).click();
+            await expect(page.locator('#ci-dest-1')).toBeInViewport();
+        }
+        await expect(page.locator('#ci-dest-1')).toContainText('Response data type properties');
+        await expect(page.locator('#ci-dest-1 .ci-substep').nth(1)).toContainText('Data type properties');
+    });
+
     test('inspects replacement expressions and XSLT inputs through search, map links and print', async ({ page }) => {
         const channel = structuredClone(CHANNEL);
         const BUILDER = 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep';

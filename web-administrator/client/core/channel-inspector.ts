@@ -55,6 +55,12 @@ export interface InspectedDestination {
     send: InspectedElement[];
     inboundType: string;
     outboundType: string;
+    inboundProperties: OieObject | null;
+    outboundProperties: OieObject | null;
+    responseInboundType: string;
+    responseOutboundType: string;
+    responseInboundProperties: OieObject | null;
+    responseOutboundProperties: OieObject | null;
     validateResponse: boolean;
 }
 
@@ -356,6 +362,29 @@ function payloadOf(transport: string, p: any): [string, unknown][] {
     }
 }
 
+const DAYS = ['', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const clock = (hour: unknown, minute: unknown) => `${text(hour ?? 0).padStart(2, '0')}:${text(minute ?? 0).padStart(2, '0')}`;
+
+/** Polling schedule as TriggerFactory applies it: interval or time, limited by the day calendar; cron jobs alone. */
+function pollFacts(poll: any): Fact[] {
+    if (!poll || typeof poll !== 'object') return [];
+    const type = text(poll.pollingType || 'INTERVAL');
+    const facts: Fact[] = [['Poll', type === 'CRON'
+        ? many(poll.cronJobs?.cronProperty)
+            .map((job: any) => text(job?.expression) + (text(job?.description) ? ` · ${text(job.description)}` : '')).join('\n') || 'No cron jobs'
+        : type === 'TIME' ? `Daily at ${clock(poll.pollingHour, poll.pollingMinute)}` : `Every ${seconds(poll.pollingFrequency)}`]];
+    facts.push(['Poll on start', truthy(poll.pollOnStart) ? 'Yes' : 'No']);
+    const advanced = poll.pollConnectorPropertiesAdvanced;
+    if (type !== 'CRON' && advanced && typeof advanced === 'object') {
+        const skipped = many(advanced.inactiveDays?.boolean).flatMap((off, day) => (truthy(off) && DAYS[day] ? [DAYS[day]] : []));
+        facts.push(['Poll days', advanced.weekly === false || advanced.weekly === 'false'
+            ? `Day ${text(advanced.dayOfMonth ?? 1)} of each month` : skipped.length ? `Every day except ${skipped.join(', ')}` : 'Every day']);
+        if (type === 'INTERVAL') facts.push(['Poll hours', truthy(advanced.allDay) ? 'All day'
+            : `${clock(advanced.startingHour, advanced.startingMinute)} to ${clock(advanced.endingHour, advanced.endingMinute)}`]);
+    }
+    return facts;
+}
+
 function settingsOf(transport: string, p: any): Fact[] {
     const facts: Fact[] = [];
     const add = (k: string, v: unknown) => { if (text(v) !== '') facts.push([k, text(v)]); };
@@ -363,6 +392,7 @@ function settingsOf(transport: string, p: any): Fact[] {
     if (mode) add('Transmission mode', mode);
     switch (transport) {
         case 'JavaScript Reader': case 'JavaScript Writer':
+            facts.push(...pollFacts(p.pollConnectorProperties));
             break;
         case 'TCP Listener': case 'TCP Sender':
             add('Mode', truthy(p.serverMode) ? 'Server' : 'Client');
@@ -387,6 +417,7 @@ function settingsOf(transport: string, p: any): Fact[] {
             add('Response status code', p.responseStatusCode);
             break;
         case 'File Reader':
+            facts.push(...pollFacts(p.pollConnectorProperties));
             add('File filter', p.fileFilter);
             add('After processing', p.afterProcessingAction);
             break;
@@ -395,6 +426,7 @@ function settingsOf(transport: string, p: any): Fact[] {
             add('Template', p.template);
             break;
         case 'Database Writer': case 'Database Reader':
+            facts.push(...pollFacts(p.pollConnectorProperties));
             add('Driver', p.driver);
             add('Use JavaScript', truthy(p.useScript) ? 'Yes' : 'No');
             if (!truthy(p.useScript)) add(transport === 'Database Reader' ? 'Select' : 'Query', transport === 'Database Reader' ? p.select : p.query);
@@ -511,6 +543,12 @@ export function inspectChannel(channel: OieObject, globals: Record<string, strin
             responseTemplate: els.fromText('Response outbound template', d.responseTransformer?.outboundTemplate, owner + ' response template', 'template'),
             inboundType: text(d.transformer?.inboundDataType),
             outboundType: text(d.transformer?.outboundDataType),
+            inboundProperties: d.transformer?.inboundProperties ?? null,
+            outboundProperties: d.transformer?.outboundProperties ?? null,
+            responseInboundType: text(d.responseTransformer?.inboundDataType),
+            responseOutboundType: text(d.responseTransformer?.outboundDataType),
+            responseInboundProperties: d.responseTransformer?.inboundProperties ?? null,
+            responseOutboundProperties: d.responseTransformer?.outboundProperties ?? null,
             validateResponse: truthy(p.destinationConnectorProperties?.validateResponse)
         };
     });
@@ -541,8 +579,12 @@ export function inspectChannel(channel: OieObject, globals: Record<string, strin
         ['Storage mode', text(props.messageStorageMode || 'DEVELOPMENT').charAt(0) + text(props.messageStorageMode || 'DEVELOPMENT').slice(1).toLowerCase()],
         ['Encrypt data', truthy(props.encryptData) ? 'Yes' : 'No'],
         ['Remove content on completion', truthy(props.removeContentOnCompletion) ? (truthy(props.removeOnlyFilteredOnCompletion) ? 'Filtered only' : 'Yes') : 'No'],
+        ['Store attachments', truthy(props.storeAttachments) ? 'Yes' : 'No'],
+        ['Remove attachments on completion', truthy(props.removeAttachmentsOnCompletion) ? 'Yes' : 'No'],
         ['Prune metadata after', days(pruning.pruneMetaDataDays)],
         ['Prune content after', days(pruning.pruneContentDays)],
+        ['Archive before pruning', truthy(pruning.archiveEnabled) ? 'Yes' : 'No'],
+        ['Prune errored messages', truthy(pruning.pruneErroredMessages) ? 'Yes' : 'No'],
         ['Initial state', text(props.initialState || 'STARTED').charAt(0) + text(props.initialState || 'STARTED').slice(1).toLowerCase()]
     ];
     const metadataColumns: Fact[] = list(props.metaDataColumns?.metaDataColumn ?? props.metaDataColumns)
@@ -596,7 +638,21 @@ export function inspectChannel(channel: OieObject, globals: Record<string, strin
         owners: els.owners
     };
     const disabledIds = new Set(destinations.filter(d => !d.enabled).flatMap(d => [...d.filter, ...d.transformer, ...d.send, ...d.response].map(el => el.id)));
+    // Each enabled destination stores its response as d<metaDataId>; ResponseMap.get
+    // also resolves the destination name to that key. Destination cards are the writers.
+    const enabled = destinations.filter(x => x.enabled);
+    const responses = new Map<string, InspectedDestination>([
+        ...enabled.filter(d => d.name).map((d): [string, InspectedDestination] => [d.name, d]),
+        ...enabled.map((d): [string, InspectedDestination] => ['d' + d.metaDataId, d])
+    ]);
     result.maps = mapUsage(els.all.filter(el => !disabledIds.has(el.id)));
+    for (const m of result.maps) {
+        const d = m.map === 'responseMap' ? responses.get(m.key) : undefined;
+        if (!d || !m.readers.length) continue;
+        const id = 'ci-dest-' + d.metaDataId;
+        result.owners[id] = `${d.label} ${d.name} · destination response`;
+        m.writers.unshift(id);
+    }
     return result;
 }
 

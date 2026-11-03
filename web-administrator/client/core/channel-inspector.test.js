@@ -255,6 +255,42 @@ assert.deepEqual(sent[5].send, [['SOAP envelope', '<soap:Envelope/>', 'Template'
 // Payload templates are not JavaScript: no map claims and no routing.
 assert.equal(senders.maps.length, 0);
 
+// Enabled destinations write d<metaDataId>; ResponseMap.get also resolves their names.
+// Disabled destinations write nothing, so their keys keep the no-writer warning.
+const responseReads = inspectChannel({
+    postprocessingScript: "$r('d1'); responseMap.get('Lab'); $r('d2'); $r('Off'); $r('custom');",
+    destinationConnectors: { connector: [destination(1, 'Lab'), destination(2, 'Off', { enabled: false })] }
+});
+const responseWriters = Object.fromEntries(responseReads.maps.map(m => [m.key, m.writers.map(id => responseReads.owners[id])]));
+assert.deepEqual(responseWriters, { custom: [], d1: ['D1 Lab · destination response'], d2: [], Lab: ['D1 Lab · destination response'], Off: [] });
+assert.equal(responseReads.maps.find(m => m.key === 'd1').writers[0], 'ci-dest-1');
+assert.equal(Object.hasOwn(inspectChannel({ destinationConnectors: { connector: destination(1, 'Lab') } }).owners, 'ci-dest-1'), false);
+
+// Poll schedules follow TriggerFactory: interval or daily time limited by the day calendar; cron alone.
+const poll = (pollConnectorProperties) => Object.fromEntries(inspectChannel({ sourceConnector: { transportName: 'File Reader', properties: { pollConnectorProperties } } }).source.settings);
+const advanced = (extra = {}) => ({ weekly: true, inactiveDays: { boolean: [false, true, false, false, false, false, false, true] }, dayOfMonth: 1, allDay: false, startingHour: 8, startingMinute: 0, endingHour: 17, endingMinute: 30, ...extra });
+assert.deepEqual(['Poll', 'Poll on start', 'Poll days', 'Poll hours'].map(k => poll({ pollingType: 'INTERVAL', pollingFrequency: 5000, pollOnStart: true, pollConnectorPropertiesAdvanced: advanced() })[k]),
+    ['Every 5 s', 'Yes', 'Every day except Sun, Sat', '08:00 to 17:30']);
+assert.deepEqual(['Poll', 'Poll days', 'Poll hours'].map(k => poll({ pollingType: 'TIME', pollingHour: 6, pollingMinute: 5, pollConnectorPropertiesAdvanced: advanced({ weekly: false, dayOfMonth: 15 }) })[k]),
+    ['Daily at 06:05', 'Day 15 of each month', undefined]);
+assert.equal(poll({ pollingType: 'INTERVAL', pollingFrequency: 250, pollConnectorPropertiesAdvanced: advanced({ allDay: true, inactiveDays: { boolean: Array(8).fill(false) } }) })['Poll hours'], 'All day');
+const cron = poll({ pollingType: 'CRON', cronJobs: { cronProperty: [{ description: 'Nightly', expression: '0 0 2 * * ?' }, { expression: '0 */5 * * * ?' }] }, pollConnectorPropertiesAdvanced: advanced() });
+assert.equal(cron.Poll, '0 0 2 * * ? · Nightly\n0 */5 * * * ?');
+assert.equal(cron['Poll days'], undefined);
+assert.equal(poll(undefined).Poll, undefined);
+
+// Attachment storage and pruning flags are part of the storage story.
+const storage = Object.fromEntries(inspectChannel({ properties: { storeAttachments: true, removeAttachmentsOnCompletion: true },
+    exportData: { metadata: { pruningSettings: { pruneMetaDataDays: 30, archiveEnabled: true, pruneErroredMessages: false } } } }).storage);
+assert.deepEqual([storage['Store attachments'], storage['Remove attachments on completion'], storage['Archive before pruning'], storage['Prune errored messages']], ['Yes', 'Yes', 'Yes', 'No']);
+
+// Destination and response data type properties are retained for display.
+const typed = inspectChannel({ destinationConnectors: { connector: destination(1, 'Typed', {
+    transformer: { elements: null, inboundDataType: 'HL7V2', outboundDataType: 'XML', inboundProperties: { a: 1 }, outboundProperties: { b: 2 } },
+    responseTransformer: { elements: null, inboundDataType: 'XML', outboundDataType: 'HL7V2', inboundProperties: { c: 3 }, outboundProperties: { d: 4 } } }) } }).destinations[0];
+assert.deepEqual([typed.inboundProperties, typed.outboundProperties, typed.responseInboundType, typed.responseOutboundType, typed.responseInboundProperties, typed.responseOutboundProperties],
+    [{ a: 1 }, { b: 2 }, 'XML', 'HL7V2', { c: 3 }, { d: 4 }]);
+
 // Literal-looking calls in comments and strings are not map usage.
 assert.deepEqual(mapKeysIn('// $c("comment")\n/* channelMap.put("comment2", 1) */\nvar x = "$c(\'string\')"; $c("real");'), {
     reads: [{ map: 'channelMap', key: 'real' }], writes: []

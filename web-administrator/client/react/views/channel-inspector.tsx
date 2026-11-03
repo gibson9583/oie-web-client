@@ -195,6 +195,15 @@ function DataTypeFacts({ name, props, query }: { name: string; props: any; query
     return facts.length ? <Facts facts={facts} query={query} /> : <p className="ci-none">No properties.</p>;
 }
 
+function DataTypes({ title, inbound, outbound, ctx }: { title: string; inbound: [string, any]; outbound: [string, any]; ctx: ListCtx }) {
+    return <More print={ctx.print} title={<>{title}<span className="dim">· inbound {typeLabel(inbound[0])} · outbound {typeLabel(outbound[0])}</span></>}>
+        <div className="ci-sub-head">Inbound {typeLabel(inbound[0])}</div>
+        <DataTypeFacts name={inbound[0]} props={inbound[1]} query={ctx.query} />
+        <div className="ci-sub-head">Outbound {typeLabel(outbound[0])}</div>
+        <DataTypeFacts name={outbound[0]} props={outbound[1]} query={ctx.query} />
+    </More>;
+}
+
 function OutboundTemplate({ list, ctx }: { list: InspectedElement[]; ctx: ListCtx }) {
     if (!list.length) return null;
     return <div className="ci-template">
@@ -299,7 +308,7 @@ export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew, 
             ...r.destinations.flatMap(d => [d.filter, d.transformer, d.outboundTemplate, d.send, d.response, d.responseTemplate])].flat();
         for (const el of all) if (searchText(el).includes(q)) ids.push(el.id);
         return ids;
-    }, [q, r, dependencies]);
+    }, [q, r]);
     useEffect(() => {
         const ids = showCode ? allIds : matches;
         if (ids.length) setOpenState(prev => new Set([...prev, ...ids]));
@@ -523,12 +532,7 @@ function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<str
             {lead(<>{r.source.transport} {r.source.endpoint ? <>at <code>{r.source.endpoint}</code> </> : ''}accepts {inbound}.</>)}
             <Facts facts={r.source.settings} query={q} />
             {r.source.poll.length > 0 && <Elements list={r.source.poll} kind="script" ctx={ctx} />}
-            <More print={ctx.print} title={<>Data type properties<span className="dim">· inbound {inbound} · outbound {outbound}</span></>}>
-                <div className="ci-sub-head">Inbound {inbound}</div>
-                <DataTypeFacts name={r.inboundType} props={r.source.inboundProperties} query={q} />
-                <div className="ci-sub-head">Outbound {outbound}</div>
-                <DataTypeFacts name={r.outboundType} props={r.source.outboundProperties} query={q} />
-            </More>
+            <DataTypes title="Data type properties" inbound={[r.inboundType, r.source.inboundProperties]} outbound={[r.outboundType, r.source.outboundProperties]} ctx={ctx} />
         </> });
 
     if (r.source.processBatch || r.source.batch.length) {
@@ -658,7 +662,7 @@ function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<str
 
     s.push({ id: 'ci-maps', phase: 'ref', icon: 'tag', title: 'Maps and variables', scope: 'Reference',
         body: !r.maps.length ? lead('No literal map keys found in the inspected steps and scripts. Dynamic keys and code template internals are not resolved.') : <>
-            {lead(<>Literal keys found in enabled steps and scripts, including Mapper variables and calls such as <code>$c()</code> and <code>channelMap.put()</code>. Dynamic keys and code template internals are not resolved. The same key in separate destination connector maps is a separate value.</>)}
+            {lead(<>Literal keys found in enabled steps and scripts, including Mapper variables and calls such as <code>$c()</code> and <code>channelMap.put()</code>. Each enabled destination writes its response as <code>d1</code>, <code>d2</code> and so on, also readable by destination name. Dynamic keys and code template internals are not resolved. The same key in separate destination connector maps is a separate value.</>)}
             {ctx.print ? <PrintMapReferences inspection={r} /> : <div className="ci-map-wrap"><table className="ci-maps">
                 <thead><tr><th>Key</th><th>Map</th><th>Written by</th><th>Read by</th></tr></thead>
                 <tbody>
@@ -717,6 +721,7 @@ function DestinationCard({ d, r, ctx, channelNames, openTab }: { d: InspectedDes
                     <OutboundTemplate list={d.outboundTemplate} ctx={ctx} />
                     {d.transformer.length ? <Elements list={d.transformer} kind="step" ctx={ctx} />
                         : <p className="ci-lead">{d.outboundTemplate.length ? 'No steps. The outbound template supplies the destination output.' : <>No steps. Sends the source output as {outbound}.</>}</p>}
+                    <DataTypes title="Data type properties" inbound={[d.inboundType || r.outboundType, d.inboundProperties]} outbound={[d.outboundType || r.outboundType, d.outboundProperties]} ctx={ctx} />
                 </>)}
                 {sub('Send', 'send', <><Facts facts={[...d.settings, ...d.queue]} query={ctx.query} />{d.send.length > 0 && <Elements list={d.send} kind="script" ctx={ctx} />}</>)}
                 {sub('Handle the response', 'undo', <>
@@ -724,6 +729,7 @@ function DestinationCard({ d, r, ctx, channelNames, openTab }: { d: InspectedDes
                     <OutboundTemplate list={d.responseTemplate} ctx={ctx} />
                     {d.response.length > 0 && <><div className="ci-sub-head">Response transformer</div><Elements list={d.response} kind="step" ctx={ctx} /></>}
                     {!d.response.length && !d.responseTemplate.length && <p className="ci-lead">No response transformer steps.</p>}
+                    {(d.responseInboundType || d.responseOutboundType) && <DataTypes title="Response data type properties" inbound={[d.responseInboundType, d.responseInboundProperties]} outbound={[d.responseOutboundType, d.responseOutboundProperties]} ctx={ctx} />}
                 </>)}
             </ol>
         </article>

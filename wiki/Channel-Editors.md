@@ -109,6 +109,13 @@ redacted.
 Source, destination, and response outbound templates are included even when no
 transformer steps are configured. They initialize `tmp`, whose final value
 supplies that transformer's output.
+The source, each destination transformer, and each response transformer show
+their inbound and outbound data type properties.
+
+Polling sources show their schedule: the interval, the daily time, or each cron
+expression. The interval and daily time also show the days and hours the
+schedule allows, and whether the source polls on start. Storage shows attachment
+storage and removal, archiving, and whether errored messages are pruned.
 
 Database Reader post-process scripts and SQL appear with their configured
 per-row or after-poll timing, including aggregated results. Enabled scripts
@@ -135,7 +142,8 @@ contents follows the reading position on wider screens.
 - Map-key buttons link to **Maps and variables**; its writer and reader links
   return to the associated rows. The reference uses enabled steps and scripts.
   Separate destination connector maps still hold separate values even when the
-  same key appears in both.
+  same key appears in both. Each enabled destination writes its response map
+  key, such as `d1`, and reads by destination name resolve to that key.
   Long lists of references collapse behind a reference count; open the list to
   follow any writer or reader. Printing includes every reference, with the key
   and map repeated when its reference list continues onto another page.
