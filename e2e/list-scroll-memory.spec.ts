@@ -198,6 +198,42 @@ for (const surface of ['Dashboard', 'Channels']) {
     });
 }
 
+test('Dashboard holds a remembered selection until statuses are read again', async ({ page }) => {
+    let removed = false;
+    let hold = false;
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    await mockEngine(page, {
+        'GET /channels': { list: { channel: CHANNELS } },
+        'GET /channels/statuses': async () => {
+            if (hold) await released;
+            return { list: { dashboardStatus: removed ? STATUSES.slice(1) : STATUSES } };
+        },
+    });
+    const go = (name: string) => page.getByRole('button', { name, exact: true }).click();
+    const stop = page.getByRole('button', { name: 'Stop', exact: true });
+    await page.goto('/dashboard');
+    await page.getByText('Channel c-00', { exact: true }).click();
+    await page.getByText('Channel c-01', { exact: true }).click({ modifiers: ['ControlOrMeta'] });
+    await expect(stop).toBeVisible();
+    await go('Channels');
+    await expect(page.locator(channelsWrap).getByText('Channel c-00', { exact: true })).toBeAttached();
+    // Undeployed elsewhere: the cached statuses still list c-00.
+    removed = true;
+    hold = true;
+    try {
+        await go('Dashboard');
+        await expect(page.locator(dashWrap).getByText('Channel c-00', { exact: true })).toBeVisible();
+        await expect(page.locator(`${dashWrap} tr[aria-selected="true"]`)).toHaveCount(0);
+        await expect(stop).toHaveCount(0);
+    } finally {
+        release();
+    }
+    await expect(page.locator(dashWrap).getByText('Channel c-00', { exact: true })).toHaveCount(0);
+    await expect(page.locator(`${dashWrap} tr[aria-selected="true"]`)).toHaveCount(1);
+    await expect(page.locator(`${dashWrap} tr`).filter({ hasText: 'Channel c-01' })).toHaveAttribute('aria-selected', 'true');
+    await expect(stop).toBeVisible();
+});
 
 test('text filters restore independently with selections, including no matches and clearing', async ({ page }) => {
     await mockEngine(page, {

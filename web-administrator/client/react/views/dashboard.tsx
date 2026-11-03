@@ -81,6 +81,7 @@ export function DashboardHost() {
 // effects that depend on `statuses` from re-running on every render).
 const EMPTY_MAP = new Map();
 const EMPTY_LIST: any[] = [];
+const EMPTY_SET = new Set();
 
 // Default widths for the dashboard's resizable data columns (after the twisty).
 const DASH_COL_WIDTHS = {
@@ -393,10 +394,15 @@ function DashboardView({ onToggleView }: any) {
     const connectorTypes = typesQ.data ?? EMPTY_MAP;  // channelId → Map(metaDataId → transportName)
     const sourcePorts = portsQ.data ?? EMPTY_MAP;     // channelId → source listener port string
     const loaded = statusesQ.data !== undefined;      // first status poll has landed
+    // A remembered selection acts only on statuses read after this mount.
+    const [mountedAt] = useState(Date.now);
+    const statusesFresh = loaded && statusesQ.dataUpdatedAt >= mountedAt;
 
     /* ---- UI state ---- */
-    const [selected, setSelected] = useListState('dashboard:selected', () => new Set());          // channelIds
-    const [selectedConnector, setSelectedConnector] = useListState<any>('dashboard:connector', () => null);   // { channelId, metaDataId }
+    const [rememberedSelected, setSelected] = useListState('dashboard:selected', () => new Set());          // channelIds
+    const [rememberedConnector, setSelectedConnector] = useListState<any>('dashboard:connector', () => null);   // { channelId, metaDataId }
+    const selected = statusesFresh ? rememberedSelected : EMPTY_SET;
+    const selectedConnector = statusesFresh ? rememberedConnector : null;
     const lastClickedRef = useRef<any>(null);              // anchor for shift-range selection (interaction-only)
     const [expandedChannels, setExpandedChannels] = useListState('dashboard:expanded', () => new Set());   // channels showing connector rows
     const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());     // groups default to expanded
@@ -418,7 +424,7 @@ function DashboardView({ onToggleView }: any) {
        'dashboard:selection' emit, matching the classic board (only USER actions
        announce a selection change). */
     useEffect(() => {
-        if (!loaded) return; // Loading placeholders must not erase remembered selection.
+        if (!statusesFresh) return; // Cached or loading statuses must not prune remembered selection.
         const ids = new Set(statuses.map(s => s.channelId));
         setSelected(prev => {
             const next = new Set([...prev].filter(id => ids.has(id)));
@@ -426,7 +432,7 @@ function DashboardView({ onToggleView }: any) {
         });
         setSelectedConnector((prev: any) => (prev && !statuses.some(st => st.channelId === prev.channelId
             && childrenOf(st).some((child: any) => child.metaDataId === prev.metaDataId)) ? null : prev));
-    }, [statuses, loaded, setSelected, setSelectedConnector]);
+    }, [statuses, statusesFresh, setSelected, setSelectedConnector]);
 
     /* Selection handed to the dashboard tabs (Connection Log, …): the selected
        connector's scope, otherwise the selected channels. */

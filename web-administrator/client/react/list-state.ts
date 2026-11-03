@@ -5,7 +5,13 @@ import { captureEngineSession } from '../core/engine-fetch.js';
 // The shell clears this on logout/session replacement, like the query cache.
 const remembered = new Map<string, unknown>();
 
-export function clearListState(): void { remembered.clear(); }
+// TreeTable scrollKey -> last scroll offset.
+export const scrollMemory = new Map<string, { top: number; left: number }>();
+
+export function clearListState(): void {
+    remembered.clear();
+    scrollMemory.clear();
+}
 
 export function useListState<T>(key: string, initial: () => T) {
     const [assertSession] = useState(() => captureEngineSession());
