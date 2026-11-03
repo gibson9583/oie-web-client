@@ -3343,6 +3343,40 @@ input.cform-invalid, select.cform-invalid, textarea.cform-invalid,
 .ci-fact dt { font-size: 11px; color: var(--text-dim); }
 .ci-fact dd { margin: 2px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .ci-fact.hit { background: color-mix(in srgb, var(--warn) 12%, transparent); box-shadow: inset 3px 0 var(--warn); padding-left: 8px; }
+.ci-reference { min-width: 0; }
+.ci-reference:not(.ci-reference-print) { container: ci-reference / inline-size; }
+.ci-reference > .ci-sub-head { margin-top: 24px; }
+.ci-library { margin: 12px 0 20px; }
+.ci-library-header { padding: 8px 0; }
+.ci-library-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+.ci-library-heading h5 { margin: 0; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.ci-library-id { font-size: 11px; color: var(--text-dim); overflow-wrap: anywhere; }
+.ci-library-description { margin: 4px 0 0; color: var(--text-dim); white-space: pre-wrap; overflow-wrap: anywhere; }
+.ci-library-table { width: 100%; table-layout: fixed; border-collapse: collapse; line-height: 1.6; }
+.ci-library-table :is(th, td) { text-align: left; vertical-align: top; padding: 8px 12px; overflow-wrap: anywhere; border-bottom: 1px solid var(--line); }
+.ci-library-table th { font-size: 11px; font-weight: 500; color: var(--text-dim); background: var(--bg1); border-top: 1px solid var(--line); }
+.ci-library-table th:first-child { width: 32%; }
+.ci-library-table th:nth-child(2) { width: 20%; }
+.ci-reference-facts { margin: 8px 0; }
+.ci-reference-fact { display: grid; grid-template-columns: minmax(180px, 32%) minmax(0, 1fr); gap: 8px 24px; border-top: 1px solid var(--line); padding: 10px 0; line-height: 1.6; }
+.ci-reference-fact dt { color: var(--text-dim); }
+.ci-reference-fact :is(dt, dd) { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.ci-reference-fact dd { margin: 0; }
+.ci-reference :is(.ci-library-header, .ci-library-table tr, .ci-reference-fact).hit { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+@container ci-reference (max-width: 640px) {
+    .ci-library-table, .ci-library-table :is(tbody, tr, td) { display: block; width: 100%; }
+    .ci-library-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .ci-library-table tr { border-top: 1px solid var(--line); padding: 8px 0; }
+    .ci-library-table td { padding: 4px 0; border: 0; }
+    .ci-library-table td::before { content: attr(data-label); display: block; font-size: 11px; color: var(--text-dim); }
+    .ci-reference-fact { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+}
+.ci-reference-print .ci-library-header { break-after: avoid; }
+.ci-reference-print .ci-library-table { font-size: 10px; }
+.ci-reference-print .ci-library-table thead { display: table-header-group; }
+.ci-reference-print .ci-library-table :is(th, td) { padding: 5px 8px; }
+.ci-reference-print :is(.ci-library-table tr, .ci-reference-fact) { break-inside: avoid; }
+.ci-reference-print .ci-reference-fact { gap: 4px 12px; padding: 6px 0; font-size: 10px; }
 .ci-more { margin-top: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg1); padding: 0 12px; }
 .ci-more > summary { cursor: pointer; padding: 7px 0; display: flex; align-items: center; gap: 7px; list-style: none; }
 .ci-more > summary::-webkit-details-marker { display: none; }
@@ -3369,8 +3403,10 @@ input.cform-invalid, select.cform-invalid, textarea.cform-invalid,
 .ci-name { min-width: 120px; overflow-wrap: anywhere; }
 .ci-type { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
 .ci-tail { margin-left: auto; display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
-.ci-item.off .ci-name { text-decoration: line-through; color: var(--text-dim); }
+.ci-item.off .ci-name { min-width: 0; color: var(--text-dim); }
 .ci-item.off .ci-glyph { opacity: 0.5; }
+.ci-disabled-label { color: var(--text-dim); }
+.ci-inactive-note { margin: 0 0 8px; font-size: 11px; color: var(--text-dim); }
 .ci-item.hit > summary { background: color-mix(in srgb, var(--warn) 12%, transparent); box-shadow: inset 3px 0 var(--warn); }
 .ci-item-body { padding: 0 12px 10px 42px; }
 .ci-item-li.child .ci-item-body { padding-left: calc(42px + var(--ci-depth, 1) * 30px); }

@@ -51,6 +51,10 @@ Script disclosures use the same read-only Monaco editor as other code views,
 with syntax highlighting, selection and Find. If Monaco cannot load, the
 read-only text editor remains available. Print includes complete script text.
 
+Disabled steps appear as compact names with a **Disabled** badge. Expand a step
+to inspect its configured source; search and print still include that source.
+Map read/write badges are omitted for disabled steps because they do not run.
+
 Select **Inspect Channel** in Channels or the Dashboard channel context menu to
 inspect the saved configuration directly. Channels also provides an **Inspect
 Channel** task. Direct inspection requires channel-view permission; it does not

@@ -130,19 +130,19 @@ function ElementRow({ el, index, ctx }: { el: InspectedElement; index: number; c
     const heading = <>
                     {!ctx.print && <span className="ci-chev"><Icon name="chevR" size={13} /></span>}
                     <span className="ci-order">{index + 1}</span>
-                    {el.operator && <span className="ci-op">{el.operator}</span>}
+                    {el.enabled && el.operator && <span className="ci-op">{el.operator}</span>}
                     <span className={'ci-glyph ' + style} title={el.typeLabel}><Icon name={glyph} size={13} /></span>
                     <span className="ci-name">{el.name}</span>
-                    <span className="ci-type">{el.typeLabel}{el.isScript ? ` · ${plural(lines, 'line')}` : ''}</span>
+                    {el.enabled ? <><span className="ci-type">{el.typeLabel}{el.isScript ? ` · ${plural(lines, 'line')}` : ''}</span>
                     <span className="ci-tail">
                         {el.reads.map(k => <span key={'r:' + keyText(k)} className="ci-key"><i>reads</i> {k.key}</span>)}
                         {el.writes.map(k => <span key={'w:' + keyText(k)} className="ci-key w"><i>writes</i> {k.key}</span>)}
-                        {!el.enabled && <span className="tag">{el.skippedByParent ? 'Iterator disabled · skipped' : 'Disabled · skipped'}</span>}
                         {el.routing && <span className="tag amber">Can change destinations</span>}
-                    </span>
+                    </span></> : <span className="tag ci-disabled-label">{el.skippedByParent ? 'Iterator disabled · skipped' : 'Disabled'}</span>}
                 </>;
     const body = <div className="ci-item-body">
-        {!ctx.print && (el.reads.length > 0 || el.writes.length > 0) && <div className="ci-key-links" aria-label="Map references">{el.reads.map(k => chip(k, false))}{el.writes.map(k => chip(k, true))}</div>}
+        {!el.enabled && <p className="ci-inactive-note">{el.typeLabel}{el.isScript ? ` · ${plural(lines, 'line')}` : ''}. {el.skippedByParent ? 'Skipped because the parent iterator is disabled.' : 'Disabled · skipped during execution.'}</p>}
+        {!ctx.print && el.enabled && (el.reads.length > 0 || el.writes.length > 0) && <div className="ci-key-links" aria-label="Map references">{el.reads.map(k => chip(k, false))}{el.writes.map(k => chip(k, true))}</div>}
         {el.isScript ? <Code text={el.detail} name={el.name} active={ctx.open.has(el.id)} print={ctx.print} /> : <pre className="ci-expr" tabIndex={!ctx.print && el.type === 'template' ? 0 : undefined}>{el.detail}</pre>}
     </div>;
     const classes = 'ci-item' + (el.enabled ? '' : ' off') + (hit ? ' hit' : '');

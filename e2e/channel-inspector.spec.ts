@@ -365,6 +365,56 @@ test.describe('Channel Inspector', () => {
         await expect(page.locator('#ci-transform .ci-expr')).toHaveText('For each null · index variable i');
     });
 
+    test('disabled steps use compact summaries while source remains inspectable and printable', async ({ page }, info) => {
+        const channel = structuredClone(CHANNEL);
+        const oldScript = "var legacy = $g('legacyInput');\n" + Array.from({ length: 12 }, (_, i) => `$c('inactiveKey${i}', legacy);`).join('\n');
+        const archivedScript = "channelMap.put('archivedRoute', 'ARCHIVED_SCRIPT_MARKER');";
+        channel.sourceConnector.transformer.elements = { [JS_STEP]: [
+            { '@version': V, name: 'Legacy routing', sequenceNumber: 0, enabled: false, script: oldScript },
+            { '@version': V, name: 'Archived routing', sequenceNumber: 1, enabled: 'false', script: archivedScript },
+            { ...CHANNEL.sourceConnector.transformer.elements[JS_STEP], sequenceNumber: 2 }
+        ] };
+        await mockEngine(page, { [`GET /channels/${ID}`]: { channel } });
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        await page.goto(`/channels/${ID}/edit?tab=Inspector`);
+        const transform = page.locator('#ci-transform');
+        const inactive = transform.locator('.ci-item.off');
+        await expect(inactive).toHaveCount(2);
+        await expect(inactive.locator('summary .ci-name')).toHaveText(['Legacy routing', 'Archived routing']);
+        await expect(inactive.locator('summary .ci-disabled-label')).toHaveText(['Disabled', 'Disabled']);
+        await expect(inactive.locator('summary .ci-key, summary .ci-type, summary .ci-tail')).toHaveCount(0);
+        await expect(inactive.first().locator('.ci-name')).toHaveCSS('text-decoration-line', 'none');
+        await expect(inactive.first()).not.toHaveAttribute('open', '');
+        expect((await inactive.first().locator('summary').boundingBox())!.height).toBeLessThan(45);
+        await expect(transform.locator('.ci-item:not(.off) summary .ci-key')).not.toHaveCount(0);
+        const capture = async (name: string) => {
+            await transform.scrollIntoViewIfNeeded();
+            if (process.env.INSPECTOR_SCREENSHOTS === '1') await transform.screenshot({ path: info.outputPath(name + '.png'), animations: 'disabled' });
+        };
+        if (await page.locator('html').getAttribute('data-theme') !== 'light') await page.getByRole('button', { name: 'Toggle light/dark mode' }).click();
+        await capture('disabled-light');
+        await page.getByRole('button', { name: 'Toggle light/dark mode' }).click();
+        await capture('disabled-dark');
+        await page.setViewportSize({ width: 430, height: 900 });
+        await page.locator('.rail-backdrop').click({ position: { x: 320, y: 300 } });
+        await capture('disabled-mobile');
+        expect(await transform.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+        await inactive.first().locator('summary').click();
+        await expectInspectorCode(inactive.first(), [oldScript]);
+        await expect(inactive.first().locator('.ci-inactive-note')).toContainText('skipped during execution');
+        await expect(inactive.first().getByRole('button', { name: /^writes / })).toHaveCount(0);
+        await page.getByRole('button', { name: 'Collapse all', exact: true }).click();
+        await page.getByPlaceholder('Find in channel').fill('ARCHIVED_SCRIPT_MARKER');
+        await expect(inactive.last()).toHaveAttribute('open', '');
+        await expectInspectorCode(inactive.last(), [archivedScript]);
+        await expect(page.locator('#ci-maps')).not.toContainText('inactiveKey0');
+        await expect(page.locator('#ci-maps')).not.toContainText('archivedRoute');
+        await page.getByRole('button', { name: 'Print', exact: true }).click();
+        const printed = page.getByRole('dialog', { name: 'Print preview', exact: true }).locator('section[aria-labelledby="print-ci-transform"] .ci-item.off');
+        await expect(printed.locator('.ci-code .lc')).toHaveText([...oldScript.split('\n'), archivedScript]);
+        await expect(printed.locator('.ci-item-heading .ci-key')).toHaveCount(0);
+    });
+
     test('explains iterator rule acceptance and early exit independently of editable names', async ({ page }) => {
         const channel = structuredClone(CHANNEL);
         const ITERATOR_RULE = 'com.mirth.connect.model.IteratorRule';

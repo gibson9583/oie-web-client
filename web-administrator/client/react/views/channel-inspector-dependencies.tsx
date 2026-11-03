@@ -67,7 +67,7 @@ export function InspectorDependencies({ channel, context, query, print, retry }:
 }) {
     const { reads, libraries, dependencies } = context;
     const hit = (value: string) => !!query && value.toLowerCase().includes(query);
-    const facts = (rows: [string, string][]) => <dl className="ci-facts">{rows.map(([label, value], i) => <div key={i} className={'ci-fact' + (hit(label + ' ' + value) ? ' hit' : '')} data-hit={hit(label + ' ' + value) || undefined}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>;
+    const facts = (rows: [string, string][]) => <dl className="ci-reference-facts">{rows.map(([label, value], i) => <div key={i} className={'ci-reference-fact' + (hit(label + ' ' + value) ? ' hit' : '')} data-hit={hit(label + ' ' + value) || undefined}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>;
     const status = (label: string, state: ReadState<unknown>['state']) => state === 'ready' ? null : <p className="ci-from" role={print ? undefined : 'status'}>
         {state === 'loading' ? `Loading ${label}…` : state === 'denied' ? `${label} unavailable with your permissions.` : `${label} could not be loaded.`}
         {state === 'error' && !print && <> <button type="button" className="ci-link" onClick={retry}>Retry {label}</button></>}
@@ -82,22 +82,37 @@ export function InspectorDependencies({ channel, context, query, print, retry }:
         { label: 'Source · receiver, filter and transformer', properties: channel.sourceConnector?.properties?.sourceConnectorProperties },
         ...destinationsOf(channel).map((destination: any) => ({ label: `D${destination.metaDataId} ${destination.name} · filter, transformer and dispatcher${destination.enabled === false || destination.enabled === 'false' ? ' · disabled' : ''}`, properties: destination.properties?.destinationConnectorProperties }))
     ];
-    return <>
+    return <div className={'ci-reference' + (print ? ' ci-reference-print' : '')}>
         <p className="ci-lead">Library selections supply code templates to channel scripts. Channel dependencies control deploy/start order. Resource selections supply Java libraries to the indicated contexts.</p>
         {context.pending && <p className="ci-callout">Includes pending library or channel dependency selections from this editor.</p>}
         <div className="ci-sub-head">Code template libraries</div>
         {status('Code template libraries', reads.libraries.state)}
-        {selected.map((library: any) => <div key={library.id}>
-            {facts([['Library', `${library.name || library.id} (${library.id})${reads.libraries.state === 'ready' && !reads.libraries.value.some(item => item.id === library.id) ? ' · no longer available on the server' : ''}`],
-                ...(library.description ? [['Description', String(library.description)] as [string, string]] : []),
-                ...api.asList(library.codeTemplates, 'codeTemplate').flatMap((template: any): [string, string][] => {
-                    const type = template.properties?.type;
-                    const contexts = api.asList(template.contextSet?.delegate, 'contextType').map(String);
-                    return [['Template', String(template.name || template.id)],
-                        ...(type ? [['Template type', type === 'DRAG_AND_DROP_CODE' ? 'Drag and drop code · not automatically added to scripts' : String(type).replaceAll('_', ' ').toLowerCase()] as [string, string]] : []),
-                        ['Execution contexts', contexts.length ? contexts.map(value => value.replaceAll('_', ' ').toLowerCase()).join(', ') : template.contextSet ? 'None selected' : 'Not specified']];
-                })])}
-        </div>)}
+        {selected.map((library: any) => {
+            const templates = api.asList(library.codeTemplates, 'codeTemplate');
+            const unavailable = reads.libraries.state === 'ready' && !reads.libraries.value.some(item => item.id === library.id);
+            const libraryHit = hit(`Library ${library.name || ''} ${library.id} ${library.description ? 'Description ' + library.description : ''}${unavailable ? ' no longer available on the server' : ''}`);
+            return <section key={library.id} className="ci-library" aria-label={library.name || library.id}>
+                <div className={'ci-library-header' + (libraryHit ? ' hit' : '')} data-hit={libraryHit || undefined}>
+                    <div className="ci-library-heading"><h5>{library.name || library.id}</h5>{library.name && <span className="ci-library-id">{library.id}</span>}</div>
+                    {library.description && <p className="ci-library-description">{String(library.description)}</p>}
+                    {unavailable && <p className="ci-warn">No longer available on the server</p>}
+                </div>
+                {templates.length > 0 ? <table className="ci-library-table" role="table">
+                    <caption className="sr-only">{library.name || library.id} code templates</caption>
+                    <thead><tr><th scope="col">Template</th><th scope="col">Type</th><th scope="col">Execution contexts</th></tr></thead>
+                    <tbody>{templates.map((template: any, index: number) => {
+                        const type = template.properties?.type;
+                        const contexts = api.asList(template.contextSet?.delegate, 'contextType').map(String);
+                        const name = String(template.name || template.id);
+                        const typeText = type ? type === 'DRAG_AND_DROP_CODE' ? 'Drag and drop code · not automatically added to scripts' : String(type).replaceAll('_', ' ').toLowerCase() : 'Not specified';
+                        const contextText = contexts.length ? contexts.map(value => value.replaceAll('_', ' ').toLowerCase()).join(', ') : template.contextSet ? 'None selected' : 'Not specified';
+                        const matched = hit(`Template ${name} Template type ${typeText} Execution contexts ${contextText}`);
+                        return <tr key={template.id || index} className={matched ? 'hit' : undefined} data-hit={matched || undefined}>
+                            <td data-label="Template">{name}</td><td data-label="Type">{typeText}</td><td data-label="Execution contexts">{contextText}</td>
+                        </tr>;
+                })}</tbody></table> : <p className="ci-none">No code templates listed.</p>}
+            </section>;
+        })}
         {!selected.length && reads.libraries.state === 'ready' && <p className="ci-none">No code template libraries selected.</p>}
         {selected.length > 0 && <p className="ci-from">Template names identify library members; template type and context determine availability. Bodies and calls are not expanded.</p>}
         <div className="ci-sub-head">Deploy/start dependencies</div>
@@ -108,13 +123,13 @@ export function InspectorDependencies({ channel, context, query, print, retry }:
         {reads.names.state !== 'ready' && (before.length > 0 || after.length > 0) && <p className="ci-from">Channel names unavailable; channel IDs are shown.</p>}
         <div className="ci-sub-head">Library resources</div>
         {status('Resource details', reads.resources.state)}
-        {resourceTargets.map(({ label, properties }) => {
+        {facts(resourceTargets.map(({ label, properties }): [string, string] => {
             const selectedResources = mappingEntries(properties?.resourceIds);
-            return <div key={label}>{facts([[label, selectedResources.length ? selectedResources.map(([id, savedName]) => {
+            return [label, selectedResources.length ? selectedResources.map(([id, savedName]) => {
                 const resource = resources.get(id);
                 const name = resource?.name || savedName || id;
                 return `${name}${name === id ? '' : ` (${id})`}${resource?.type ? ' · ' + resource.type : ''}${resource?.directory ? ' · ' + resource.directory : ''}${id !== 'Default Resource' && reads.resources.state === 'ready' && !resource ? ' · unavailable on the server' : ''}`;
-            }).join('\n') : 'None selected']])}</div>;
-        })}
-    </>;
+            }).join('\n') : 'None selected'];
+        }))}
+    </div>;
 }
