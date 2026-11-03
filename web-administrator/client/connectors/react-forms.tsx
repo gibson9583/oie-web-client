@@ -64,12 +64,13 @@ interface NumericTemplatableInputProps {
     style?: React.CSSProperties;
     dataFkey?: string;
     templatable?: boolean;
+    numeric?: boolean;
     step?: number;
     min?: number;
     max?: number;
     width?: string;
     textWidth?: string;
-    onChange: (value: string) => void;
+    onChange: (value: string | number) => void;
 }
 
 function NumericTemplatableInput({
@@ -79,6 +80,7 @@ function NumericTemplatableInput({
     style,
     dataFkey,
     templatable = false,
+    numeric = false,
     step = 1,
     min,
     max,
@@ -88,7 +90,7 @@ function NumericTemplatableInput({
 }: NumericTemplatableInputProps) {
     const rawStr = value === null || value === undefined ? '' : String(value);
     const isEmpty = rawStr.trim() === '';
-    const isNumeric = !isEmpty && !isNaN(Number(rawStr));
+    const isNumeric = !isEmpty && Number.isFinite(Number(rawStr));
     const isText = !isEmpty && !isNumeric;
 
     // Use textWidth if it contains template/text (even on legacy non-templatable fields)
@@ -97,16 +99,28 @@ function NumericTemplatableInput({
     // Only show arrows if not disabled and the field currently holds a numeric value
     const showStepArrows = !disabled && isNumeric;
 
+    // Dispatches the updated value enforcing numeric types when requested
+    const emitValue = (raw: string) => {
+        if (numeric) {
+            // Numeric-only fields must fall back to 0
+            onChange(parseInt(raw, 10) || 0);
+        } else {
+            onChange(raw);
+        }
+    };
+
+    function getDecimalPlaces(val: string | number): number {
+        const str = String(val);
+        if (str.includes('e-')) {
+            const [, exp] = str.split('e-');
+            return parseInt(exp, 10);
+        }
+        const dot = str.indexOf('.');
+        return dot === -1 ? 0 : str.length - dot - 1;
+    };
+
     const handleStep = (direction: 1 | -1) => {
-        function getDecimalPlaces(val: string | number): number {
-            const str = String(val);
-            if (str.includes('e-')) {
-                const [, exp] = str.split('e-');
-                return parseInt(exp, 10);
-            }
-            const dot = str.indexOf('.');
-            return dot === -1 ? 0 : str.length - dot - 1;
-        };
+        
 
         const current = Number(rawStr);
         let next = current + direction * step;
@@ -121,17 +135,20 @@ function NumericTemplatableInput({
             formatted = (0).toFixed(precision);
         }
 
-        onChange(formatted);
+        emitValue(formatted);
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            handleStep(1);
-        } else if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            handleStep(-1);
+        if (showStepArrows) {
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                handleStep(1);
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                handleStep(-1);
+            }
         }
+        
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -139,7 +156,7 @@ function NumericTemplatableInput({
         if (!templatable && val !== '' && !/^-?\d*\.?\d*$/.test(val)) {
             return;
         }
-        onChange(val);
+        emitValue(val);
     };
 
     return (
@@ -421,6 +438,7 @@ function FieldRow({ properties, field, onChange, repaint }: { properties: any; f
                     textWidth={f.textWidth || DEFAULT_WIDTHS.text}
                     disabled={disabled}
                     templatable={f.templatable}
+                    numeric={f.numeric}
                     step={f.step}
                     min={f.min}
                     max={f.max}
