@@ -47,6 +47,7 @@ import { applyGroupImports, bundledLibrarySaveError, consolidateBundledLibraries
 import { invalidate as invalidateCompletions } from '../../core/script-completions.js';
 import { runLifecycle } from './channel-lifecycle.js';
 import { usePaletteContext } from '../palette-context.js';
+import { useListState } from '../list-state.js';
 import { cacheChannelListDisplay, readChannelListDisplay, retainChannelListDisplay } from '../channel-list-cache.js';
 import {
     loadViewMode, saveViewMode, loadTagMode, saveTagMode,
@@ -533,16 +534,20 @@ export function ChannelsView() {
     const [loadError, setLoadError] = useState<string | null>(null);
     const [staleResources, setStaleResources] = useState(() => new Set<string>());
     const refreshGenRef = useRef(0);
-    const [selected, setSelected] = useState(() => new Set());   // channel ids
+    const [selected, setSelected] = useListState('channels:selected', () => new Set());   // channel ids
     const lastClickedRef = useRef<any>(null);                     // shift-range anchor (interaction-only)
-    const [lastGroupId, setLastGroupId] = useState<any>(null);    // last-clicked group row (for Delete Group)
+    const [lastGroupId, setLastGroupId] = useListState<any>('channels:group', () => null);    // last-clicked group row (for Delete Group)
     const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());   // group ids (default expanded)
-    const [filterText, setFilterText] = useState('');
+    const [filterText, setFilterText] = useListState('channels:filter', () => '');
     // Groups/Channels arrangement + tag display: Swing's filter-bar toggles,
     // one preference shared with the Dashboard.
     const [viewMode, setViewModeState] = useState<ViewMode>(loadViewMode);
     const [tagMode, setTagModeState] = useState<TagMode>(loadTagMode);
     const groupView = viewMode === 'group';
+
+    useEffect(() => {
+        if (!groupView) setLastGroupId(null);
+    }, [groupView, setLastGroupId]);
 
     function setViewMode(mode: ViewMode) {
         setViewModeState(mode);

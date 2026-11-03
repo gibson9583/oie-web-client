@@ -21,6 +21,7 @@ import { getPref, setPrefs } from '../../core/prefs.js';
 import { statsOf } from './dashboard.jsx';
 import { runLifecycle } from './channel-lifecycle.js';
 import { usePaletteContext } from '../palette-context.js';
+import { useListState } from '../list-state.js';
 
 const CARD_MIN = 280;   // min card width (px) for the responsive grid
 const EMPTY_LIST: any[] = [];  // stable fallback while queries load (memo-dep friendly)
@@ -149,13 +150,13 @@ function CardsView({ onToggleView }: any) {
     const groups = useChannelGroups().data ?? EMPTY_LIST;
     const tags = useChannelTags().data ?? EMPTY_LIST;
     const refresh = () => statusesQuery.refetch();
-    const [query, setQuery] = useState('');
+    const [query, setQuery] = useListState('dashboard-cards:filter', () => '');
     const [groupBy, setGroupByState] = useState(() => {
         const g = getPref('cardsGroupBy');
         return ['none', 'group', 'tag', 'state'].includes(g) ? g : 'none';
     });
     const setGroupBy = (g: any) => { setGroupByState(g); setPrefs({ cardsGroupBy: g }); };
-    const [stateFilter, setStateFilter] = useState<any>(null);
+    const [stateFilter, setStateFilter] = useListState<string | null>('dashboard-cards:state', () => null);
     const [collapsed, setCollapsed] = useState(() => new Set());
     const [sectionLimits, setSectionLimits] = useState({} as any);   // grouped view: sectionKey → cards shown
     const [selected, setSelected] = useState(() => new Set());   // selected channelIds (multi-select)

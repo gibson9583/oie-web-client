@@ -6,6 +6,7 @@
  * return DOM and their taskbars relocate into the rail. The strangler seam.
  */
 
+import { clearListState } from './list-state.js';
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -937,6 +938,7 @@ export function App() {
             store.setState('navGuard', null);
             router.setOutlet(null);
             queryClient.clear();
+            clearListState();
             takeSsoPending();
             if (isOidcCallback()) takeOidcCallback();
             location.reload();
@@ -1052,6 +1054,7 @@ export function App() {
         closeSessionDialogs();
         purgeChannelDrafts();
         queryClient.clear();
+        clearListState();
         invalidateCompletions();
         clearActiveScope();
         // Deferred: the editors only DETACH when React swaps in the login card,

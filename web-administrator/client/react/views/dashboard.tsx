@@ -39,6 +39,7 @@ import { CardsView } from './cards.jsx';
 import { runLifecycle } from './channel-lifecycle.js';
 import { openRemoveAllMessagesDialog } from '../remove-all-messages.js';
 import { usePaletteContext } from '../palette-context.js';
+import { useListState } from '../list-state.js';
 
 // Loaded on demand. This dialog is the dashboard's ONLY use of the message
 // browser, and importing it statically drags that whole view — the largest in the
@@ -394,13 +395,13 @@ function DashboardView({ onToggleView }: any) {
     const loaded = statusesQ.data !== undefined;      // first status poll has landed
 
     /* ---- UI state ---- */
-    const [selected, setSelected] = useState(() => new Set());          // channelIds
-    const [selectedConnector, setSelectedConnector] = useState<any>(null);   // { channelId, metaDataId }
+    const [selected, setSelected] = useListState('dashboard:selected', () => new Set());          // channelIds
+    const [selectedConnector, setSelectedConnector] = useListState<any>('dashboard:connector', () => null);   // { channelId, metaDataId }
     const lastClickedRef = useRef<any>(null);              // anchor for shift-range selection (interaction-only)
-    const [expandedChannels, setExpandedChannels] = useState(() => new Set());   // channels showing connector rows
+    const [expandedChannels, setExpandedChannels] = useListState('dashboard:expanded', () => new Set());   // channels showing connector rows
     const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());     // groups default to expanded
-    const [filterText, setFilterText] = useState('');
-    const [chips, setChips] = useState([] as any[]);           // explicit picks: [{ value, kind: 'tag' | 'channel' }]
+    const [filterText, setFilterText] = useListState('dashboard:filter', () => '');
+    const [chips, setChips] = useListState<any[]>('dashboard:chips', () => []);           // explicit picks: [{ value, kind: 'tag' | 'channel' }]
     const [lifetime, setLifetime] = useState(false);
     const [sort, setSort] = useState<any>({ key: 'name', dir: 1 });          // dir: 1 = asc, -1 = desc
     // View + Tags are shared with the Channels board (one preference, as in Swing).
@@ -417,13 +418,15 @@ function DashboardView({ onToggleView }: any) {
        'dashboard:selection' emit, matching the classic board (only USER actions
        announce a selection change). */
     useEffect(() => {
+        if (!loaded) return; // Loading placeholders must not erase remembered selection.
         const ids = new Set(statuses.map(s => s.channelId));
         setSelected(prev => {
             const next = new Set([...prev].filter(id => ids.has(id)));
             return next.size === prev.size ? prev : next;
         });
-        setSelectedConnector((prev: any) => (prev && !ids.has(prev.channelId) ? null : prev));
-    }, [statuses]);
+        setSelectedConnector((prev: any) => (prev && !statuses.some(st => st.channelId === prev.channelId
+            && childrenOf(st).some((child: any) => child.metaDataId === prev.metaDataId)) ? null : prev));
+    }, [statuses, loaded, setSelected, setSelectedConnector]);
 
     /* Selection handed to the dashboard tabs (Connection Log, …): the selected
        connector's scope, otherwise the selected channels. */
@@ -1223,7 +1226,8 @@ function DashboardView({ onToggleView }: any) {
                         onToggleCollapse={onToggleCollapse}
                         columnsKey="dashboard"
                         scrollKey="dashboard"
-                        scrollReady={loaded && (viewMode === 'channel' || !groupsQ.isPending)}
+                        scrollReady={loaded && (viewMode === 'channel' || !groupsQ.isPending)
+                            && (!(filterText.trim() || chips.length) || !tagsQ.isPending)}
                         columnWidths={DASH_COL_WIDTHS}
                         defaultHidden={DASH_DEFAULT_HIDDEN}
                         pinnedKeys={['state', 'name']}
