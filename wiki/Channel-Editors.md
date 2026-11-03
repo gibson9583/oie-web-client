@@ -27,13 +27,13 @@ channel.
 
 The classic editor exposes five tabs:
 
+- **Inspector** — a read-only view of the working channel in execution order.
 - **Summary** — identity, enabled state, tags, data types, dependencies, storage,
   pruning, attachments, metadata, and description.
 - **Source** — source transport and its listener/polling/reader settings.
 - **Destinations** — destination list, transport settings, queueing, response,
   filter, and transformer links.
 - **Scripts** — preprocessing, postprocessing, deploy, and undeploy JavaScript.
-- **Inspector** — a read-only view of the working channel in execution order.
 
 Installed plugins may add further tabs.
 
@@ -43,9 +43,13 @@ Use **Set Data Types** and **Set Dependencies** to update their shared models.
 ### Channel Inspector
 
 Opening a channel with **Edit Channel** starts on **Summary**. The **Inspector**
-tab follows **Scripts** and reads the current editor model, including unsaved
+tab precedes **Summary** and reads the current editor model, including unsaved
 changes, without saving or deploying it. Its context line identifies the editor
 revision and unsaved changes.
+
+Script disclosures use the same read-only Monaco editor as other code views,
+with syntax highlighting, selection and Find. If Monaco cannot load, the
+read-only text editor remains available. Print includes complete script text.
 
 Select **Inspect Channel** in Channels or the Dashboard channel context menu to
 inspect the saved configuration directly. Channels also provides an **Inspect

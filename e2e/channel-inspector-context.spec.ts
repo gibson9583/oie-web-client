@@ -1,6 +1,7 @@
 import { test, expect } from './base.js';
 import { mockEngine } from './mock.js';
 import { makeChannel } from './connector-fixtures.js';
+import { expectInspectorCode } from './inspector-code.js';
 
 const ID = 'inspector-context';
 const resourceMap = (id: string, name: string) => ({ entry: { string: [id, name] } });
@@ -15,7 +16,7 @@ for (const body of ['', 'null', 'false', "globalMap.put('batch-marker', reader.r
         const batch = page.locator('#ci-batch');
         await expect(batch).toContainText('returns the next message');
         await batch.locator('.ci-item summary').click();
-        await expect(batch.locator('.ci-code .lc')).toHaveText(body.split(/\r\n|\r|\n/).map(line => line || ' '));
+        await expectInspectorCode(batch, [body]);
         const order = await page.locator('.ci-section').evaluateAll(sections => sections.map(section => section.id));
         expect(order.indexOf('ci-batch')).toBeLessThan(order.indexOf('ci-preprocess'));
         if (body.includes('batch-marker')) {

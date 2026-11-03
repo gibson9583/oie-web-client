@@ -3279,6 +3279,13 @@ input.cform-invalid, select.cform-invalid, textarea.cform-invalid,
 .ci-find:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
 .ci-count { font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .ci-spacer { flex: 1; }
+.ci-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.ci-disclosure-actions { display: inline-flex; align-items: center; gap: 8px; }
+.ci-actions .ci-tool { min-height: 34px; padding: 5px 12px; font-weight: 540; box-shadow: none; }
+.ci-actions .ci-tool:not(.btn-primary) { background: var(--bg3); border-color: var(--line); }
+.ci-actions .ci-tool:not(.btn-primary):hover { background: color-mix(in srgb, var(--text) 5%, var(--bg3)); border-color: var(--line-strong); }
+.ci-actions .ci-tool:hover { box-shadow: none; }
+.ci-actions .ci-tool:active { transform: none; }
 .ci-toggle { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; }
 .ci-toggle input { margin: 0; accent-color: var(--accent); }
 .ci-scroll { flex: 1; min-height: 0; overflow: auto; container-type: size; }
@@ -3376,6 +3383,8 @@ input.cform-invalid, select.cform-invalid, textarea.cform-invalid,
 .ci-expr { margin: 0; font-family: var(--font-mono); font-size: 11px; background: var(--bg0); border: 1px solid var(--line); border-radius: 5px; padding: 7px 10px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
 .ci-code { margin: 0; background: var(--bg0); border: 1px solid var(--line-strong); border-radius: 6px; padding: 6px 0; overflow: auto; font-family: var(--font-mono); font-size: 11px; line-height: 1.7; }
 .ci-code.long { max-height: 260px; }
+.ci-code.ci-code-editor { padding: 0; border: 0; overflow: visible; }
+.ci-code-editor > .ce { height: 100%; min-height: 0; }
 .ci-code-row { display: grid; grid-template-columns: 40px minmax(0, 1fr); }
 .ci-code-row .ln { color: var(--text-faint); text-align: right; padding-right: 10px; border-right: 1px solid var(--line); user-select: none; }
 .ci-code-row .lc { padding: 0 12px; white-space: pre-wrap; overflow-wrap: anywhere; }

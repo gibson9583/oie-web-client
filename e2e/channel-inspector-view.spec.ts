@@ -227,12 +227,12 @@ test('a read from a discarded session cannot publish channel content', async ({ 
     } finally { release(); }
 });
 
-test('editor tabs keep their usual order with Inspector before plugin tabs', async ({ page }) => {
+test('Inspector precedes Summary while the editor opens on Summary', async ({ page }) => {
     await permissions(page, { viewer: false, pluginTab: true });
     await mockEngine(page, { [`GET /channels/${ID}`]: { channel: channel() } });
     await page.goto(`/channels/${ID}/edit`);
     await expect(page.getByRole('tablist', { name: 'Channel sections' }).getByRole('tab')).toHaveText([
-        'Summary', 'Source', 'Destinations', 'Scripts', 'Inspector', 'Plugin tab'
+        'Inspector', 'Summary', 'Source', 'Destinations', 'Scripts', 'Plugin tab'
     ]);
     await expect(page.getByRole('tab', { name: 'Summary', exact: true })).toHaveAttribute('aria-selected', 'true');
     await page.getByPlaceholder('Describe what this channel does…').fill('WORKING_DRAFT_DESCRIPTION');

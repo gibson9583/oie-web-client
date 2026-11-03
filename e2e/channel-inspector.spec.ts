@@ -1,6 +1,7 @@
 import { test, expect } from './base.js';
 import { mockEngine, fixtureXml as xml } from './mock.js';
 import AxeBuilder from '@axe-core/playwright';
+import { expectInspectorCode } from './inspector-code.js';
 
 /*
  * The channel editor's read-only Inspector tab: the channel described in
@@ -67,10 +68,10 @@ test.describe('Channel Inspector', () => {
         await mockEngine(page, { [`GET /channels/${ID}`]: { channel: CHANNEL } });
     });
 
-    test('opens after the Scripts editor tab and reads in engine order', async ({ page }) => {
+    test('opens before the Summary editor tab and reads in engine order', async ({ page }) => {
         await page.goto(`/channels/${ID}/edit?tab=Inspector`);
         const tabs = page.getByRole('tablist', { name: 'Channel sections' }).getByRole('tab');
-        await expect(tabs.nth(4)).toHaveText('Inspector');
+        await expect(tabs.first()).toHaveText('Inspector');
         await expect(page.getByRole('tab', { name: 'Inspector', exact: true })).toHaveAttribute('aria-selected', 'true');
 
         await expect(page.getByText('Normalizes lab results for clinical storage and EHR delivery.')).toBeVisible();
@@ -85,9 +86,9 @@ test.describe('Channel Inspector', () => {
         await expect(page.locator('#ci-preprocess')).not.toHaveClass(/empty/);
         await expect(page.locator('#ci-deploy .ci-name')).toHaveText(['Global deploy script', 'Deploy script', 'Undeploy script', 'Global undeploy script']);
         await page.getByRole('button', { name: 'Expand all', exact: true }).click();
-        await expect(page.locator('#ci-preprocess .ci-code .lc')).toHaveText(['return message;', ...CHANNEL.preprocessingScript.split('\n')]);
-        await expect(page.locator('#ci-deploy .ci-code .lc')).toHaveText(['return;', ...CHANNEL.deployScript.split('\n'), ...CHANNEL.undeployScript.split('\n'), 'return;']);
-        await expect(page.locator('#ci-postprocess .ci-code .lc')).toHaveText([...CHANNEL.postprocessingScript.split('\n'), 'return;']);
+        await expectInspectorCode(page.locator('#ci-preprocess'), ['return message;', CHANNEL.preprocessingScript]);
+        await expectInspectorCode(page.locator('#ci-deploy'), ['return;', CHANNEL.deployScript, CHANNEL.undeployScript, 'return;']);
+        await expectInspectorCode(page.locator('#ci-postprocess'), [CHANNEL.postprocessingScript, 'return;']);
 
         // Chains follow waitForPrevious; disabled destinations are separate.
         const map = page.getByLabel('Chain map');
@@ -228,7 +229,7 @@ test.describe('Channel Inspector', () => {
 
         await page.getByPlaceholder('Find in channel').fill('destinationSet');
         await expect(route).toHaveAttribute('open', '');
-        await expect(route.locator('.ci-code')).toContainText("destinationSet.remove(3)");
+        await expectInspectorCode(route, [CHANNEL.sourceConnector.transformer.elements[JS_STEP].script]);
         await expect(page.locator('.ci-count')).toHaveText('1 of 1');
 
         // A key read with no writer in the channel is flagged.
@@ -271,7 +272,7 @@ test.describe('Channel Inspector', () => {
         await page.getByRole('button', { name: 'Retry global scripts' }).click();
         const global = page.locator('.ci-item', { hasText: 'Global preprocessor' });
         await global.locator('summary').click();
-        await expect(global.locator('.lc')).toHaveText('123');
+        await expectInspectorCode(global, ['123']);
         await expect(page.locator('#ci-key-globalMap\\.completed')).toContainText('Global postprocessor');
         await page.getByLabel('Include global scripts').uncheck();
         await expect(global).toHaveCount(0);
@@ -312,10 +313,10 @@ test.describe('Channel Inspector', () => {
         await page.goto(`/channels/${ID}/edit?tab=Inspector`);
         await page.getByLabel('Include global scripts').uncheck();
         await page.getByRole('button', { name: 'Expand all' }).click();
-        await expect(page.locator('#ci-filter .ci-code .lc')).toHaveText(values);
-        await expect(page.locator('#ci-transform .ci-code .lc')).toHaveText(values);
+        await expectInspectorCode(page.locator('#ci-filter'), values);
+        await expectInspectorCode(page.locator('#ci-transform'), values);
         await expect(page.locator('#ci-deploy .ci-name')).toHaveText(['Deploy script', 'Undeploy script']);
-        await expect(page.locator('#ci-deploy .ci-code .lc')).toHaveText(['null', '']);
+        await expectInspectorCode(page.locator('#ci-deploy'), ['null', '']);
         await page.getByRole('button', { name: 'Print', exact: true }).click();
         const preview = page.getByRole('dialog', { name: 'Print preview', exact: true });
         await expect(preview.locator('section[aria-labelledby="print-ci-filter"] .ci-code .lc')).toHaveText(values);
@@ -344,7 +345,8 @@ test.describe('Channel Inspector', () => {
         await expect(page.locator('#ci-postprocess')).not.toHaveClass(/empty/);
         const globalPostprocess = page.locator('#ci-postprocess .ci-item')
             .filter({ has: page.locator('.ci-name', { hasText: /^Global postprocessor$/ }) });
-        await expect(globalPostprocess.locator('.ci-code .lc')).toHaveText('return;');
+        await globalPostprocess.locator('summary').click();
+        await expectInspectorCode(globalPostprocess, ['return;']);
         expect(xmlReads).toBe(1);
     });
 
@@ -450,7 +452,7 @@ test.describe('Channel Inspector', () => {
             await expect(page.locator('.ci-desc')).toHaveText('Coherent XML snapshot');
             await expect(page.locator('.ci-from').first()).toContainText(`revision ${channel.revision}`);
             await page.getByRole('button', { name: 'Expand all', exact: true }).click();
-            await expect(page.locator('#ci-deploy .ci-item').filter({ has: page.locator('.ci-name', { hasText: /^Deploy script$/ }) }).locator('.ci-code .lc')).toHaveText(['false']);
+            await expectInspectorCode(page.locator('#ci-deploy .ci-item').filter({ has: page.locator('.ci-name', { hasText: /^Deploy script$/ }) }), ['false']);
             const modified = await page.evaluate(async () => (await import(String('/core/store.js'))).getState('editingChannel').exportData.metadata.lastModified.time);
             expect(Number(modified)).toBe(channel.exportData.metadata.lastModified.time);
             expect({ xmlReads, jsonReads }).toEqual({ xmlReads: 1, jsonReads: 0 });
@@ -638,7 +640,7 @@ test.describe('Channel Inspector', () => {
         await page.getByPlaceholder('Find in channel').fill('attachmentRun');
         const handler = page.locator('#ci-attachments .ci-item');
         await expect(handler).toHaveAttribute('open', '');
-        await expect(handler.locator('.ci-code .lc')).toHaveText(script.split('\n'));
+        await expectInspectorCode(handler, [script]);
         await handler.getByRole('button', { name: 'writes attachmentRun', exact: true }).click();
         const mapRow = page.locator('#ci-key-globalMap\\.attachmentRun');
         await expect(mapRow).toHaveClass(/target/);
@@ -706,7 +708,7 @@ test.describe('Channel Inspector', () => {
             await expect(row.locator('.ci-code')).toBeVisible();
             // Empty code still has one blank display line; whitespace is retained.
             const displayedLines = sample.script.split('\n').map(line => line || ' ');
-            expect(await row.locator('.ci-code .lc').allTextContents()).toEqual(displayedLines);
+            await expectInspectorCode(row, [sample.script]);
             await expect(section).not.toContainText('The raw message is not changed.');
 
             await page.getByRole('button', { name: 'Print', exact: true }).click();

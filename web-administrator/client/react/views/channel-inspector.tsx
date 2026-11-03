@@ -12,6 +12,7 @@ import type { ChannelInspection, Fact, InspectedDestination, InspectedElement, M
 import { parseGlobalScripts } from '../../core/global-scripts.js';
 import { connectorIcon } from '../../core/icons.js';
 import { platform } from '@oie/web-shell';
+import { createCodeEditor } from '@oie/web-ui';
 import { dataTypeDef } from '../../datatypes/index.js';
 import { Icon } from '../bridges.jsx';
 import { InspectorDependencies, useInspectorDependencies } from './channel-inspector-dependencies.js';
@@ -73,15 +74,35 @@ function Facts({ facts, query }: { facts: Fact[]; query: string }) {
     );
 }
 
-function Code({ text, print = false }: { text: string; print?: boolean }) {
+function Code({ text, name, active, print = false }: { text: string; name: string; active: boolean; print?: boolean }) {
     const lines = text.split(/\r\n|\r|\n/);
     const long = lines.length > LONG_SCRIPT;
     const [full, setFull] = useState(false);
+    const hostRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const host = hostRef.current;
+        if (!host || print || !active) return undefined;
+        let editor: ReturnType<typeof createCodeEditor> | undefined;
+        const dispose = () => { editor?.dispose(); editor = undefined; host.replaceChildren(); };
+        // Expand all can reveal hundreds of scripts. Only keep editors/models
+        // near the scroll viewport, including when a numbered stage is folded.
+        const observer = new IntersectionObserver(([entry]) => {
+            if (!entry.isIntersecting) { dispose(); return; }
+            if (!editor) {
+                editor = createCodeEditor({ value: text, language: 'javascript', readOnly: true,
+                    ariaLabel: name + ' (read only)', minHeight: '0' });
+                host.appendChild(editor.el);
+            }
+        }, { root: host.closest('.ci-scroll'), rootMargin: '200px 0px' });
+        observer.observe(host);
+        return () => { observer.disconnect(); dispose(); };
+    }, [text, name, active, print]);
     return (
         <div>
-            <pre className={'ci-code' + (long && !full && !print ? ' long' : '')} tabIndex={print ? undefined : 0}>
+            {print ? <pre className="ci-code">
                 {lines.map((line, i) => <span className="ci-code-row" key={i}><span className="ln" aria-hidden="true">{i + 1}</span><span className="lc">{line || ' '}</span></span>)}
-            </pre>
+            </pre> : <div ref={hostRef} className="ci-code ci-code-editor"
+                style={{ height: Math.max(3, full ? lines.length : Math.min(lines.length, LONG_SCRIPT)) * 18 + 20 }} />}
             {long && !print && (
                 <div className="ci-code-foot">
                     <span>{plural(lines.length, 'line')} · read only</span>
@@ -122,7 +143,7 @@ function ElementRow({ el, index, ctx }: { el: InspectedElement; index: number; c
                 </>;
     const body = <div className="ci-item-body">
         {!ctx.print && (el.reads.length > 0 || el.writes.length > 0) && <div className="ci-key-links" aria-label="Map references">{el.reads.map(k => chip(k, false))}{el.writes.map(k => chip(k, true))}</div>}
-        {el.isScript ? <Code text={el.detail} print={ctx.print} /> : <pre className="ci-expr" tabIndex={!ctx.print && el.type === 'template' ? 0 : undefined}>{el.detail}</pre>}
+        {el.isScript ? <Code text={el.detail} name={el.name} active={ctx.open.has(el.id)} print={ctx.print} /> : <pre className="ci-expr" tabIndex={!ctx.print && el.type === 'template' ? 0 : undefined}>{el.detail}</pre>}
     </div>;
     const classes = 'ci-item' + (el.enabled ? '' : ' off') + (hit ? ' hit' : '');
     return (
@@ -367,13 +388,16 @@ export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew, 
                 </label>
                 <label className="ci-toggle"><input type="checkbox" checked={showCode} onChange={e => { setShowCode(e.target.checked); setOpenState(e.target.checked ? new Set(allIds) : new Set()); }} />Show all code</label>
                 <label className="ci-toggle"><input type="checkbox" checked={includeGlobals && canGlobals} disabled={!canGlobals} onChange={e => setIncludeGlobals(e.target.checked)} />Include global scripts</label>
-                <span className="ci-spacer" />
-                <button type="button" className="btn" onClick={() => { setOpenState(new Set(allIds)); storyRef.current?.querySelectorAll('details').forEach(el => { el.open = true; }); }}><Icon name="chevD" size={14} />Expand all</button>
-                <button type="button" className="btn" onClick={() => { setShowCode(false); setOpenState(new Set()); storyRef.current?.querySelectorAll('details').forEach(el => { el.open = false; }); }}><Icon name="chevR" size={14} />Collapse all</button>
-                <Dialog.Root open={printPreview} onOpenChange={setPrintPreview}>
-                    <Dialog.Trigger asChild><button type="button" className="btn"><Icon name="print" size={14} />Print</button></Dialog.Trigger>
-                    {printPreview && <PrintView inspection={r} context={`${revisionText}. ${deployment}`} globalsText={globalsText} channelNames={channelNames} readOnly={readOnly} dependencies={dependencyBody(true)} />}
-                </Dialog.Root>
+                <div className="ci-actions">
+                    <div className="ci-disclosure-actions" role="group" aria-label="Code disclosures">
+                        <button type="button" className="btn ci-tool" onClick={() => { setOpenState(new Set(allIds)); storyRef.current?.querySelectorAll('details').forEach(el => { el.open = true; }); }}><Icon name="chevD" size={14} />Expand all</button>
+                        <button type="button" className="btn ci-tool" onClick={() => { setShowCode(false); setOpenState(new Set()); storyRef.current?.querySelectorAll('details').forEach(el => { el.open = false; }); }}><Icon name="chevR" size={14} />Collapse all</button>
+                    </div>
+                    <Dialog.Root open={printPreview} onOpenChange={setPrintPreview}>
+                        <Dialog.Trigger asChild><button type="button" className="btn btn-primary ci-tool"><Icon name="print" size={14} />Print</button></Dialog.Trigger>
+                        {printPreview && <PrintView inspection={r} context={`${revisionText}. ${deployment}`} globalsText={globalsText} channelNames={channelNames} readOnly={readOnly} dependencies={dependencyBody(true)} />}
+                    </Dialog.Root>
+                </div>
             </div>
             <div className="ci-scroll">
                 <div className="ci-layout">
