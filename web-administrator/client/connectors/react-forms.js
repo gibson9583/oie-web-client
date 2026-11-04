@@ -56,16 +56,6 @@ function NumericTemplatableInput({ value, disabled, placeholder, style, dataFkey
     const currentWidth = templateBegin ? textWidth : width;
     // Only show arrows if not disabled and the field currently holds a numeric value
     const showStepArrows = !disabled && isNumeric;
-    // Dispatches the updated value enforcing numeric types when requested
-    const emitValue = (raw) => {
-        if (numeric) {
-            // Numeric-only fields must fall back to 0
-            onChange(parseInt(raw, 10) || 0);
-        }
-        else {
-            onChange(raw);
-        }
-    };
     function getDecimalPlaces(val) {
         const str = String(val);
         if (str.includes('e-')) {
@@ -88,7 +78,7 @@ function NumericTemplatableInput({ value, disabled, placeholder, style, dataFkey
         if (Number(formatted) === 0) {
             formatted = (0).toFixed(precision);
         }
-        emitValue(formatted);
+        onChange(formatted);
     };
     const handleKeyDown = (e) => {
         if (showStepArrows) {
@@ -103,26 +93,32 @@ function NumericTemplatableInput({ value, disabled, placeholder, style, dataFkey
         }
     };
     const handleBlur = () => {
-        if (!isEmpty && !isNumeric && !templateBegin) {
-            emitValue('');
+        if (!isNumeric) {
+            if (numeric) {
+                // Numeric-only fields must fall back to 0
+                onChange('0');
+            }
+            else if (!isEmpty && !templateBegin) {
+                onChange('');
+            }
         }
     };
     const handleChange = (e) => {
         const val = e.target.value;
         // Allow empty value for clearing the field
         if (val === '') {
-            emitValue(val);
+            onChange(val);
             return;
         }
         // Allow valid numeric inputs (supports negative numbers and decimals)
         const numberBeginPattern = /^-?\d*\.?\d*$/.test(val);
         if (numberBeginPattern) {
-            emitValue(val);
+            onChange(val);
             return;
         }
         // 3. Allow text only if templatable is enabled and the value starts with '$'
         if (templatable && val.startsWith('$')) {
-            emitValue(val);
+            onChange(val);
             return;
         }
         // Reject any other arbitrary text or symbols
