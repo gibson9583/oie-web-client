@@ -403,6 +403,9 @@ function DashboardView({ onToggleView }: any) {
     const [rememberedConnector, setSelectedConnector] = useListState<any>('dashboard:connector', () => null);   // { channelId, metaDataId }
     const selected = statusesFresh ? rememberedSelected : EMPTY_SET;
     const selectedConnector = statusesFresh ? rememberedConnector : null;
+    // Clicks build on choices made in this mount; the first one replaces the remembered selection.
+    const [chose, setChose] = useState(false);
+    const chosenSelected = statusesFresh || chose ? rememberedSelected : EMPTY_SET;
     const lastClickedRef = useRef<any>(null);              // anchor for shift-range selection (interaction-only)
     const [expandedChannels, setExpandedChannels] = useListState('dashboard:expanded', () => new Set());   // channels showing connector rows
     const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());     // groups default to expanded
@@ -451,6 +454,7 @@ function DashboardView({ onToggleView }: any) {
        re-emit for outside listeners (plugins). Rendering (task pane, tabs)
        follows from the state change itself. */
     function applySelection(nextSelected: any, nextConnector: any) {
+        setChose(true);
         setSelected(nextSelected);
         setSelectedConnector(nextConnector);
         store.emit('dashboard:selection', nextConnector
@@ -918,7 +922,7 @@ function DashboardView({ onToggleView }: any) {
         const st = node.st;
         let next: any;
         if (e.metaKey || e.ctrlKey) {
-            next = new Set(selected);
+            next = new Set(chosenSelected);
             next.has(st.channelId) ? next.delete(st.channelId) : next.add(st.channelId);
         } else if (e.shiftKey && lastClickedRef.current) {
             const visible = visibleChannelIds();
@@ -1000,8 +1004,8 @@ function DashboardView({ onToggleView }: any) {
         e.preventDefault();
         // Right-click keeps a multi-selection that includes the row; otherwise it
         // becomes the selection — and the menu acts on exactly those ids.
-        const ids = selected.has(st.channelId) ? [...selected] : [st.channelId];
-        if (!selected.has(st.channelId)) applySelection(new Set([st.channelId]), null);
+        const ids = chosenSelected.has(st.channelId) ? [...chosenSelected] : [st.channelId];
+        if (!chosenSelected.has(st.channelId)) applySelection(new Set([st.channelId]), null);
         const sel = statuses.filter(x => ids.includes(x.channelId));
         const anyState = (fn: any) => sel.some(fn);
         contextMenu(e.clientX, e.clientY, [
@@ -1085,7 +1089,7 @@ function DashboardView({ onToggleView }: any) {
     // empty-space clicks here).
     function onEmptyClick(e: any) {
         if (e.target.closest('tr')) return;
-        if (!selected.size && !selectedConnector) return;
+        if (!rememberedSelected.size && !rememberedConnector) return;
         lastClickedRef.current = null;
         applySelection(new Set(), null);
     }
@@ -1093,7 +1097,7 @@ function DashboardView({ onToggleView }: any) {
     // no-selection dashboard popup (just Refresh), matching the Swing dashboard.
     function onEmptyContextMenu(e: any) {
         e.preventDefault();
-        if (selected.size || selectedConnector) {
+        if (rememberedSelected.size || rememberedConnector) {
             lastClickedRef.current = null;
             applySelection(new Set(), null);
         }
