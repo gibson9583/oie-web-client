@@ -9,6 +9,7 @@
 
 import { React } from './react-platform.js';
 import { getState } from '../core/store.js';
+import { httpFormUrlEncoded, httpHasBody } from '../core/http-body.js';
 import { checkbox, h, clear, textInput, select, icon } from '@oie/web-ui';
 import {
     ConnectorForm, connectorTestButton, portsInUseButton, listenerAddressField, asBool, YES_NO,
@@ -121,11 +122,6 @@ function staticResourcesTable(properties: any, onChange: any) {
 // / Use Map" toggle (useXVariable=false → the table map; true → the variable name).
 const USE_TABLE_MAP = [{ value: false, label: 'Use Table' }, { value: true, label: 'Use Map' }];
 
-// HTTP Sender content gating, mirroring HttpSender.checkMultipartEnabled /
-// checkContentEnabled: only POST/PUT/PATCH carry a request body, and a
-// form-urlencoded content type disables Multipart + the Data Type / Content.
-const httpHasBody = (p: any) => ['post', 'put', 'patch'].includes(String(p.method));
-const httpFormUrlEncoded = (p: any) => String(p.contentType || '').toLowerCase().startsWith('application/x-www-form-urlencoded');
 
 function httpUrl(p: any) {
     const listener = p.listenerConnectorProperties || {};

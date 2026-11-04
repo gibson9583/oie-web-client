@@ -150,6 +150,9 @@ for (const scenario of [
     { name: 'conservatively retries after a replacement password connection fails before commit', commit: false, history: false },
 ]) {
     test(`Welcome ${scenario.name}`, async ({ page }) => {
+        // The history case makes six submissions and dismisses five error dialogs.
+        // WebKit's CI actionability waits can exhaust 30s before the final recovery.
+        if (scenario.history) test.setTimeout(60_000);
         let authed = false;
         let upstreamPassword = 'OriginalPassword';
         let profileWrites = 0;

@@ -9,3 +9,5 @@
 export declare function registerIcon(name: string, pathData: string): void;
 export declare function icon(name: string, size?: number): SVGElement;
 export declare function iconPath(name: string): string;
+/** Icon for a connector transport name (TCP → server, HTTP → globe, …). */
+export declare function connectorIcon(name: unknown): string;

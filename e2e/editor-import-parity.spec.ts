@@ -1,6 +1,6 @@
 import { test, expect } from './base.js';
 import type { Page } from '@playwright/test';
-import { mockEngine } from './mock.js';
+import { mockEngine, fixtureXml } from './mock.js';
 import { makeChannel } from './connector-fixtures.js';
 
 const stepType = 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep';
@@ -38,7 +38,7 @@ async function save(page: Page, writes: any[]) {
 
 test('Swing destination XML appends with fresh identity and unique name, preserves original and aligns inbound type', async ({ page }) => {
     const channel = makeChannel('import-destination');
-    const original = structuredClone(channel.destinationConnectors.connector[0]);
+    const original = structuredClone(([] as any[]).concat(channel.destinationConnectors.connector)[0]);
     const imported = structuredClone(original);
     imported.metaDataId = 77;
     imported.name = 'destination 1';
@@ -53,7 +53,7 @@ test('Swing destination XML appends with fresh identity and unique name, preserv
     await expect(page.getByRole('cell', { name: 'Destination 2', exact: true })).toBeVisible();
     const sent = await save(page, writes);
     expect(sent.destinationConnectors.connector).toHaveLength(2);
-    expect(sent.destinationConnectors.connector[0]).toEqual(original);
+    expect(fixtureXml('connector', ([] as any[]).concat(sent.destinationConnectors.connector)[0])).toBe(fixtureXml('connector', original));
     const added = sent.destinationConnectors.connector[1];
     expect(added.metaDataId).toBe(2);
     expect(added.name).toBe('Destination 2');
@@ -82,15 +82,15 @@ test('Swing source XML replaces source with id zero, aligns destinations and aut
     const sent = await save(page, writes);
     expect(sent.sourceConnector.metaDataId).toBe(0);
     expect(sent.sourceConnector.properties.sourceConnectorProperties.processBatch).toBe(false);
-    expect(sent.destinationConnectors.connector[0].transformer.inboundDataType).toBe('XML');
-    expect(sent.destinationConnectors.connector[0].transformer.inboundProperties['@class']).toContain('XML');
+    expect(([] as any[]).concat(sent.destinationConnectors.connector)[0].transformer.inboundDataType).toBe('XML');
+    expect(([] as any[]).concat(sent.destinationConnectors.connector)[0].transformer.inboundProperties['@class']).toContain('XML');
     expect(sent.properties.attachmentProperties.type).toBe('None');
 });
 
 for (const kind of ['filter', 'transformer', 'response']) {
     test(`${kind} XML append retains existing settings, order and disabled imported elements`, async ({ page }) => {
         const channel = makeChannel(`append-${kind}`);
-        const connector = kind === 'response' ? channel.destinationConnectors.connector[0] : channel.sourceConnector;
+        const connector = kind === 'response' ? ([] as any[]).concat(channel.destinationConnectors.connector)[0] : channel.sourceConnector;
         const key = kind === 'response' ? 'responseTransformer' : kind;
         const type = kind === 'filter' ? ruleType : stepType;
         connector[key].elements = { [type]: step('Existing') };
@@ -101,10 +101,10 @@ for (const kind of ['filter', 'transformer', 'response']) {
         await page.getByRole('button', { name: 'Append', exact: true }).click();
         await expect(page.locator('input.grid-name')).toHaveCount(2);
         const sent = await save(page, writes);
-        const result = (kind === 'response' ? sent.destinationConnectors.connector[0] : sent.sourceConnector)[key];
+        const result = (kind === 'response' ? ([] as any[]).concat(sent.destinationConnectors.connector)[0] : sent.sourceConnector)[key];
         expect(result.elements[type].map((element: any) => element.name)).toEqual(['Existing', 'Imported']);
         expect(result.elements[type][1].enabled).toBe(false);
-        for (const property of ['inboundDataType', 'outboundDataType', 'inboundTemplate']) expect(templateText(result[property])).toEqual(initial[property]);
+        for (const property of ['inboundDataType', 'outboundDataType', 'inboundTemplate']) expect(fixtureXml(property, templateText(result[property]))).toBe(fixtureXml(property, initial[property]));
     });
 }
 
@@ -128,7 +128,7 @@ test('full transformer XML replacement imports data types, properties and templa
     expect(templateText(sent.sourceConnector.transformer.outboundTemplate)).toBe('');
     expect(sent.sourceConnector.transformer.outboundDataType).toBe('XML');
     expect(sent.sourceConnector.transformer.outboundProperties.serializationProperties.stripNamespaces).toBe(false);
-    expect(sent.destinationConnectors.connector[0].transformer.inboundDataType).toBe('XML');
+    expect(([] as any[]).concat(sent.destinationConnectors.connector)[0].transformer.inboundDataType).toBe('XML');
 });
 
 test('cancelled replacement and malformed XML preserve the edited draft', async ({ page }) => {
@@ -155,7 +155,7 @@ test('wrong connector mode and failed resource lookup leave destination list unt
     await expect(page.getByText(/You must be on the Source tab/)).toBeVisible();
     await page.getByRole('dialog', { name: 'Error', exact: true }).getByRole('button', { name: 'Close', exact: true }).last().click();
     await page.route('**/api/server/resources', route => route.fulfill({ status: 500, body: 'Resource lookup failed' }));
-    await upload(page, 'Import Connector', xml('connector', channel.destinationConnectors.connector[0]));
+    await upload(page, 'Import Connector', xml('connector', ([] as any[]).concat(channel.destinationConnectors.connector)[0]));
     await expect(page.getByText(/Import failed:.*Resource lookup failed/)).toBeVisible();
     await page.getByRole('dialog', { name: 'Error', exact: true }).getByRole('button', { name: 'Close', exact: true }).last().click();
     await expect(page.getByRole('cell', { name: 'Destination 2', exact: true })).toHaveCount(0);
@@ -174,14 +174,14 @@ test('destination import ignores a delayed resource response after the user leav
         await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
     });
     await page.getByRole('tab', { name: 'Destinations', exact: true }).click();
-    await upload(page, 'Import Connector', xml('connector', channel.destinationConnectors.connector[0]));
+    await upload(page, 'Import Connector', xml('connector', ([] as any[]).concat(channel.destinationConnectors.connector)[0]));
     await expect.poll(() => requested).toBe(true);
     await page.getByRole('tab', { name: 'Summary', exact: true }).click();
     release();
     await page.locator('.panel input[type=text]').first().fill('Unrelated draft');
     const sent = await save(page, writes);
-    expect(sent.destinationConnectors.connector).toHaveLength(1);
-    expect(sent.destinationConnectors.connector[0]).toEqual(channel.destinationConnectors.connector[0]);
+    expect(([] as any[]).concat(sent.destinationConnectors.connector)).toHaveLength(1);
+    expect(fixtureXml('connector', ([] as any[]).concat(sent.destinationConnectors.connector)[0])).toBe(fixtureXml('connector', ([] as any[]).concat(channel.destinationConnectors.connector)[0]));
 });
 
 test('empty modern filter XML can replace all rules and legacy layouts fail without clearing the draft', async ({ page }) => {
@@ -213,7 +213,7 @@ test('connector import stops when the engine session expires during resource loo
     });
     await page.route('**/api/session-expiry-probe', route => route.fulfill({ status: 401, body: '' }));
     await page.getByRole('tab', { name: 'Destinations', exact: true }).click();
-    await upload(page, 'Import Connector', xml('connector', channel.destinationConnectors.connector[0]));
+    await upload(page, 'Import Connector', xml('connector', ([] as any[]).concat(channel.destinationConnectors.connector)[0]));
     await expect.poll(() => requested).toBe(true);
     await page.evaluate(async () => {
         const store = await import(String('/core/store.js'));
@@ -225,7 +225,7 @@ test('connector import stops when the engine session expires during resource loo
     const completed = page.waitForResponse('**/api/server/resources');
     release();
     await completed;
-    expect(await page.evaluate(() => (window as any).importChannelBeforeExpiry.destinationConnectors.connector.length)).toBe(1);
+    expect(await page.evaluate(() => ([] as any[]).concat((window as any).importChannelBeforeExpiry.destinationConnectors.connector).length)).toBe(1);
     await expect(page.getByRole('dialog')).toHaveCount(0);
     expect(writes).toHaveLength(0);
 });

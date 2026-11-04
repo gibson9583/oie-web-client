@@ -1,3 +1,4 @@
+import '../../tools/mock-channel-reads.mjs';
 import assert from 'node:assert/strict';
 import { channelEditState, loadChannelForEdit, saveChannelModel } from './channel-save.js';
 
