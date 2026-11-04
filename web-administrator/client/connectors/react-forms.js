@@ -102,6 +102,11 @@ function NumericTemplatableInput({ value, disabled, placeholder, style, dataFkey
             }
         }
     };
+    const handleBlur = () => {
+        if (!isEmpty && !isNumeric && !templateBegin) {
+            emitValue('');
+        }
+    };
     const handleChange = (e) => {
         const val = e.target.value;
         // Allow empty value for clearing the field
@@ -110,8 +115,8 @@ function NumericTemplatableInput({ value, disabled, placeholder, style, dataFkey
             return;
         }
         // Allow valid numeric inputs (supports negative numbers and decimals)
-        const isNumericPattern = /^-?\d*\.?\d*$/.test(val);
-        if (isNumericPattern) {
+        const numberBeginPattern = /^-?\d*\.?\d*$/.test(val);
+        if (numberBeginPattern) {
             emitValue(val);
             return;
         }
@@ -130,7 +135,7 @@ function NumericTemplatableInput({ value, disabled, placeholder, style, dataFkey
             transition: 'width 0.15s ease-out',
             ...style,
         } },
-        React.createElement("input", { type: "text", "data-fkey": dataFkey, value: rawStr, placeholder: placeholder, disabled: disabled, onChange: handleChange, onKeyDown: handleKeyDown, style: {
+        React.createElement("input", { type: "text", "data-fkey": dataFkey, value: rawStr, placeholder: placeholder, disabled: disabled, onChange: handleChange, onBlur: handleBlur, onKeyDown: handleKeyDown, style: {
                 width: '100%',
                 boxSizing: 'border-box',
                 paddingRight: showStepArrows ? '20px' : undefined,
