@@ -34,9 +34,7 @@
 import { useLayoutEffect, useReducer, useRef, useState } from 'react';
 import { createColumnManager, contextMenu } from '@oie/web-ui';
 import { Icon } from './bridges.jsx';
-
-// scrollKey -> last scroll offset. In memory only, like Swing's cached panels.
-const savedScroll = new Map<string, { top: number; left: number }>();
+import { scrollMemory as savedScroll } from './list-state.js';
 
 export function TreeTable({
     columns, data, getChildren, rowKey, rowClassName,

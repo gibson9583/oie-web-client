@@ -198,6 +198,99 @@ for (const surface of ['Dashboard', 'Channels']) {
     });
 }
 
+test('Dashboard holds a remembered selection until statuses are read again', async ({ page }) => {
+    let removed = false;
+    let hold = false;
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    await mockEngine(page, {
+        'GET /channels': { list: { channel: CHANNELS } },
+        'GET /channels/statuses': async () => {
+            if (hold) await released;
+            return { list: { dashboardStatus: removed ? STATUSES.slice(1) : STATUSES } };
+        },
+    });
+    const go = (name: string) => page.getByRole('button', { name, exact: true }).click();
+    const stop = page.getByRole('button', { name: 'Stop', exact: true });
+    await page.goto('/dashboard');
+    await page.getByText('Channel c-00', { exact: true }).click();
+    await page.getByText('Channel c-01', { exact: true }).click({ modifiers: ['ControlOrMeta'] });
+    await expect(stop).toBeVisible();
+    await go('Channels');
+    await expect(page.locator(channelsWrap).getByText('Channel c-00', { exact: true })).toBeAttached();
+    // Undeployed elsewhere: the cached statuses still list c-00.
+    removed = true;
+    hold = true;
+    try {
+        await go('Dashboard');
+        await expect(page.locator(dashWrap).getByText('Channel c-00', { exact: true })).toBeVisible();
+        await expect(page.locator(`${dashWrap} tr[aria-selected="true"]`)).toHaveCount(0);
+        await expect(stop).toHaveCount(0);
+    } finally {
+        release();
+    }
+    await expect(page.locator(dashWrap).getByText('Channel c-00', { exact: true })).toHaveCount(0);
+    await expect(page.locator(`${dashWrap} tr[aria-selected="true"]`)).toHaveCount(1);
+    await expect(page.locator(`${dashWrap} tr`).filter({ hasText: 'Channel c-01' })).toHaveAttribute('aria-selected', 'true');
+    await expect(stop).toBeVisible();
+});
+
+for (const mode of ['multi', 'clear choice', 'clear memory'] as const) {
+    test(`Dashboard keeps ${mode} clicks made while statuses are read again`, async ({ page }) => {
+        let hold = false;
+        let release!: () => void;
+        const released = new Promise<void>((resolve) => { release = resolve; });
+        await mockEngine(page, {
+            'GET /channels': { list: { channel: CHANNELS.slice(0, 3) } },
+            'GET /channels/statuses': async () => {
+                if (hold) await released;
+                // The held response marks its arrival by stopping c-00.
+                return { list: { dashboardStatus: STATUSES.slice(0, 3).map((st, i) => hold && i === 0 ? { ...st, state: 'STOPPED' } : st) } };
+            },
+        });
+        const row = (id: string) => page.locator(`${dashWrap} tr`).filter({ hasText: `Channel ${id}` });
+        const picked = page.locator(`${dashWrap} tr[aria-selected="true"]`);
+        const go = (name: string) => page.getByRole('button', { name, exact: true }).click();
+        const clickBackground = async () => {
+            const box = (await page.locator(dashWrap).boundingBox())!;
+            const last = (await page.locator(`${dashWrap} tbody tr`).last().boundingBox())!;
+            const position = { x: 10, y: last.y + last.height + 20 - box.y };
+            expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('tr') == null,
+                { x: box.x + position.x, y: box.y + position.y })).toBe(true);
+            await page.locator(dashWrap).click({ position });
+        };
+        await page.goto('/dashboard');
+        await row('c-00').click();
+        await expect(picked).toHaveCount(1);
+        await go('Channels');
+        await expect(page.locator(channelsWrap).getByText('Channel c-00', { exact: true })).toBeAttached();
+        hold = true;
+        try {
+            await go('Dashboard');
+            await expect(picked).toHaveCount(0);
+            if (mode === 'multi') {
+                await row('c-01').click();
+                await row('c-02').click({ modifiers: ['ControlOrMeta'] });
+            } else if (mode === 'clear choice') {
+                await row('c-01').click();
+                await clickBackground();
+            } else {
+                await clickBackground();
+            }
+            await expect(picked).toHaveCount(0);
+        } finally {
+            release();
+        }
+        await expect(row('c-00')).toContainText('Stopped');
+        if (mode === 'multi') {
+            await expect(picked).toHaveCount(2);
+            for (const id of ['c-01', 'c-02']) await expect(row(id)).toHaveAttribute('aria-selected', 'true');
+        } else {
+            await expect(picked).toHaveCount(0);
+            await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
+        }
+    });
+}
 
 test('text filters restore independently with selections, including no matches and clearing', async ({ page }) => {
     await mockEngine(page, {
