@@ -51,9 +51,9 @@ function NumericTemplatableInput({ value, disabled, placeholder, style, dataFkey
     const rawStr = value === null || value === undefined ? '' : String(value);
     const isEmpty = rawStr.trim() === '';
     const isNumeric = !isEmpty && Number.isFinite(Number(rawStr));
-    const isText = !isEmpty && !isNumeric;
-    // Use textWidth if it contains template/text (even on legacy non-templatable fields)
-    const currentWidth = isText ? textWidth : width;
+    const templateBegin = rawStr.startsWith("$");
+    // Use textWidth if it contains a template
+    const currentWidth = templateBegin ? textWidth : width;
     // Only show arrows if not disabled and the field currently holds a numeric value
     const showStepArrows = !disabled && isNumeric;
     // Dispatches the updated value enforcing numeric types when requested
@@ -104,10 +104,23 @@ function NumericTemplatableInput({ value, disabled, placeholder, style, dataFkey
     };
     const handleChange = (e) => {
         const val = e.target.value;
-        if (!templatable && val !== '' && !/^-?\d*\.?\d*$/.test(val)) {
+        // Allow empty value for clearing the field
+        if (val === '') {
+            emitValue(val);
             return;
         }
-        emitValue(val);
+        // Allow valid numeric inputs (supports negative numbers and decimals)
+        const isNumericPattern = /^-?\d*\.?\d*$/.test(val);
+        if (isNumericPattern) {
+            emitValue(val);
+            return;
+        }
+        // 3. Allow text only if templatable is enabled and the value starts with '$'
+        if (templatable && val.startsWith('$')) {
+            emitValue(val);
+            return;
+        }
+        // Reject any other arbitrary text or symbols
     };
     return (React.createElement("div", { style: {
             position: 'relative',
