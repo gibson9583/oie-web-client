@@ -88,7 +88,9 @@ function NumericTemplatableInput({
     textWidth = DEFAULT_WIDTHS.text,
     onChange,
 }: NumericTemplatableInputProps) {
-    const rawStr = value === null || value === undefined ? '' : String(value);
+    // Text being typed; the model only receives values that can be saved
+    const [draft, setDraft] = useState<string | null>(null);
+    const rawStr = draft ?? (value === null || value === undefined ? '' : String(value));
     const isEmpty = rawStr.trim() === '';
     const isNumeric = !isEmpty && Number.isFinite(Number(rawStr));
     const containsTemplates = rawStr.includes("$")
@@ -110,7 +112,8 @@ function NumericTemplatableInput({
     };
 
     const handleStep = (direction: 1 | -1) => {
-        const current = Number(rawStr);
+        // Numeric-only fields step from the integer that is saved
+        const current = numeric ? (parseInt(rawStr, 10) || 0) : Number(rawStr);
         let next = current + direction * step;
 
         if (min !== undefined && next < min) next = min;
@@ -123,7 +126,8 @@ function NumericTemplatableInput({
             formatted = (0).toFixed(precision);
         }
 
-        onChange(formatted);
+        setDraft(null);
+        onChange(numeric ? Number(formatted) : formatted);
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -140,38 +144,26 @@ function NumericTemplatableInput({
     };
 
     const handleBlur = () => {
-        if (!isNumeric) {
-            if (numeric) {
-                // Numeric-only fields must fall back to 0
-                onChange('0');
-            } else if(!isEmpty && !containsTemplates) {
-                onChange('');
-            }
-        }
+        // Show the saved value
+        setDraft(null);
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
-        // Allow empty value for clearing the field
-        if (val === '') {
-            onChange(val);
-            return;
-        }
+        // Allow any text if templatable is enabled, otherwise only numeric input
+        // (supports negative numbers and decimals)
+        if (!templatable && !/^-?\d*\.?\d*$/.test(val)) return;
 
-        // Allow valid numeric inputs (supports negative numbers and decimals)
-        const numberBeginPattern = /^-?\d*\.?\d*$/.test(val);
-        if (numberBeginPattern) {
+        setDraft(val);
+        if (templatable) {
             onChange(val);
-            return;
+        } else if (numeric) {
+            // Numeric-only fields hold integers and fall back to 0
+            onChange(parseInt(val, 10) || 0);
+        } else {
+            // Incomplete numbers like "-" or "." are saved as blank
+            onChange(val.trim() !== '' && Number.isFinite(Number(val)) ? val : '');
         }
-
-        // Allow text only if templatable is enabled and the value contains '$'
-        if (templatable && val.includes('$')) {
-            onChange(val);
-            return;
-        }
-
-        // Ignore any other case
     };
 
     return (
@@ -211,8 +203,8 @@ function NumericTemplatableInput({
                         width: '18px',
                         display: 'flex',
                         flexDirection: 'column',
-                        borderLeft: '1px solid #ccc',
-                        backgroundColor: '#f8f8f8',
+                        borderLeft: '1px solid var(--line)',
+                        backgroundColor: 'var(--bg3)',
                         userSelect: 'none',
                     }}
                 >
@@ -226,6 +218,7 @@ function NumericTemplatableInput({
                             margin: 0,
                             border: 'none',
                             background: 'transparent',
+                            color: 'var(--text)',
                             cursor: 'pointer',
                             fontSize: '7px',
                             lineHeight: 1,
@@ -245,8 +238,9 @@ function NumericTemplatableInput({
                             padding: 0,
                             margin: 0,
                             border: 'none',
-                            borderTop: '1px solid #ddd',
+                            borderTop: '1px solid var(--line)',
                             background: 'transparent',
+                            color: 'var(--text)',
                             cursor: 'pointer',
                             fontSize: '7px',
                             lineHeight: 1,
