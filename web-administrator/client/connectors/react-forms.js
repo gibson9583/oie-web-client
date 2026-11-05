@@ -51,9 +51,9 @@ function NumericTemplatableInput({ value, disabled, placeholder, style, dataFkey
     const rawStr = value === null || value === undefined ? '' : String(value);
     const isEmpty = rawStr.trim() === '';
     const isNumeric = !isEmpty && Number.isFinite(Number(rawStr));
-    const templateBegin = rawStr.startsWith("$");
+    const containsTemplates = rawStr.includes("$");
     // Use textWidth if it contains a template
-    const currentWidth = templateBegin ? textWidth : width;
+    const currentWidth = containsTemplates ? textWidth : width;
     // Only show arrows if not disabled and the field currently holds a numeric value
     const showStepArrows = !disabled && isNumeric;
     function getDecimalPlaces(val) {
@@ -98,7 +98,7 @@ function NumericTemplatableInput({ value, disabled, placeholder, style, dataFkey
                 // Numeric-only fields must fall back to 0
                 onChange('0');
             }
-            else if (!isEmpty && !templateBegin) {
+            else if (!isEmpty && !containsTemplates) {
                 onChange('');
             }
         }
@@ -116,12 +116,12 @@ function NumericTemplatableInput({ value, disabled, placeholder, style, dataFkey
             onChange(val);
             return;
         }
-        // 3. Allow text only if templatable is enabled and the value starts with '$'
-        if (templatable && val.startsWith('$')) {
+        // Allow text only if templatable is enabled and the value contains '$'
+        if (templatable && val.includes('$')) {
             onChange(val);
             return;
         }
-        // Reject any other arbitrary text or symbols
+        // Ignore any other case
     };
     return (React.createElement("div", { style: {
             position: 'relative',
