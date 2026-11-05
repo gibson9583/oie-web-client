@@ -287,7 +287,7 @@ for (const format of ['xml', 'json'] as const) {
                 await importFile(page, importChannelContent(format), 'Import Channel');
                 await acceptChannelOverwrite(page);
                 const conflict = page.getByRole('dialog', { name: 'Channel Modified', exact: true });
-                await expect(conflict).toContainText('Overwrite the saved channel with your changes?');
+                await expect(conflict).toContainText('The saved channel "Demo Started" has changed, or its edit timestamp could not be verified. Overwrite it with your changes?');
                 expect(calls).toHaveLength(1);
                 expect(latestReads).toBe(1);
                 await conflict.getByRole('button', { name: choice, exact: true }).click();

@@ -118,7 +118,8 @@ test('a conflicting save prompts "Channel Modified" and Overwrite retries with o
     await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
 
     // Swing-parity prompt appears; the conflicting attempt sent override=false + startEdit.
-    await expect(page.getByText('This channel has been modified since you first opened it', { exact: false })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Channel Modified', exact: true }))
+        .toContainText('has changed, or its edit timestamp could not be verified. Overwrite it with your changes?');
     expect(puts).toHaveLength(1);
     expect(puts[0].override).toBe('false');
     // The engine parses startEdit with SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ"):

@@ -87,7 +87,9 @@ for (const mode of ['SOURCE', 'DESTINATION'] as const) {
         await type.selectOption(vmName(mode));
         await expect(dialog(page)).toHaveCount(0);
         await type.selectOption(httpName(mode));
-        await expect(dialog(page)).toBeVisible();
+        await expect(dialog(page)).toContainText(mode === 'SOURCE'
+            ? `Switch the source connector from ${vmName(mode)} to ${httpName(mode)}?`
+            : `Switch destination "Destination 1" from ${vmName(mode)} to ${httpName(mode)}?`);
         await expect(type).toBeDisabled();
         expect(await state(page, mode)).toEqual(before);
         await dialog(page).getByRole('button', { name: 'Cancel', exact: true }).click();

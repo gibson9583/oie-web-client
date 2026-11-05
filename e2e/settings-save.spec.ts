@@ -314,3 +314,16 @@ for (const action of actions) {
         });
     }
 }
+
+test('Run Task shows the engine confirmation as plain text and names the task', async ({ page }) => {
+    await mockEngine(page, { ...fixtures, 'GET /databaseTasks': { map: { entry: [{ string: 'addIndex', databaseTask: {
+        id: 'addIndex', name: 'Add Metadata Index', description: '', status: 'IDLE',
+        confirmationMessage: '<html>This index will only be created on channels that are stopped. Make<br/>sure there is enough disk space on the server running the database.<br/>Are you sure you wish to continue?</html>'
+    } }] } } });
+    await page.goto('/settings?tab=Database%20Tasks');
+    await page.getByRole('cell', { name: 'Add Metadata Index', exact: true }).click();
+    await page.getByRole('button', { name: 'Run Task', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Run Database Task', exact: true });
+    await expect(dialog.locator('.modal-body')).toHaveText('Database task "Add Metadata Index": This index will only be created on channels that are stopped. Make sure there is enough disk space on the server running the database. Are you sure you wish to continue?');
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+});
