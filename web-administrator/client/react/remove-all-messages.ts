@@ -1,3 +1,4 @@
+import { describeTargets } from './action-targets.js';
 import { checkbox, h, modal, promptDialog, toast } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { platform } from '@oie/web-shell';
@@ -43,14 +44,12 @@ export function openRemoveAllMessagesDialog({ channels, onDone }: RemoveAllMessa
         canClearStatistics,
         { disabled: !canClearStatistics }
     );
-    const scope = selected.length === 1 && selected[0].name
-        ? `from ${selected[0].name}`
-        : `for ${selected.length} selected channels`;
+    const scope = `from ${describeTargets('channel', selected)}`;
 
     modal({
         title: 'Remove All Messages',
         body: h('div',
-            h('div.mb-[13px]',
+            h('div.mb-[13px]', { style: { overflowWrap: 'anywhere' } },
                 `Permanently remove all messages (including QUEUED) ${scope}? This cannot be undone.`),
             h('div', { class: 'flex flex-col gap-1.5' }, includeRunning.el, clearStatistics.el),
             running.length
@@ -81,7 +80,7 @@ export function openRemoveAllMessagesDialog({ channels, onDone }: RemoveAllMessa
 
                     if (getPref('confirmReprocessRemove') !== false) {
                         const text = await promptDialog('Remove All Messages',
-                            `This will remove all messages for ${targets.length} channel${targets.length === 1 ? '' : 's'}. Type REMOVEALL to continue.`);
+                            `This will remove all messages from ${describeTargets('channel', targets)}. Type REMOVEALL to continue.`);
                         if (text === null) return false;
                         if (text !== 'REMOVEALL') {
                             toast('You must type REMOVEALL to remove all messages.', 'warn');

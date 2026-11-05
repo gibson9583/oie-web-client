@@ -95,7 +95,7 @@ for (const mode of ['SOURCE', 'DESTINATION'] as const) {
         await expect(type).toBeEnabled();
         expect(await state(page, mode)).toEqual(before);
         await type.selectOption(httpName(mode));
-        await dialog(page).getByRole('button', { name: 'OK', exact: true }).click();
+        await dialog(page).getByRole('button', { name: 'Switch Type', exact: true }).click();
         await expect(type).toHaveValue(httpName(mode));
         const after = await state(page, mode);
         expect(after.dirty).toBe(true);
@@ -205,7 +205,7 @@ for (const interruption of ['session', 'properties'] as const) {
             }
         }, interruption);
         const before = await state(page, 'SOURCE');
-        await dialog(page).getByRole('button', { name: 'OK', exact: true }).click();
+        await dialog(page).getByRole('button', { name: 'Switch Type', exact: true }).click();
         await expect(dialog(page)).toHaveCount(0);
         await expect(selector(page, 'SOURCE')).toHaveValue('Channel Reader');
         expect(await state(page, 'SOURCE')).toEqual(before);

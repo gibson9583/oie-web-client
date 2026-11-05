@@ -1,3 +1,4 @@
+import { describeTargets } from '../action-targets.js';
 /*
  * Dashboard — live channel status board with the classic Administrator layout,
  * fully declarative React. Server state (statuses, groups, tags, connector
@@ -496,7 +497,7 @@ function DashboardView({ onToggleView }: any) {
         modal({
             title: 'Clear Statistics',
             body: h('div',
-                h('div.mb-[13px]', `Clear the selected statistics for ${ids.length} channel(s)? This cannot be undone.`),
+                h('div.mb-[13px]', { style: { overflowWrap: 'anywhere' } }, `Clear the selected statistics for ${describeTargets('channel', ids.map((id: string) => statuses.find(status => status.channelId === id) || { channelId: id }))}? This cannot be undone.`),
                 h('div', { class: 'flex flex-col gap-1.5' },
                     received.el, filtered.el, sent.el, errored.el),
                 h('div.hint.mt-[13px]', 'Queued statistics cannot be cleared.')),
@@ -535,7 +536,7 @@ function DashboardView({ onToggleView }: any) {
     const stopTask = (ids: any) => controlChannels('stop', 'Stop', ids);
     async function haltTask(ids: any) {
         if (!needIds(ids)) return;
-        if (await confirmDialog('Halt channels', 'Halting forcibly kills processing threads. Halt the selected channels?', { danger: true, okLabel: 'Halt' })) {
+        if (await confirmDialog('Halt channels', `Halting forcibly kills processing threads. Halt ${describeTargets('channel', ids.map((id: string) => statuses.find(status => status.channelId === id) || { channelId: id }))}?`, { danger: true, okLabel: 'Halt' })) {
             controlChannels('halt', 'Halt', ids);
         }
     }

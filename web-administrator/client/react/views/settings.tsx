@@ -1507,7 +1507,7 @@ function DatabaseTasksTab({ ctx }: any) {
     async function runTask(task: any) {
         if (!current()) return;
         if (!task) { toast('Select a task first', 'warn'); return; }
-        const message = task.confirmationMessage || `Run "${task.name}"? This task may take a long time to complete.`;
+        const message = `Run database task "${task.name || task.id}"? ${task.confirmationMessage || 'This task may take a long time to complete.'}`;
         if (await confirmDialog('Run Database Task', message, { okLabel: 'Run' })) {
             if (!current()) return;
             try {

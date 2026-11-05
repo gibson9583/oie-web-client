@@ -1,3 +1,4 @@
+import { describeTargets } from './action-targets.js';
 /*
  * Alerts have NO engine-side conflict detection (no revision field, no override
  * check in AlertController — unlike channels and code templates). This web
@@ -43,6 +44,6 @@ export async function confirmIfAlertChanged(alertId: any, baseline: any) {
     const current = JSON.stringify(model);
     if (current === baseline) return true;
     return confirmDialog('Alert Modified',
-        'This alert has been modified since you first opened it. Are you sure you want to overwrite it?',
+        `The saved ${describeTargets('alert', [model])} has changed since you first opened it. Overwrite it with your changes?`,
         { danger: true, okLabel: 'Overwrite' });
 }

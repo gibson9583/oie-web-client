@@ -405,7 +405,7 @@ export function confirmDialog(title: string, message: unknown, { danger = false,
     return new Promise<boolean>(resolve => {
         modal({
             title,
-            body: h('div', String(message)),
+            body: h('div', { style: { overflowWrap: 'anywhere' } }, String(message)),
             onClose: () => resolve(false),
             buttons: [
                 { label: 'Cancel', onClick: () => { resolve(false); } },
@@ -420,7 +420,7 @@ export function promptDialog(title: string, label: string, initial = ''): Promis
         const input = h('input', { type: 'text', value: initial }) as HTMLInputElement;
         const m = modal({
             title,
-            body: h('div.field', h('label', label), input),
+            body: h('div.field', h('label', { style: { overflowWrap: 'anywhere' } }, label), input),
             onClose: () => resolve(null),
             buttons: [
                 { label: 'Cancel', onClick: () => { resolve(null); } },

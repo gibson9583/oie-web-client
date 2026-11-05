@@ -159,7 +159,7 @@ test('Remove All can include running channels from a dashboard selection', async
     await page.getByRole('button', { name: 'Remove All Messages', exact: true }).click();
 
     const options = page.getByRole('dialog', { name: 'Remove All Messages' });
-    await expect(options.getByText(/2 selected channels/)).toBeVisible();
+    await expect(options).toContainText('2 channels "Demo Started", "Demo Stopped"');
     const includeRunning = options.getByRole('checkbox', { name: /Include selected channels that are not stopped/ });
     await expect(includeRunning).toBeEnabled();
     await expect(includeRunning).not.toBeChecked();
