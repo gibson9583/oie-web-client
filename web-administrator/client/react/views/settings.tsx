@@ -22,8 +22,9 @@
 import { withEditorSave } from '../save-lock.js';
 import { loadConfigurationMapImport, serializeConfigurationMap } from './configuration-map-import.js';
 import { useState, useEffect, useRef, useReducer, useMemo } from 'react';
-import { h, icon, toast, taskButton, confirmDialog, promptDialog, modal, field, textInput, checkbox, saveFile, pickFile, contextMenu } from '@oie/web-ui';
+import { h, icon, toast, taskButton, confirmDialog, promptDialog, modal, field, textInput, checkbox, saveFile, pickFile, contextMenu, createCodeEditor } from '@oie/web-ui';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
+import { detectType } from '../../core/content-highlight.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import api from '@oie/web-api';
 import { platform } from '@oie/web-shell';
@@ -1198,6 +1199,84 @@ let cfgRowSeq = 0;
 const newCfgRow = (key = '', value = '', comment = '', propKey = CONFIGURATION_PROPERTY_CLASS, prop = null) =>
     ({ _id: ++cfgRowSeq, key, value, comment, propKey, prop });
 
+function detectConfigLanguage(value: string): string {
+    const trimmed = String(value ?? '').trim();
+    if (!trimmed) return 'text';
+    try {
+        const kind = detectType(trimmed);
+        if (kind === 'json' || kind === 'xml') return kind;
+    } catch { /* ignore */ }
+    return 'text';
+}
+
+function openConfigurationValueModal(row: any, onSave: (val: string) => void) {
+    let draft = String(row.value ?? '');
+    let currentLang = detectConfigLanguage(draft);
+    let detectTimer: any = null;
+
+    const syncEditorLanguage = (content: string) => {
+        const nextLang = detectConfigLanguage(content);
+        if (nextLang !== currentLang) {
+            currentLang = nextLang;
+            try {
+                const monaco = (window as any).monaco;
+                const model = (editor as any)?.monaco?.getModel();
+                if (monaco?.editor?.setModelLanguage && model) {
+                    monaco.editor.setModelLanguage(model, nextLang === 'text' ? 'plaintext' : nextLang);
+                }
+            } catch { /* ignore */ }
+        }
+    };
+
+    const editor = createCodeEditor({
+        value: draft,
+        language: currentLang,
+        minHeight: '800px',
+        onChange: (v: any) => {
+            draft = String(v ?? '');
+            if (detectTimer) clearTimeout(detectTimer);
+            detectTimer = setTimeout(() => {
+                syncEditorLanguage(draft);
+            }, 250);
+        }
+    });
+    modal({
+        title: row.key ? `Value — ${row.key}` : 'Value',
+        size: 'xwide',
+        body: editor.el,
+        onClose: () => {
+            if (detectTimer) clearTimeout(detectTimer);
+            try { editor.dispose && editor.dispose(); } catch { /* ignore */ }
+        },
+        buttons: [
+            {
+                label: 'Open File…',
+                onClick: async () => {
+                    try {
+                        const file = await pickFile();
+                        if (file && file.content !== undefined) {
+                            draft = String(file.content);
+                            editor.setValue(draft);
+                            if (detectTimer) clearTimeout(detectTimer);
+                            syncEditorLanguage(draft);
+                        }
+                    } catch (e: any) {
+                        toast(`Failed to open file: ${e.message || e}`, 'error');
+                    }
+                    return false;
+                }
+            },
+            { label: 'Cancel' },
+            {
+                label: 'OK',
+                primary: true,
+                onClick: () => { onSave(draft); }
+            }
+        ]
+    });
+    setTimeout(() => { try { editor.focus && editor.focus(); } catch { /* ignore */ } }, 30);
+}
+
 function ConfigurationMapTab({ ctx }: any) {
     const currentSession = useSettingsSession();
     /* Rows are plain state; inputs are controlled with STABLE per-row keys so
@@ -1385,6 +1464,15 @@ function ConfigurationMapTab({ ctx }: any) {
     const deleteAt = (i: any) => { setRows((prev: any) => { const next = prev.slice(); next.splice(i, 1); return next; }); bumpStructure(); ctx.markDirty(); };
     const addRow = () => { setRows((prev: any) => [...prev, newCfgRow()]); bumpStructure(); ctx.markDirty(); };
 
+    const editValue = (row: any) => {
+        openConfigurationValueModal(row, (newValue: string) => {
+            if (newValue !== row.value) {
+                patchRow(row._id, { value: newValue });
+                ctx.markDirty();
+            }
+        });
+    };
+
     const valueType = showValues ? 'text' : 'password';
 
     return (
@@ -1423,6 +1511,8 @@ function ConfigurationMapTab({ ctx }: any) {
                                         e.preventDefault();
                                         // Row edits ride doSave like the Add Row button (RBAC.md §3).
                                         contextMenu(e.clientX, e.clientY, [
+                                            { label: 'Edit Value', icon: 'edit', onClick: () => editValue(row) },
+                                            '-',
                                             { label: 'Insert Row Above', icon: 'plus', task: 'doSave', group: 'settings_Configuration Map', onClick: () => insertAt(i) },
                                             { label: 'Insert Row Below', icon: 'plus', task: 'doSave', group: 'settings_Configuration Map', onClick: () => insertAt(i + 1) },
                                             '-',
@@ -1430,7 +1520,23 @@ function ConfigurationMapTab({ ctx }: any) {
                                         ]);
                                     }}>
                                     <td><input type="text" value={row.key} onChange={(e: any) => patchRow(row._id, { key: e.target.value })} /></td>
-                                    <td><input type={valueType} value={row.value} onChange={(e: any) => patchRow(row._id, { value: e.target.value })} /></td>
+                                    <td onClick={() => editValue(row)} className="cursor-pointer">
+                                        <div className="flex items-center gap-1">
+                                            <input
+                                                type={valueType}
+                                                readOnly
+                                                className="cursor-pointer flex-1"
+                                                title="Click to edit value"
+                                                value={row.value}
+                                                onKeyDown={(e: any) => {
+                                                    if (e.key === 'Enter' || e.key === ' ') {
+                                                        e.preventDefault();
+                                                        editValue(row);
+                                                    }
+                                                }}
+                                            />
+                                        </div>
+                                    </td>
                                     <td><input type="text" value={row.comment} onChange={(e: any) => patchRow(row._id, { comment: e.target.value })} /></td>
                                     <td>
                                         <button type="button" className="icon-btn" title="Remove row" onClick={() => deleteAt(i)}>
