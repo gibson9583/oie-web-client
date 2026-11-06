@@ -23,7 +23,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast, confirmDialog, saveFile, pickFile, contextMenu, fmtDate } from '@oie/web-ui';
 import { TreeTable, TreeLabel } from '../tree-table.jsx';
 import api, { uuid } from '@oie/web-api';
-import { loadErrorMessage } from '../load-error.js';
+import { explainLoad, loadErrorMessage } from '../load-error.js';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import { navigationToken } from '../../core/router.js';
@@ -680,7 +680,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
                 { okLabel: 'Import' });
             assertSession();
             if (!confirmed) return;
-            const current = await api.codeTemplates.libraries(true);
+            const current = await explainLoad(api.codeTemplates.libraries(true), 'code template libraries', 'code templates');
             assertSession();
             const payload = await prepareLibraryImport(current, pending.libraries, v,
                 libraryImportCallbacks(assertSession, pending.ids));
@@ -753,7 +753,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
                 templateImportRef.current = { xml, targetId, templates: parseTemplateImport(xml, version), ids: new Map() };
             }
             const pending = templateImportRef.current;
-            const current = await api.codeTemplates.libraries(true);
+            const current = await explainLoad(api.codeTemplates.libraries(true), 'code template libraries', 'code templates');
             assertSession();
             const payload = await prepareTemplateImport(current, pending.templates, targetId, version,
                 libraryImportCallbacks(assertSession, pending.ids));

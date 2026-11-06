@@ -643,7 +643,7 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
         ]);
         if (!isCurrent()) return;
     } catch (e: any) {
-        if (isCurrent()) toast(`Could not load dependencies: ${e.message}`, 'error');
+        if (isCurrent()) toast(`Could not load dependencies: ${loadErrorMessage(e, 'dependencies')}`, 'error');
         return;
     }
 

@@ -1,5 +1,5 @@
 import { describeTargets } from '../action-targets.js';
-import { loadErrorMessage } from '../load-error.js';
+import { explainLoad, loadErrorMessage } from '../load-error.js';
 /*
  * Channels view (React port of the LIST half of views/channels.js). The Swing
  * channel panel is a GROUPED TREE-TABLE — channels listed under their channel
@@ -194,7 +194,7 @@ async function chooseExportLibraries(channelIds: any[], assertSession: () => voi
         // Code-template viewing is independently authorized. Swing consults its
         // cache and still exports the channel when that data is unavailable; keep
         // the backup usable while making the omitted libraries explicit.
-        toast(`Could not check linked code template libraries: ${e.message || e}. Exporting without them.`, 'warn');
+        toast(`Could not check linked code template libraries. Exporting without them.\n\n${loadErrorMessage(e, 'code template libraries', 'code templates')}`, 'warn');
         return false;
     }
     if (!names.length) return false;
@@ -443,7 +443,7 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true, 
 async function importLibraryObjectsJson(imported: any[], assertSession: () => void, ids: Map<string, string>) {
     if (!imported.length) return;
     assertSession();
-    const existing = await api.codeTemplates.libraries(true);
+    const existing = await explainLoad(api.codeTemplates.libraries(true), 'code template libraries', 'code templates');
     assertSession();
     const version = store.getState('serverVersion') || '4.5.2';
     const payload = await prepareLibraryImport(existing, imported, version, libraryImportCallbacks(assertSession, ids));

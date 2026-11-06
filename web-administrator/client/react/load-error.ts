@@ -31,3 +31,12 @@ export function loadErrorMessage(error: any, resource: string, permissionResourc
     }
     return `${status === null ? '' : `HTTP ${status}. `}${message}`;
 }
+
+/** Await a prerequisite read. A failure carries the load diagnostic instead of the raw API message. */
+export async function explainLoad<T>(read: Promise<T>, resource: string, permissionResource = resource): Promise<T> {
+    try {
+        return await read;
+    } catch (error: any) {
+        throw new Error(loadErrorMessage(error, resource, permissionResource));
+    }
+}

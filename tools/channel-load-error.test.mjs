@@ -79,3 +79,17 @@ test('channel 401 still invokes the existing session-expiry handler once', async
         globalThis.fetch = originalFetch;
     }
 });
+
+test('explainLoad passes a successful read through and replaces a failed read with its diagnostic', async () => {
+    const { explainLoad } = module.exports;
+    assert.deepEqual(await explainLoad(Promise.resolve([1]), 'code template libraries'), [1]);
+    await assert.rejects(explainLoad(Promise.reject(new ApiError(500, 'Request failed.', jettyBody)), 'code template libraries', 'code templates'),
+        error => {
+            assert.equal(error.message, 'HTTP 500. The code template libraries could not be loaded.\n\nCheck the engine server log for details.');
+            return true;
+        });
+    await assert.rejects(explainLoad(Promise.reject(new ApiError(403, '', '')), 'code template libraries', 'code templates'),
+        /^Error: HTTP 403\. Access denied\. Check your permissions to view code templates\.$/);
+    await assert.rejects(explainLoad(Promise.reject(new Error('No response after 120 seconds')), 'code template libraries'),
+        /^Error: No response after 120 seconds$/);
+});

@@ -408,7 +408,7 @@ test.describe('Channels React view', () => {
         await download;
 
         expect(new URL(request.url()).searchParams.has('includeCodeTemplateLibraries')).toBe(false);
-        await expect(page.getByText(/Could not check linked code template libraries:.*library view forbidden.*Exporting without them/)).toBeVisible();
+        await expect(page.getByText(/Could not check linked code template libraries\. Exporting without them\.\s+HTTP 403\. library view forbidden/)).toBeVisible();
     });
 
     test('imports Swing Default Group channels without persisting the reserved group', async ({ page }) => {

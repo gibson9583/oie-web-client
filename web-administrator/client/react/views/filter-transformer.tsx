@@ -712,7 +712,9 @@ function ReferenceTab({ dragRef, channelId, context, getElements }: any) {
                 }
                 setUserEntries({ entries, categories });
             })
-            .catch(() => { toast('Could not load user code-template libraries; showing built-ins only', 'warn'); });
+            .catch((e: any) => {
+                toast(`Could not load user code-template libraries; showing built-ins only.\n\n${loadErrorMessage(e, 'code template libraries', 'code templates')}`, 'warn');
+            });
         return () => { stale = true; };
     }, [channelId, context]);
 

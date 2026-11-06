@@ -169,6 +169,39 @@ for (const [surface, path] of editorRoutes.filter(([name]) => ['classic', 'guide
     });
 }
 
+const libraryError = { __status: 500, body: { ...jettyError, url: '/api/codeTemplateLibraries' } };
+
+test('classic Set Dependencies names the library load status and log guidance', async ({ page }) => {
+    await mockEngine(page, { [`GET /channels/${channelId}`]: { channel: makeChannel(channelId) }, 'GET /codeTemplateLibraries': libraryError });
+    await page.goto(`/channels/${channelId}/edit`);
+    await page.getByRole('button', { name: 'Set Dependencies', exact: true }).click();
+    await expect(errorDialog(page)).toContainText('Could not load dependencies: HTTP 500.');
+    await expect(errorDialog(page)).toContainText('Check the engine server log for details.');
+    await expect(errorDialog(page)).not.toContainText('Request failed');
+});
+
+test('guided Dependencies step names the failing resource and its status', async ({ page }) => {
+    await mockEngine(page, { 'GET /codeTemplateLibraries': libraryError });
+    await page.goto('/channels/new/guided');
+    await page.locator('.view-body input').first().fill('Dependency Error');
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await expect(errorDialog(page)).toContainText('Failed to load dependencies: code template libraries: HTTP 500.');
+    await expect(errorDialog(page)).toContainText('Check the engine server log for details.');
+    await expect(errorDialog(page)).not.toContainText('Request failed');
+    await closeError(page);
+    await expect(alert(page)).toContainText('Failed to load dependency choices: code template libraries: HTTP 500.');
+});
+
+test('the filter Reference list explains a library load failure', async ({ page }) => {
+    await mockEngine(page, { [`GET /channels/${channelId}`]: { channel: makeChannel(channelId) }, 'GET /codeTemplateLibraries': libraryError });
+    await page.goto(`/channels/${channelId}/filter/0`);
+    const warning = page.getByRole('dialog', { name: 'Warning', exact: true });
+    await expect(warning).toContainText('Could not load user code-template libraries; showing built-ins only.');
+    await expect(warning).toContainText('HTTP 500. The code template libraries could not be loaded.');
+    await expect(warning).toContainText('Check the engine server log for details.');
+    await expect(warning).not.toContainText('Request failed');
+});
+
 test('the alert wizard retains its default load-error text without a channel-specific formatter', async ({ page }) => {
     await mockEngine(page, { 'GET /alerts/unavailable': { __status: 500, body: { message: 'Alert unavailable', error: 'ALERT_UNAVAILABLE' } } });
     await page.goto('/alerts/unavailable/guided');
