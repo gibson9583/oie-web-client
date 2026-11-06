@@ -1,4 +1,5 @@
 import { isNewChannelDraft, loadChannelForEdit } from '../../core/channel-save.js';
+import { loadErrorMessage } from '../load-error.js';
 import { channelDependencyState } from '../../core/channel-dependencies.js';
 import { persistChannelEdits, channelSessionActive } from '../channel-persistence.js';
 import { withEditorSave } from '../save-lock.js';
@@ -2121,7 +2122,7 @@ function FilterTransformerView({ params, kindName }: any) {
             setReady(true);
         }).catch((e: any) => {
             if (!alive) return;
-            toast(e.message, 'error');
+            toast(`Load failed: ${loadErrorMessage(e, 'channel', 'channels')}`, 'error');
             history.replaceState(null, '', routeUrl('/channels'));
             router.navigate('/channels');
         });

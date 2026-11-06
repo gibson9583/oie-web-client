@@ -1,4 +1,5 @@
 import { describeTargets } from '../action-targets.js';
+import { loadErrorMessage } from '../load-error.js';
 /*
  * Channels view (React port of the LIST half of views/channels.js). The Swing
  * channel panel is a GROUPED TREE-TABLE — channels listed under their channel
@@ -945,7 +946,7 @@ export function ChannelsView() {
             ['statuses', statusResult]
         ];
         const failures = reads.filter(([, result]) => result.status === 'rejected')
-            .map(([label, result]: any) => `${label}: ${result.reason?.message || result.reason}`);
+            .map(([label, result]: any) => `${label}: ${loadErrorMessage(result.reason, label)}`);
         setStaleResources(new Set(reads
             .filter(([, result]) => result.status === 'rejected' && !denied(result))
             .map(([label]) => label)));
@@ -1913,7 +1914,7 @@ export function ChannelsView() {
             </ViewTasks>
             <div className="view-body flush flex flex-col overflow-hidden">
                 {loadError && <div className="mx-[13px] mt-3 panel border-danger text-danger" role="alert">
-                    Failed to load channels: {loadError}. {hasStaleDisplay && <>Displayed data may be stale. </>}Refresh to retry.
+                    Failed to load <span className="whitespace-pre-wrap">{loadError}</span> {hasStaleDisplay && <>Displayed data may be stale. </>}Refresh to retry.
                 </div>}
                 {/* Grid so the TreeTable's own .dt-wrap stretches to fill the
                     region (a flex child wouldn't grow on the main axis); this

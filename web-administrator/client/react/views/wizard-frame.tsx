@@ -28,9 +28,10 @@ import { Icon } from '../bridges.jsx';
  *   isNewModel - optional trusted draft-state lookup, overriding URL mode on handoff
  *   fetch     - (id) => Promise<model>: load an existing model from the engine
  *   normalize - (model) => model: optional in-place fix-ups before use
+ *   formatLoadError - optional (error) => string for an entity-specific diagnostic
  *   backPath  - where to navigate if the fetch fails
  */
-export function useWizardModel({ routeId, fresh = false, storeKey, isValid, isNewModel, makeNew, fetch, normalize, backPath }: any) {
+export function useWizardModel({ routeId, fresh = false, storeKey, isValid, isNewModel, makeNew, fetch, normalize, formatLoadError, backPath }: any) {
     const wantExisting = !!routeId && routeId !== 'new';
     const isNew = !wantExisting;
     const norm = normalize || ((x: any) => x);
@@ -55,7 +56,10 @@ export function useWizardModel({ routeId, fresh = false, storeKey, isValid, isNe
             store.setState(storeKey, ref.current);
             setReady(true);
         }).catch((e: any) => {
-            if (alive) { toast(e && e.message ? e.message : 'Could not load.', 'error'); router.navigate(backPath); }
+            if (alive) {
+                toast(formatLoadError ? formatLoadError(e) : e && e.message ? e.message : 'Could not load.', 'error');
+                router.navigate(backPath);
+            }
         });
         return () => { alive = false; };
         // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -8,8 +8,12 @@ import api, { ApiError, parseBody } from '../web-administrator/client/core/api.j
 // lifecycle imports are unused here; the browser tests cover the load callback.
 const { code } = await transform(await readFile(new URL('../web-administrator/client/react/views/code-templates.tsx', import.meta.url), 'utf8'),
     { loader: 'tsx', format: 'cjs', jsx: 'automatic' });
+const { code: helperCode } = await transform(await readFile(new URL('../web-administrator/client/react/load-error.ts', import.meta.url), 'utf8'),
+    { loader: 'ts', format: 'cjs' });
+const helper = { exports: {} };
+new Function('require', 'module', 'exports', helperCode)(() => ({ parseBody }), helper, helper.exports);
 const module = { exports: {} };
-new Function('require', 'module', 'exports', code)(name => name === '@oie/web-api' ? { parseBody } : {}, module, module.exports);
+new Function('require', 'module', 'exports', code)(name => name === '../load-error.js' ? helper.exports : {}, module, module.exports);
 const { codeTemplateLoadError } = module.exports;
 
 test('empty and generic 5xx errors include status and server-log guidance without inventing a cause', () => {

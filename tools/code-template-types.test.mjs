@@ -112,6 +112,9 @@ test('unsupported imported contexts are preserved and reported, including a sing
 const { code: viewCode } = await transform(
     await readFile(new URL('code-templates.tsx', root), 'utf8') + '\nexport { TemplateEditor, ContextPanel };',
     { loader: 'tsx', format: 'cjs', jsx: 'automatic' });
+const { code: loadErrorCode } = await transform(await readFile(new URL('../load-error.ts', root), 'utf8'), { loader: 'ts', format: 'cjs' });
+const loadError = { exports: {} };
+new Function('require', 'module', 'exports', loadErrorCode)(() => ({ parseBody }), loadError, loadError.exports);
 const nodes = value => {
     if (!value) return [];
     if (Array.isArray(value)) return value.flatMap(nodes);
@@ -149,6 +152,7 @@ function harness(template = sampleTemplate(), registry = new Map(providers), imp
         '../../core/serialize.js': { validateScript: async () => { calls.validateJs++; return { ok: true }; } },
         '../../core/script-completions.js': { invalidate() {} }, '../../core/unsaved.js': { registerUnsavedCheck: () => () => {} },
         '../save-lock.js': { withEditorSave: callback => callback() }, '../tree-table.jsx': { TreeTable: 'TreeTable', TreeLabel: 'TreeLabel' },
+        '../load-error.js': loadError.exports,
         '../mount.jsx': { ViewTasks: 'ViewTasks' }, '../ui.jsx': { RailPane: 'RailPane', TaskButton: 'TaskButton', CodeEditor: 'CodeEditor' },
         '../bridges.jsx': { Icon: 'Icon' }, '../error-boundary.jsx': { ErrorBoundary: 'ErrorBoundary' },
         '../palette-context.js': { usePaletteContext() {} },
