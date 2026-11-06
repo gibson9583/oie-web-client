@@ -24,6 +24,7 @@ for (const [label, path, resource, call] of [
         { name: 'empty 500', status: 500, body: '', expected: /engine server log/ },
         { name: 'useful detail', status: 500, body: JSON.stringify({ message: 'Request failed.', detailedError: 'Channel conversion rejected: <channel>' }), expected: /Channel conversion rejected: <channel>/ },
         { name: 'permission denial', status: 403, body: '{}', expected: /Access denied.*view channels/ },
+        { name: 'Jetty permission denial', status: 403, body: JSON.stringify({ servlet: 'org.glassfish.jersey.servlet.ServletContainer-1dfd5f51', message: 'Forbidden', url: '/api/channels', status: '403' }), expected: /Access denied.*view channels/ },
         { name: 'network failure', network: true, expected: /fetch failed/ }
     ]) test(`real ${label} API ${response.name} keeps the error contract and formats its diagnostic`, async () => {
         const originalFetch = globalThis.fetch;

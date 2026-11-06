@@ -108,3 +108,14 @@ test('network and timeout messages retain the original cause without claiming an
         assert.doesNotMatch(message, /HTTP|server log|serializ/i);
     }
 });
+
+test('a Jetty reason phrase alone is not detail, so the status fallback explains it', () => {
+    const jetty = (status, message) => new ApiError(status, message, JSON.stringify({ servlet: 'org.glassfish.jersey.servlet.ServletContainer-425357dd',
+        message, url: '/api/codeTemplateLibraries', status: String(status) }));
+    assert.equal(codeTemplateLoadError(jetty(403, 'Forbidden')), 'Load failed: HTTP 403. Access denied. Check your permissions to view code templates.');
+    assert.equal(codeTemplateLoadError(jetty(404, 'Not Found')), 'Load failed: HTTP 404. The code template libraries could not be loaded.');
+    assert.match(codeTemplateLoadError(jetty(503, 'Service Unavailable')), /^Load failed: HTTP 503\. The code template libraries could not be loaded\.\n\nCheck the engine server log/);
+    // A phrase only counts as the reason for its own status, and longer text is real detail.
+    assert.match(codeTemplateLoadError(jetty(500, 'Forbidden')), /HTTP 500\. Forbidden/);
+    assert.match(codeTemplateLoadError(jetty(403, 'Forbidden: role lacks viewCodeTemplates')), /HTTP 403\. Forbidden: role lacks viewCodeTemplates/);
+});

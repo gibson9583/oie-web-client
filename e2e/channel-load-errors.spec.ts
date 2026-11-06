@@ -7,6 +7,8 @@ import { makeChannel } from './connector-fixtures.js';
 // Captured fields from the installed engine's Jetty/Jersey JSON 500 response.
 const jettyError = { servlet: 'org.glassfish.jersey.servlet.ServletContainer-1dfd5f51',
     message: 'Request failed.', url: '/api/channels/invalid', status: '500' };
+// Jetty's sendError body for an engine permission denial (MirthApiException FORBIDDEN).
+const jettyForbidden = { ...jettyError, message: 'Forbidden', status: '403' };
 const errorDialog = (page: Page) => page.getByRole('dialog', { name: 'Error', exact: true });
 const alert = (page: Page) => page.locator('.view-body [role="alert"]');
 const row = (page: Page) => page.getByRole('row').filter({ has: page.getByText('Demo Started', { exact: true }) });
@@ -54,7 +56,7 @@ for (const [endpoint, resource] of [['/channelgroups', 'groups'], ['/server/chan
 test('transient list failure keeps live models, denial revokes them, and retry restores the list', async ({ page }) => {
     let failure = 0;
     await mockEngine(page, { 'GET /channels': () => failure
-        ? { __status: failure, body: failure === 500 ? jettyError : {} }
+        ? { __status: failure, body: failure === 500 ? jettyError : jettyForbidden }
         : DEFAULT_FIXTURES['GET /channels'] });
     await page.goto('/channels');
     await row(page).click();
@@ -131,7 +133,7 @@ for (const failure of ['useful detail', 'permission', 'network']) {
     test(`classic channel load retains ${failure} context and the existing return navigation`, async ({ page }) => {
         await mockEngine(page, { [`GET /channels/${channelId}`]: {
             __status: failure === 'permission' ? 403 : 500,
-            body: failure === 'permission' ? {} : { message: 'Request failed.', detailedError: 'Channel service unavailable: <channel>' }
+            body: failure === 'permission' ? jettyForbidden : { message: 'Request failed.', detailedError: 'Channel service unavailable: <channel>' }
         } });
         if (failure === 'network') await page.route(`**/api/channels/${channelId}`, route => route.abort('connectionfailed'));
         await page.goto(`/channels/${channelId}/edit`);

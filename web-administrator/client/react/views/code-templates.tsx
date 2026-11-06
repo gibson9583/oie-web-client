@@ -181,6 +181,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
     const entriesNowRef = useRef(entries);
     entriesNowRef.current = entries;
     const [loaded, setLoaded] = useState(false);
+    const [loadFailed, setLoadFailed] = useState(false);
     const loadedRef = useRef(false);
     const [selected, setSelected] = useState<any>(null);   // { kind: 'library'|'template', id }
     // Route targets are consumed only after a successful load. Refresh and
@@ -241,6 +242,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
     /* Reads no render state (fetch + setState only), so the mount-captured
        codeTemplates:changed listener can safely call the first render's closure. */
     async function load() {
+        setLoadFailed(false);
         try {
             const list = await api.codeTemplates.libraries(true);
             const next = list.map(library => ({ library, templates: templatesOf(library) }));
@@ -282,6 +284,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
                 setSelected((prev: any) => (prev && resolve(prev, next) ? prev : null));
             }
         } catch (e: any) {
+            setLoadFailed(true);
             toast(codeTemplateLoadError(e), 'error');
         }
     }
@@ -926,7 +929,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
     const totalTemplates = entries.reduce((sum: any, en: any) => sum + en.templates.length, 0);
     const countsText = loaded
         ? `${entries.length} Librar${entries.length === 1 ? 'y' : 'ies'}, ${totalTemplates} Code Template${totalTemplates === 1 ? '' : 's'}`
-        : 'Code template libraries have not loaded';
+        : loadFailed ? 'Code template libraries have not loaded' : 'Loading code template libraries…';
 
     return (
         <div className="view">
@@ -979,7 +982,9 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
                                 columnWidths={CT_COL_WIDTHS}
                                 defaultHidden={['id']}
                                 pinnedKeys={['name']}
-                                emptyText={loaded ? 'No code template libraries' : 'Code template libraries must load before changes can be made.'} />
+                                emptyText={loaded ? 'No code template libraries'
+                                    : loadFailed ? 'Code template libraries must load before changes can be made.'
+                                    : <div className="loading-block" role="status"><div className="spinner" />Loading code template libraries…</div>} />
                         </div>
                         <div className="filterbar flex-none panel overflow-visible mx-[13px] my-2">
                             <span className="counts">{countsText}</span>

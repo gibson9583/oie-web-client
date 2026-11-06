@@ -91,6 +91,10 @@ test('pending initial library load blocks changes until an authoritative empty l
     const pending = new Promise<void>(resolve => { release = resolve; });
     await mockEngine(page, { 'GET /codeTemplateLibraries': async () => { await pending; return { list: { codeTemplateLibrary: [] } }; } });
     await page.goto('/code-templates');
+    await expect(page.getByRole('status').filter({ hasText: 'Loading code template libraries…' })).toBeVisible();
+    await expect(page.getByText('Loading code template libraries…', { exact: true }).last()).toBeVisible();
+    await expect(page.getByText('Code template libraries must load before changes can be made.', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Code template libraries have not loaded', { exact: true })).toHaveCount(0);
     for (const name of ['New Library', 'Import Code Templates', 'Import Libraries']) {
         await expect(page.getByRole('button', { name, exact: true })).toBeDisabled();
     }
