@@ -1217,13 +1217,22 @@ function ConfigurationMapTab({ ctx }: any) {
     // legacy grid's re-filter timing.
     const [structureVersion, setStructureVersion] = useState(0);
     const bumpStructure = () => setStructureVersion(v => v + 1);
+    const userId = getState('user')?.id;
 
     async function load() {
         if (!currentSession()) return;
         setLoadError(null);
         try {
-            const raw = await api.server.configurationMap();
+            const [raw, showValuesPref] = await Promise.all([
+                api.server.configurationMap(),
+                userId != null
+                    ? api.users.getPreference(userId, 'showConfigMapValues').catch(() => null)
+                    : Promise.resolve(null)
+            ]);
             if (!currentSession()) return;
+            if (showValuesPref !== null && showValuesPref !== undefined) {
+                setShowValues(showValuesPref === 'true' || showValuesPref === true);
+            }
             const next: any[] = [];
             for (const entry of api.asList(raw && raw.entry)) {
                 if (!entry || typeof entry !== 'object') continue;
@@ -1385,6 +1394,17 @@ function ConfigurationMapTab({ ctx }: any) {
     const deleteAt = (i: any) => { setRows((prev: any) => { const next = prev.slice(); next.splice(i, 1); return next; }); bumpStructure(); ctx.markDirty(); };
     const addRow = () => { setRows((prev: any) => [...prev, newCfgRow()]); bumpStructure(); ctx.markDirty(); };
 
+    async function toggleShowValues(val: boolean) {
+        setShowValues(val);
+        if (userId != null) {
+            try {
+                await api.users.setPreference(userId, 'showConfigMapValues', String(val));
+            } catch (e: any) {
+                toast(`Failed to set user preference: ${e.message}`, 'error');
+            }
+        }
+    }
+
     const valueType = showValues ? 'text' : 'password';
 
     return (
@@ -1400,7 +1420,11 @@ function ConfigurationMapTab({ ctx }: any) {
                             value={filterText} onChange={(e: any) => setFilterText(e.target.value)} />
                     </div>
                     <label className="check">
-                        <input type="checkbox" checked={showValues} onChange={(e: any) => setShowValues(e.target.checked)} />
+                        <input
+                            type="checkbox"
+                            checked={showValues}
+                            onChange={(e: any) => toggleShowValues(e.target.checked)}
+                        />
                         Show values
                     </label>
                     {/* Add Row rides the tab's doSave permission — adding a row is
