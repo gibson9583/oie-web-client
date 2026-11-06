@@ -5,6 +5,10 @@
  * auth scripts). Public lists keep the [label, insertText] shape.
  */
 
+import { destinationsOf, elementsToArray } from './oie.js';
+import { generateElementScript } from './step-script.js';
+import type { OieObject } from './wire-types.js';
+
 // [label, Velocity token, JavaScript transfer text]. Match Swing's
 // VariableListHandler / VariableTransferable: entries can be expressions,
 // statements, or raw fragments (CDATA), depending on where they are inserted.
@@ -17,10 +21,11 @@ const destinationMappings: Array<[string, string, string | null]> = [
     ['Raw Data', '${message.rawData}', 'connectorMessage.getRawData()'],
     ['Transformed Data', '${message.transformedData}', 'connectorMessage.getTransformedData()'],
     ['Encoded Data', '${message.encodedData}', 'connectorMessage.getEncodedData()'],
-    ['Message Source', '${message.source}', "$('mirth_source')"],
-    ['Message Type', '${message.type}', "$('mirth_type')"],
-    ['Message Version', '${message.version}', "$('mirth_version')"],
-    ['Date', '${date}', "var date = DateUtil.getDate('pattern','date');"],
+    ['Message Source', '${mirth_source}', "$('mirth_source')"],
+    ['Message Type', '${mirth_type}', "$('mirth_type')"],
+    ['Message Version', '${mirth_version}', "$('mirth_version')"],
+    ['Message Hash', '${HASH}', 'HashUtil.generate(connectorMessage.getEncodedData())'],
+    ['Date', '${DATE}', "var date = DateUtil.getDate('pattern','date');"],
     ['Formatted Date', "${date.get('yyyy-M-d H.m.s')}", "var dateString = DateUtil.getCurrentDate('yyyy-M-d H.m.s');"],
     ['Timestamp', '${SYSTIME}', "var dateString = DateUtil.getCurrentDate('yyyyMMddHHmmss');"],
     ['Unique ID', '${UUID}', 'var uuid = UUIDGenerator.getUUID();'],
@@ -40,16 +45,113 @@ const JAVASCRIPT_DESTINATION_MAPPINGS: Array<[string, string]> = destinationMapp
     .filter(([, , script]) => script !== null)
     .map(([label, , script]) => [label, script!]);
 
+// VariableListHandler reserves these labels too, although they are not fixed
+// destination rows. Its static transfer text wins over a discovered map key
+// or a destination with the same name.
+const JAVASCRIPT_TRANSFER_OVERRIDES = new Map([
+    ['Message with Attachments', 'var rawData = AttachmentUtil.reAttachMessage(connectorMessage)']
+]);
+const VELOCITY_TRANSFER_OVERRIDES = new Map([
+    ['Server ID', '${message.serverId}'],
+    ['Formatted Message Date', "${date.format('yyyy-MM-dd',$message.getConnectorMessages().get(0).getReceivedDate())}"],
+    ['Formatted Current Date', "${date.get('yyyy-MM-dd')}"]
+]);
+
+// VariableListUtil's two patterns: connectorMap/$co are local to the selected
+// destination; the other four maps are available from preceding connectors.
+function mapVariablePattern(includeLocal: boolean): RegExp {
+    const maps = includeLocal ? 'channel|global|globalChannel|response|connector' : 'channel|global|globalChannel|response';
+    const helpers = includeLocal ? 'g|gc|c|r|co' : 'g|gc|c|r';
+    return new RegExp(String.raw`(?<![A-Za-z0-9_$])(?:${maps})Map\s*\.\s*put\s*\(\s*(['"])(((?!(?<!\\)\1).)*)\1|(?<![A-Za-z0-9_$])\$(?:${helpers})\s*\(\s*(['"])(((?!(?<!\\)\4).)*)\4(?=\s*,)`, 'g');
+}
+
+// Apache StringEscapeUtils.unescapeEcmaScript, used by Swing's getMapKey.
+// Decode literals without evaluating channel scripts. Invalid Unicode escapes
+// skip the element, as a failed design-time script must not break the editor.
+function unescapeMapKey(key: string): string {
+    const escapes: Record<string, string> = { b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' };
+    return key.replace(/\\(?:[0-3][0-7]{0,2}|[4-7][0-7]?|u+[+]?[^\\]{0,4}|[\s\S]|$)/g, escape => {
+        const value = escape.slice(1);
+        if (/^[0-7]/.test(value)) return String.fromCharCode(parseInt(value, 8));
+        if (value[0] === 'u') {
+            const hex = value.replace(/^u+\+?/, '');
+            if (!/^[\da-fA-F]{4}$/.test(hex)) throw new Error('Invalid Unicode escape');
+            return String.fromCharCode(parseInt(hex, 16));
+        }
+        return escapes[value] ?? value;
+    });
+}
+
+function addVariables(target: Set<string>, stage: any, includeLocal: boolean): void {
+    const pattern = mapVariablePattern(includeLocal);
+    for (const element of elementsToArray(stage?.elements)) {
+        if (element.enabled === false || element.enabled === 'false') continue;
+        try {
+            const script = generateElementScript(element, child => elementsToArray(child.properties?.children));
+            if (!script) continue;
+            // Keep the same simple-comment then block-comment order as Swing.
+            const uncommented = script.replace(/\/\/[^\r\n\u0085\u2028\u2029]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+            for (const match of uncommented.matchAll(pattern)) target.add(unescapeMapKey(match[2] ?? match[5]));
+        } catch {
+            // A design-time generator may reject an incomplete element. Keep
+            // the remaining enabled elements available, as VariableListUtil does.
+        }
+    }
+}
+
+function destinationVariables(channel: OieObject, destination: OieObject): Set<string> {
+    const rules = new Set<string>();
+    const steps = new Set<string>();
+    const source = channel.sourceConnector;
+    addVariables(rules, source?.filter, false);
+    addVariables(steps, source?.transformer, false);
+    for (const connector of destinationsOf(channel)) {
+        const selected = connector === destination || String(connector.metaDataId) === String(destination.metaDataId);
+        addVariables(rules, connector.filter, selected);
+        addVariables(steps, connector.transformer, selected);
+        if (selected) break;
+        addVariables(steps, connector.responseTransformer, false);
+        if (connector.name != null) {
+            rules.add(connector.name);
+            steps.add(connector.name);
+        }
+    }
+    return new Set([...rules, ...steps]);
+}
+
 /** Swing's destination list uses the connector's transfer mode, not editor syntax.
- * Source receivers and authentication scripts have separate reference contexts. */
-export function destinationMappingsFor(properties?: unknown): Array<[string, string]> {
+ * Source receivers and authentication scripts have separate reference contexts.
+ * Read the live, unsaved channel on every call; do not cache by object identity. */
+export function destinationMappingsFor(properties?: unknown, channel?: OieObject, destination?: OieObject): Array<[string, string]> {
     if (!properties || typeof properties !== 'object'
         || !('destinationConnectorProperties' in properties) || !properties.destinationConnectorProperties) return [];
     const type = '@class' in properties ? properties['@class'] : undefined;
     const javascript = type === 'com.mirth.connect.connectors.js.JavaScriptDispatcherProperties'
         || (type === 'com.mirth.connect.connectors.jdbc.DatabaseDispatcherProperties'
             && 'useScript' in properties && (properties.useScript === true || properties.useScript === 'true'));
-    return javascript ? JAVASCRIPT_DESTINATION_MAPPINGS : DESTINATION_MAPPINGS;
+    const base = javascript ? JAVASCRIPT_DESTINATION_MAPPINGS : DESTINATION_MAPPINGS;
+    const connectors = destinationsOf(channel);
+    const selected = connectors.find(connector => destination
+        ? connector === destination || String(connector.metaDataId) === String(destination.metaDataId)
+        : connector.properties === properties);
+    if (!channel || !selected) return base;
+
+    const mappings = [...base];
+    const labels = new Set(mappings.map(([label]) => label));
+    const metaDataIds = new Map(connectors.map(connector => [connector.name, connector.metaDataId]));
+    const overrides = javascript ? JAVASCRIPT_TRANSFER_OVERRIDES : VELOCITY_TRANSFER_OVERRIDES;
+    for (const label of destinationVariables(channel, selected)) {
+        if (labels.has(label)) continue;
+        const connector = metaDataIds.has(label);
+        const key = connector ? `d${metaDataIds.get(label)}` : label;
+        const quote = key.includes("'") ? '"' : "'";
+        const token = overrides.get(label) ?? (javascript ? `$(${quote}${key}${quote})`
+            : connector ? `\${${key}.message}`
+                : /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(key) ? `\${${key}}` : `\${maps.get(${quote}${key}${quote})}`);
+        mappings.push([label, token]);
+        labels.add(label);
+    }
+    return mappings;
 }
 
 /* Rhino script scope — the identifiers available inside filter/transformer steps

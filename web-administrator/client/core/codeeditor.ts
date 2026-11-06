@@ -29,8 +29,8 @@ export interface CodeEditorOptions {
     maximizable?: boolean;
     popoutable?: boolean;
     popoutTitle?: string;
-    /** [[label, insertText]] variables rail in the code view. */
-    popoutVars?: Array<[string, string]>;
+    /** [[label, insertText]] variables rail, resolved on each code-view open. */
+    popoutVars?: Array<[string, string]> | (() => Array<[string, string]>);
     /** This editor's own completion context (Swing's per-editor ContextType): it
         takes the code-template and Reference completion scope while focused. */
     completionScope?: { channelId?: string; context: string };
@@ -219,7 +219,7 @@ function attachCodeView(editor: CodeEditor, opts: CodeEditorOptions): void {
     }
 
     function buildVarsRail(): HTMLElement | null {
-        const vars = opts.popoutVars;
+        const vars = typeof opts.popoutVars === 'function' ? opts.popoutVars() : opts.popoutVars;
         if (!Array.isArray(vars) || vars.length === 0 || opts.readOnly) return null;
         const list = h('div.ce-popout-vars-list');
         for (const [label, token] of vars) {

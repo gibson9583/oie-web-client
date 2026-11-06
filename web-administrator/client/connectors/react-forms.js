@@ -27,6 +27,12 @@ import { destinationMappingsFor } from '../core/mappings.js';
 import { createCodeEditor } from '../core/codeeditor.js';
 import * as api from '../core/api.js';
 import { getPath, setPath, mapEntries, writeMapEntries, asBool, postConnectorProperties, successToast, apiErrorMessage } from './forms.js';
+let mappingContext;
+const getMappingContext = () => mappingContext ??= React.createContext(null);
+export function ConnectorMappingProvider({ channel, connector, children }) {
+    const Context = getMappingContext();
+    return React.createElement(Context.Provider, { value: { channel, connector } }, children);
+}
 /* Inline icon — raw-served modules can't import the bundled React <Icon> from
    ../react/bridges.jsx. icon() returns a trusted SVG node; mount it directly
    (no innerHTML, so no HTML-injection surface even if a name were ever dynamic). */
@@ -57,6 +63,11 @@ function CodeField({ value, language, minHeight, placeholder, onChange, disabled
     const edRef = useRef(null);
     const onChangeRef = useRef(onChange);
     onChangeRef.current = onChange;
+    const mapping = React.useContext(getMappingContext());
+    const mappingRef = useRef(mapping);
+    mappingRef.current = mapping;
+    const propertiesRef = useRef(properties);
+    propertiesRef.current = properties;
     // The newest value from either side. The editor's own edits land here at
     // once, so a render captured before later keystrokes cannot revert them.
     const latestRef = useRef(value);
@@ -71,7 +82,7 @@ function CodeField({ value, language, minHeight, placeholder, onChange, disabled
             readOnly: !!disabled,
             maximizable: true, // connector code fields (incl. JavaScript Writer) can go full-screen
             popoutTitle: label,
-            popoutVars: destinationMappingsFor(properties),
+            popoutVars: () => destinationMappingsFor(propertiesRef.current, mappingRef.current?.channel, mappingRef.current?.connector),
             completionScope,
             onChange: (v) => { latestRef.current = v; if (onChangeRef.current)
                 onChangeRef.current(v); }

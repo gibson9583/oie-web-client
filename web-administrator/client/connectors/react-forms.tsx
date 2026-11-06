@@ -32,6 +32,22 @@ import {
 } from './forms.js';
 import type { FormField } from './forms.js';
 import type { CodeEditor } from '../core/codeeditor.js';
+import type { OieObject } from '../core/wire-types.js';
+
+// Connector panels are independent React roots. Provide their live channel
+// inside that root so all ConnectorForm code views, including plugin panels,
+// resolve mappings without relying on whichever channel is globally active.
+// Lazy creation is required: raw-served modules can load before React boots.
+type MappingContext = { channel: OieObject; connector: OieObject } | null;
+let mappingContext: import('react').Context<MappingContext> | undefined;
+const getMappingContext = () => mappingContext ??= React.createContext<MappingContext>(null);
+
+export function ConnectorMappingProvider({ channel, connector, children }: {
+    channel: OieObject; connector: OieObject; children: import('react').ReactNode;
+}) {
+    const Context = getMappingContext();
+    return <Context.Provider value={{ channel, connector }}>{children}</Context.Provider>;
+}
 
 /* Inline icon — raw-served modules can't import the bundled React <Icon> from
    ../react/bridges.jsx. icon() returns a trusted SVG node; mount it directly
@@ -72,6 +88,11 @@ function CodeField({ value, language, minHeight, placeholder, onChange, disabled
     const edRef = useRef<CodeEditor | null>(null);
     const onChangeRef = useRef(onChange);
     onChangeRef.current = onChange;
+    const mapping = React.useContext(getMappingContext());
+    const mappingRef = useRef(mapping);
+    mappingRef.current = mapping;
+    const propertiesRef = useRef(properties);
+    propertiesRef.current = properties;
     // The newest value from either side. The editor's own edits land here at
     // once, so a render captured before later keystrokes cannot revert them.
     const latestRef = useRef(value);
@@ -86,7 +107,7 @@ function CodeField({ value, language, minHeight, placeholder, onChange, disabled
             readOnly: !!disabled,
             maximizable: true,   // connector code fields (incl. JavaScript Writer) can go full-screen
             popoutTitle: label,
-            popoutVars: destinationMappingsFor(properties),
+            popoutVars: () => destinationMappingsFor(propertiesRef.current, mappingRef.current?.channel, mappingRef.current?.connector),
             completionScope,
             onChange: (v: string) => { latestRef.current = v; if (onChangeRef.current) onChangeRef.current(v); }
         });
