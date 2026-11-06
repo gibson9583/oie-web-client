@@ -3409,7 +3409,6 @@ export function MessagesView({ params, query }: any) {
                             : searchError || (pager.shown == null ? 'Search not run.'
                                 : pager.shown > 0 ? 'Search complete.'
                                     : pager.offset > 0 ? 'Search complete. No messages on this page.' : 'Search complete. No messages found.')}
-                        {pager.shown != null && (searching || searchError) && ' Previous results are still shown.'}
                     </span>
                 </div>}
                 <div role="region" aria-label="Message results" aria-busy={searching}

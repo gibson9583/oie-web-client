@@ -56,7 +56,7 @@ test('pending replacements remain visible with collapsed filters and guard stale
             click('Search'); click('Next ›'); click('Count');
         });
         await expect.poll(() => searches).toBe(2);
-        await expect(feedback(page)).toHaveText('Searching messages… Previous results are still shown.');
+        await expect(feedback(page)).toHaveText('Searching messages…');
         await expect(results(page)).toHaveAttribute('aria-busy', 'true');
         expect(await feedback(page).evaluate(element => !!element.closest('[aria-busy="true"]'))).toBe(false);
         const search = page.getByRole('button', { name: 'Search', exact: true });
@@ -100,7 +100,7 @@ test('a failed replacement preserves the completed result and a retry can comple
     await page.getByPlaceholder('Search message content…').fill('new criteria');
     await page.getByRole('button', { name: 'Search', exact: true }).click();
     await closeError(page);
-    await expect(feedback(page)).toHaveText('Search failed. Try Search again. Previous results are still shown.');
+    await expect(feedback(page)).toHaveText('Search failed. Try Search again.');
     await expect(page.getByRole('cell', { name: '1000', exact: true })).toBeVisible();
     await expect(page.getByText(/^Current Search:/)).toHaveText(summary!);
     await expect(page.locator('.counts')).toHaveText(countsBefore!);
@@ -181,7 +181,7 @@ for (const olderFails of [false, true]) {
                     old.release();
                     await (await oldResponse).finished();
                     await settle(page);
-                    await expect(feedback(page)).toHaveText('Searching messages… Previous results are still shown.');
+                    await expect(feedback(page)).toHaveText('Searching messages…');
                     await expect(results(page)).toHaveAttribute('aria-busy', 'true');
                     latest.release();
                     await expect(feedback(page)).toHaveText('Search complete. No messages found.');

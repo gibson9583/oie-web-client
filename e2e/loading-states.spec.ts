@@ -42,7 +42,7 @@ test('the message browser shows loading until a response, then keeps rows during
         empty = true;
         await page.getByRole('button', { name: 'Search', exact: true }).click();
         await expect(page.getByRole('cell', { name: '42', exact: true })).toBeVisible();
-        await expect(page.getByRole('status').filter({ hasText: 'Searching messages…' })).toContainText('Previous results are still shown.');
+        await expect(page.getByRole('status').filter({ hasText: 'Searching messages…' })).toHaveText('Searching messages…');
         hold.release();
         await expect(page.getByText('No messages found', { exact: true })).toBeVisible();
     } finally {
