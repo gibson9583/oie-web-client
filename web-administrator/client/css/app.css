@@ -2298,6 +2298,11 @@ input.grid-name::placeholder { color: var(--text-faint); }
 
 .loading-block { display: flex; align-items: center; justify-content: center; gap: 11px; padding: 43px; color: var(--text-faint); }
 
+.btn-primary .msg-search-spinner { border-color: currentColor; border-top-color: transparent; }
+@media (prefers-reduced-motion: reduce) {
+    .msg-search-spinner { animation: none; }
+}
+
 /* ---- Filter/transformer step list ------------------------------------------------------------------------------------------------- */
 
 .step-list { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
