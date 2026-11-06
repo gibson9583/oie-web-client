@@ -167,7 +167,7 @@ for (const toggles of [1, 2]) {
 // Captured by executing Swing's VariableListHandler/VariableTransferable at
 // OIE 3bcba0b9087ebf3780067dbbd8a29d5bfe62011d. Retain exact transferred text:
 // some entries are statements or XML fragments, not standalone expressions.
-// Message Hash is outside the existing web list; Swing omits Count in JS mode.
+// Swing omits Count in JS mode.
 const swingJavaScriptMappings = [
     ['Channel ID', "$('Channel ID')"],
     ['Channel Name', "$('Channel Name')"],
@@ -178,6 +178,7 @@ const swingJavaScriptMappings = [
     ['Message Source', "$('mirth_source')"],
     ['Message Type', "$('mirth_type')"],
     ['Message Version', "$('mirth_version')"],
+    ['Message Hash', 'HashUtil.generate(connectorMessage.getEncodedData())'],
     ['Date', "var date = DateUtil.getDate('pattern','date');"],
     ['Formatted Date', "var dateString = DateUtil.getCurrentDate('yyyy-M-d H.m.s');"],
     ['Timestamp', "var dateString = DateUtil.getCurrentDate('yyyyMMddHHmmss');"],
