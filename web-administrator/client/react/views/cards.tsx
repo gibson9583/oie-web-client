@@ -1,3 +1,4 @@
+import { describeTargets } from '../action-targets.js';
 /*
  * Card view — a modern, card-based alternative to the classic Dashboard table.
  * Highlights aggregate statistics + channel state, groups by channel group / tag /
@@ -218,14 +219,14 @@ function CardsView({ onToggleView }: any) {
     async function bulkControl(kind: any, targets: any) {
         const ids = targets.map((s: any) => s.channelId);
         if (!ids.length) return;
-        if (kind === 'halt' && !await confirmDialog('Halt channels', 'Halting forcibly kills processing threads. Halt the selected channels?', { danger: true, okLabel: 'Halt' })) return;
+        if (kind === 'halt' && !await confirmDialog('Halt channels', `Halting forcibly kills processing threads. Halt ${describeTargets('channel', targets)}?`, { danger: true, okLabel: 'Halt' })) return;
         try {
             if (await runLifecycle(kind, ids)) refresh();
         } catch (e: any) { toast(e && e.message ? e.message : 'Action failed', 'error'); refresh(); }
     }
     async function clearStats(targets: any) {
         if (!targets.length) return;
-        if (!await confirmDialog('Clear Statistics', `Clear statistics for ${targets.length} channel${targets.length > 1 ? 's' : ''}?`)) return;
+        if (!await confirmDialog('Clear Statistics', `Clear statistics for ${describeTargets('channel', targets)}? This cannot be undone.`, { okLabel: 'Clear' })) return;
         try { await api.statistics.clear(Object.fromEntries(targets.map((s: any) => [s.channelId, null]))); refresh(); }
         catch (e: any) { toast(e && e.message ? e.message : 'Clear statistics failed', 'error'); }
     }

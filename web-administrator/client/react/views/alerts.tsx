@@ -1,3 +1,4 @@
+import { describeTargets } from '../action-targets.js';
 /*
  * Alerts list (React port of the list half of views/alerts.js). Multi-select
  * table + the selection-gated Alert Tasks pane. The alert EDITOR is now also
@@ -115,7 +116,7 @@ export function AlertsList() {
     async function deleteTask() {
         const rows = multi();
         if (!rows) return;
-        if (!await confirmDialog('Delete alerts', `Permanently delete ${rows.length} alert(s)? This cannot be undone.`, { danger: true, okLabel: 'Delete' })) return;
+        if (!await confirmDialog('Delete alerts', `Permanently delete ${describeTargets('alert', rows)}? This cannot be undone.`, { danger: true, okLabel: 'Delete' })) return;
         for (const alert of rows) {
             try { await api.alerts.remove(alert.id); } catch (e: any) { toast(e.message, 'error'); }
         }

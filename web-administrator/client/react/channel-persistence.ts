@@ -1,3 +1,4 @@
+import { describeTargets } from './action-targets.js';
 import { confirmDialog } from '@oie/web-ui';
 import * as store from '../core/store.js';
 import { saveChannelModel } from '../core/channel-save.js';
@@ -19,8 +20,8 @@ export const confirmLibraryOverwrite = () => confirmDialog('Code Template Librar
     'One or more code templates or libraries have been modified since you last refreshed. Do you want to overwrite the changes?',
     { danger: true, okLabel: 'Overwrite' });
 
-export const confirmChannelOverwrite = () => confirmDialog('Channel Modified',
-    'This channel has been modified since you first opened it, or its edit timestamp could not be verified. Overwrite the saved channel with your changes?',
+export const confirmChannelOverwrite = (channel: { id?: string; name?: string }) => confirmDialog('Channel Modified',
+    `The saved ${describeTargets('channel', [channel])} has changed, or its edit timestamp could not be verified. Overwrite it with your changes?`,
     { danger: true, okLabel: 'Overwrite' });
 
 export async function persistChannelModel(channel: any): Promise<boolean> {
@@ -30,9 +31,9 @@ export async function persistChannelModel(channel: any): Promise<boolean> {
         userId: store.getState('user')?.id,
         skipUnchanged: true,
         confirmCreationRetry: () => confirmDialog('Creation Outcome Unknown',
-            'The previous create request did not return a result and the channel is not visible yet. The engine may still be processing it. Retry creation with the same channel ID?',
+            `The previous create request for ${describeTargets('channel', [channel])} did not return a result and the channel is not visible yet. The engine may still be processing it. Retry creation with the same channel ID?`,
             { danger: true, okLabel: 'Retry Creation' }),
-        confirmConflict: confirmChannelOverwrite
+        confirmConflict: () => confirmChannelOverwrite(channel)
     });
     assertSession();
     if (saved) store.setState('editingChannelNew', false);

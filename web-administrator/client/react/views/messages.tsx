@@ -1,3 +1,4 @@
+import { describeTargets } from '../action-targets.js';
 /*
  * Messages — message browser, fully declarative React. The Swing-parity browser
  * is a hierarchical, sortable tree-table (source rows with expand twisties +
@@ -2908,7 +2909,7 @@ export function MessagesView({ params, query }: any) {
     async function removeMessageTask(row = requireSelection()) {
         if (!row) return;
         if (getPref('confirmReprocessRemove') !== false &&
-            !await confirmDialog('Remove message', `Permanently remove message ${row.messageId}? This cannot be undone.`, { danger: true, okLabel: 'Remove' })) return;
+            !await confirmDialog('Remove message', `Permanently remove message ${row.messageId} from ${describeTargets('channel', [{ id: channelId, name: channelName }])}? This cannot be undone.`, { danger: true, okLabel: 'Remove' })) return;
         try {
             await api.messages.remove(channelId, row.messageId);
             toast('Message removed');

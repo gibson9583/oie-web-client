@@ -60,7 +60,8 @@ export function useConnectorTypeSwitch(connector: OieObject, mode: ConnectorMode
             if (connectorHasNonDefaultProperties(connector, mode, version,
                 platform.connectorPanel(oldName, mode), platform.connectorPropertiesPanels(), queueBufferSize)) {
                 const ok = await confirmDialog('Change Connector Type',
-                    `Switch this connector to ${name}? Connector settings will reset to defaults (the filter, transformer and resources are kept).`);
+                    `Switch ${mode === 'SOURCE' ? 'the source connector' : `destination "${connector.name || 'Destination'}"`} from ${oldName} to ${name}? Connector settings will reset to defaults (the filter, transformer and resources are kept).`,
+                    { okLabel: 'Switch Type' });
                 if (!ok) return;
             }
             if (!isCurrent()) return;

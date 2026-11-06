@@ -1072,7 +1072,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 100;
+    z-index: 130; /* above mobile navigation (120), below menus (150) */
     animation: fade-in 0.15s ease-out;
 }
 
@@ -1833,7 +1833,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 .ce-popout-overlay {
     position: fixed;
     inset: 0;
-    z-index: 90;                 /* above content, below modal(100)/menu(150)/toast(200) */
+    z-index: 90;                 /* above content, below modal(130)/menu(150)/toast(200) */
     display: flex;
     flex-direction: column;
     background: var(--bg1);

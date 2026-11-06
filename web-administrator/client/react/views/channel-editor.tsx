@@ -1,3 +1,4 @@
+import { describeTargets } from '../action-targets.js';
 import { channelEditState, loadChannelForEdit } from '../../core/channel-save.js';
 import { useConnectorTypeSwitch } from '../connector-type-switch.js';
 import { persistChannelEdits, confirmLibraryOverwrite, channelSessionActive } from '../channel-persistence.js';
@@ -2797,13 +2798,13 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
         // unsaved changes prompt to save-and-deploy; otherwise a plain confirm.
         if (isDirty()) {
             const confirmed = await confirmDialog('Deploy Channel',
-                'This channel will be saved before it is deployed. Are you sure you want to save and deploy this channel?',
+                `Save and deploy ${describeTargets('channel', [channel])}? Unsaved changes will be saved before deployment.`,
                 { okLabel: 'Save and Deploy' });
             if (!isCurrent() || !confirmed) return;
             const saved = await save();
             if (!isCurrent() || !saved) return;
         } else {
-            const confirmed = await confirmDialog('Deploy Channel', 'Are you sure you want to deploy this channel?', { okLabel: 'Deploy' });
+            const confirmed = await confirmDialog('Deploy Channel', `Deploy ${describeTargets('channel', [channel])}?`, { okLabel: 'Deploy' });
             if (!isCurrent() || !confirmed) return;
         }
         try {

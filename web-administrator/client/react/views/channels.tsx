@@ -1,3 +1,4 @@
+import { describeTargets } from '../action-targets.js';
 /*
  * Channels view (React port of the LIST half of views/channels.js). The Swing
  * channel panel is a GROUPED TREE-TABLE — channels listed under their channel
@@ -434,7 +435,7 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true, 
     // new IDs; a reported conflict follows the editor's Swing-style choices.
     const saved = await updateChannelWithConflict(resolved.id,
         override => api.putXml(`/channels/${encodeURIComponent(resolved.id)}`, body, { override }),
-        { userId: store.getState('user')?.id, confirmConflict: confirmChannelOverwrite, assertSession });
+        { userId: store.getState('user')?.id, confirmConflict: () => confirmChannelOverwrite(resolved), assertSession });
     return saved ? resolved : false;
 }
 
@@ -894,9 +895,9 @@ export function ChannelsView() {
         const id = String(fromKey || '').replace(/^ch:/, '');
         if (!id) return;
         const ids = selected.has(id) ? new Set(selected) : new Set([id]);
-        const names = channels.filter(c => ids.has(c.id)).map(c => c.name).join(', ');
+        const targets = [...ids].map(id => channels.find(c => c.id === id) || { id });
         if (await confirmDialog('Move to Group',
-            `Move ${ids.size === 1 ? `"${names}"` : ids.size + ' channels'} to [${toNode.group.name}]?`,
+            `Move ${describeTargets('channel', targets)} to group "${toNode.group.name}"?`,
             { okLabel: 'Move' })) {
             await moveChannelsToGroup(ids, toNode.group.id);
         }
@@ -1144,7 +1145,7 @@ export function ChannelsView() {
                 assertSession();
                 const saved = await updateChannelWithConflict(obj.id,
                     override => api.channels.update(obj.id, obj, override),
-                    { userId: store.getState('user')?.id, confirmConflict: confirmChannelOverwrite, assertSession });
+                    { userId: store.getState('user')?.id, confirmConflict: () => confirmChannelOverwrite(obj), assertSession });
                 if (!saved) return;
             }
             pendingImportRef.current = null;
@@ -1246,7 +1247,7 @@ export function ChannelsView() {
     async function deleteTask(selRows: any) {
         const rows = requireAny(selRows);
         if (!rows) return;
-        if (!await confirmDialog('Delete channels', `Permanently delete ${rows.length} channel(s)? This cannot be undone.`, { danger: true, okLabel: 'Delete' })) return;
+        if (!await confirmDialog('Delete channels', `Permanently delete ${describeTargets('channel', rows)}? This cannot be undone.`, { danger: true, okLabel: 'Delete' })) return;
         for (const channel of rows) {
             try { await api.channels.remove(channel.id); } catch (e: any) { toast(e.message, 'error'); }
         }
@@ -1328,7 +1329,7 @@ export function ChannelsView() {
         modal({
             title: 'Move to Group',
             body: h('div.field',
-                h('label', `Move ${rows.length} channel(s) to:`), picker),
+                h('label', { style: { overflowWrap: 'anywhere' } }, `Move ${describeTargets('channel', rows)} to:`), picker),
             buttons: [
                 { label: 'Cancel' },
                 {

@@ -1507,7 +1507,14 @@ function DatabaseTasksTab({ ctx }: any) {
     async function runTask(task: any) {
         if (!current()) return;
         if (!task) { toast('Select a task first', 'warn'); return; }
-        const message = task.confirmationMessage || `Run "${task.name}"? This task may take a long time to complete.`;
+        // The engine sends Swing HTML (<html>…<br/>…</html>); the dialog shows plain text.
+        const engineMessage = task.confirmationMessage
+            ? new DOMParser().parseFromString(String(task.confirmationMessage).replace(/<br\s*\/?>/gi, ' '), 'text/html')
+                .body.textContent?.replace(/\s+/g, ' ').trim()
+            : '';
+        const message = engineMessage
+            ? `Database task "${task.name || task.id}": ${engineMessage}`
+            : `Run database task "${task.name || task.id}"? This task may take a long time to complete.`;
         if (await confirmDialog('Run Database Task', message, { okLabel: 'Run' })) {
             if (!current()) return;
             try {

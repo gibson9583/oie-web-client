@@ -318,7 +318,7 @@ export function confirmDialog(title, message, { danger = false, okLabel = 'OK' }
     return new Promise(resolve => {
         modal({
             title,
-            body: h('div', String(message)),
+            body: h('div', { style: { overflowWrap: 'anywhere' } }, String(message)),
             onClose: () => resolve(false),
             buttons: [
                 { label: 'Cancel', onClick: () => { resolve(false); } },
@@ -332,7 +332,7 @@ export function promptDialog(title, label, initial = '') {
         const input = h('input', { type: 'text', value: initial });
         const m = modal({
             title,
-            body: h('div.field', h('label', label), input),
+            body: h('div.field', h('label', { style: { overflowWrap: 'anywhere' } }, label), input),
             onClose: () => resolve(null),
             buttons: [
                 { label: 'Cancel', onClick: () => { resolve(null); } },
