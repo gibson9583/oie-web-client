@@ -32,17 +32,17 @@ test('the message browser shows loading until a response, then keeps rows during
     hold.gate();
     try {
         await page.goto(`/messages/${CID}`);
-        await expect(page.getByText('Loading messages…')).toBeVisible();
+        await expect(page.getByRole('status').filter({ hasText: 'Searching messages…' })).toBeVisible();
         await expect(page.getByText('No messages found', { exact: true })).toHaveCount(0);
         hold.release();
         await expect(page.getByRole('cell', { name: '42', exact: true })).toBeVisible();
-        await expect(page.getByText('Loading messages…')).toHaveCount(0);
+        await expect(page.getByRole('status').filter({ hasText: 'Search complete.' })).toBeVisible();
 
         hold.gate();
         empty = true;
         await page.getByRole('button', { name: 'Search', exact: true }).click();
         await expect(page.getByRole('cell', { name: '42', exact: true })).toBeVisible();
-        await expect(page.getByText('Loading messages…')).toHaveCount(0);
+        await expect(page.getByRole('status').filter({ hasText: 'Searching messages…' })).toHaveText('Searching messages…');
         hold.release();
         await expect(page.getByText('No messages found', { exact: true })).toBeVisible();
     } finally {
@@ -66,11 +66,11 @@ test('invalid page size during bootstrap clears loading and allows a corrected s
     hold.gate();
     try {
         await page.goto(`/messages/${CID}`);
-        await expect(page.getByText('Loading messages…')).toBeVisible();
+        await expect(page.getByRole('status').filter({ hasText: 'Searching messages…' })).toBeVisible();
         await page.getByRole('spinbutton', { name: 'Page Size', exact: true }).fill('');
         hold.release();
         await expect(page.getByText('Page size must be a whole number from 1 to 999.')).toBeVisible();
-        await expect(page.getByText('Loading messages…')).toHaveCount(0);
+        await expect(page.getByRole('status').filter({ hasText: 'Search not run.' })).toBeVisible();
         expect(searches).toBe(0);
         await page.getByRole('dialog', { name: 'Error', exact: true }).getByRole('button', { name: 'Close', exact: true }).last().click();
         await page.getByRole('spinbutton', { name: 'Page Size', exact: true }).fill('20');

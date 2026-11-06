@@ -1,4 +1,5 @@
 import { describeTargets } from '../action-targets.js';
+import { loadErrorMessage } from '../load-error.js';
 import { channelEditState, loadChannelForEdit } from '../../core/channel-save.js';
 import { useConnectorTypeSwitch } from '../connector-type-switch.js';
 import { persistChannelEdits, confirmLibraryOverwrite, channelSessionActive } from '../channel-persistence.js';
@@ -643,7 +644,7 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
         ]);
         if (!isCurrent()) return;
     } catch (e: any) {
-        if (isCurrent()) toast(`Could not load dependencies: ${e.message}`, 'error');
+        if (isCurrent()) toast(`Could not load dependencies: ${loadErrorMessage(e, 'dependencies')}`, 'error');
         return;
     }
 
@@ -3035,7 +3036,7 @@ export function ChannelEditorView({ params, query }: any) {
         }).catch((e: any) => {
             if (!alive) return;
             if (query.new === '1') toast('The unsaved new channel was discarded.');
-            else toast(e.message, 'error');
+            else toast(`Load failed: ${loadErrorMessage(e, 'channel', 'channels')}`, 'error');
             history.replaceState(null, '', routeUrl('/channels'));
             router.navigate('/channels');
         });

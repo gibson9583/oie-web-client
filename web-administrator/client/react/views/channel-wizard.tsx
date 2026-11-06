@@ -1,6 +1,7 @@
 import { channelEditState, isNewChannelDraft, loadChannelForEdit } from '../../core/channel-save.js';
 import { persistChannelModel, confirmLibraryOverwrite, channelSessionActive } from '../channel-persistence.js';
 import { withEditorSave } from '../save-lock.js';
+import { loadErrorMessage } from '../load-error.js';
 import { channelDependencyState, persistLibraryAssociations, persistChannelDependencies } from '../../core/channel-dependencies.js';
 /*
  * Guided channel builder — a step-by-step ALTERNATIVE to the classic tabbed
@@ -642,6 +643,7 @@ function ChannelWizardView({ params, query = {} }: any) {
             return c;
         },
         fetch: (id: any) => loadChannelForEdit(id),
+        formatLoadError: (error: any) => `Load failed: ${loadErrorMessage(error, 'channel', 'channels')}`,
         backPath: '/channels'
     });
     if (!ready || !model) return <div className="view"><div className="view-body"><div className="dt-empty">Loading channel…</div></div></div>;

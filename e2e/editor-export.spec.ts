@@ -143,7 +143,7 @@ for (const expired of [false, true]) {
             } else {
                 await expect.poll(() => page.evaluate(() => (window as any).libraryExportProbe.writes)).toBe(1);
                 expect(reads).toBe(1);
-                await expect(page.getByText(/Could not check linked code template libraries:.*linked libraries unavailable.*Exporting without them/)).toBeVisible();
+                await expect(page.getByText(/Could not check linked code template libraries\. Exporting without them\.\s+HTTP 503\. "?linked libraries unavailable/)).toBeVisible();
             }
         } finally { release(); }
     });
