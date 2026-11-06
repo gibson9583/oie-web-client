@@ -2528,7 +2528,7 @@ export function MessagesView({ params, query }: any) {
             }
         } catch (e: any) {
             if (gen !== searchGenRef.current) return;   // superseded — its results are on screen
-            setSearchError('Search failed. Try Search again.');
+            setSearchError(resetOffset ? 'Search failed. Try Search again.' : 'Search failed.');
             toast(`Search failed: ${e.message}`, 'error');
         } finally {
             if (gen === searchGenRef.current) {

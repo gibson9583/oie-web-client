@@ -2311,6 +2311,8 @@ input.grid-name::placeholder { color: var(--text-faint); }
     text-transform: none;
 }
 
+.basis-full > .msg-search-feedback { max-width: none; }
+
 .btn-primary .msg-search-spinner { border-color: currentColor; border-top-color: transparent; }
 @media (prefers-reduced-motion: reduce) {
     .msg-search-spinner { animation: none; }

@@ -63,8 +63,10 @@ test('pending replacements remain visible with collapsed filters and guard stale
             const geometry = await feedback(page).evaluate(element => {
                 const panel = document.querySelector('.filter-collapse')!.getBoundingClientRect();
                 const table = document.querySelector('[aria-label="Message results"] .dt-wrap')!.getBoundingClientRect();
+                const text = document.createRange();
+                text.selectNodeContents(element.lastElementChild!);
                 return { inHeader: !!element.closest('.panel-header'), gap: table.top - panel.bottom,
-                    right: element.getBoundingClientRect().right, viewport: innerWidth };
+                    right: text.getBoundingClientRect().right, viewport: innerWidth };
             });
             expect(geometry.inHeader).toBe(true);
             expect(geometry.gap).toBeLessThanOrEqual(26);
@@ -347,3 +349,76 @@ test('pending search indicators respect reduced motion', async ({ page }) => {
         await expect(feedback(page)).toHaveText('Search complete. No messages found.');
     } finally { hold.release(); }
 });
+
+for (const width of [800, 500]) {
+    test(`metadata failure feedback uses the full narrow row at ${width}px`, async ({ page }, testInfo) => {
+        await open(page, {
+            [`GET /channels/${CID}/metaDataColumns`]: { __status: 503, body: { error: 'Metadata unavailable' } },
+        });
+        await closeError(page);
+        await page.setViewportSize({ width, height: 900 });
+        // Resizing to phone width turns the expanded navigation into a drawer.
+        const backdrop = page.locator('.rail-backdrop');
+        if (await backdrop.isVisible()) await backdrop.click();
+        await expect(page.getByRole('button', { name: 'Filters', exact: true })).toBeVisible();
+        await expect(feedback(page)).toHaveText('Search could not start. Channel metadata failed to load. Try Search again.');
+        const geometry = await feedback(page).evaluate(element => {
+            const text = element.lastElementChild!;
+            return {
+                width: element.getBoundingClientRect().width,
+                rowWidth: element.parentElement!.getBoundingClientRect().width,
+                textHeight: text.getBoundingClientRect().height,
+                lineHeight: parseFloat(getComputedStyle(text).lineHeight),
+            };
+        });
+        expect(geometry.width).toBeGreaterThanOrEqual(geometry.rowWidth - 1);
+        expect(geometry.textHeight).toBeLessThanOrEqual(geometry.lineHeight * (width === 500 ? 2 : 1) + 1);
+        await page.screenshot({ path: testInfo.outputPath('narrow-metadata-failure.png'), animations: 'disabled' });
+    });
+}
+
+for (const action of ['Next ›', '‹ Prev', '« First', 'Last »', 'Remove Message']) {
+    test(`${action} failure does not suggest Search as a retry of the displayed result`, async ({ page }) => {
+        let fail = false;
+        const requests: URLSearchParams[] = [];
+        await open(page, {
+            [`GET ${PATH}`]: (request: Request) => {
+                const params = new URL(request.url()).searchParams;
+                requests.push(params);
+                if (fail) return { __status: 503, body: { error: 'Messages unavailable' } };
+                return { list: { message: Array.from({ length: 21 }, (_, i) => message(1000 - Number(params.get('offset')) - i)) } };
+            },
+            [`GET ${PATH}/count`]: { long: 100 },
+            [`GET ${PATH}/980`]: message(980),
+            [`DELETE ${PATH}/980`]: () => { fail = true; return ''; },
+        });
+        await expect(feedback(page)).toHaveText('Search complete.');
+        await page.getByRole('button', { name: 'Count', exact: true }).click();
+        await expect(page.locator('.counts')).toHaveText('1–20 of 100');
+        await page.getByRole('button', { name: 'Next ›', exact: true }).click();
+        await expect(page.locator('.counts')).toHaveText('21–40 of 100');
+        const summary = await page.getByText(/^Current Search:/).textContent();
+        // Staged criteria differ from the committed result used by paging and
+        // post-write refreshes. Search would start a different query at page 1.
+        await page.getByPlaceholder('Search message content…').fill('staged criteria');
+        if (action === 'Remove Message') {
+            await page.getByRole('cell', { name: '980', exact: true }).click();
+            await page.getByRole('button', { name: action, exact: true }).click();
+            await page.getByRole('dialog', { name: 'Remove message', exact: true }).getByRole('button', { name: 'Remove', exact: true }).click();
+        } else {
+            fail = true;
+            await page.getByRole('button', { name: action, exact: true }).click();
+        }
+        await closeError(page);
+        await expect(feedback(page)).toHaveText('Search failed.');
+        await expect(page.locator('.counts')).toHaveText('21–40 of 100');
+        await expect(page.getByText(/^Current Search:/)).toHaveText(summary!);
+        expect(requests.at(-1)!.get('textSearch')).toBeNull();
+        expect(requests.at(-1)!.get('offset')).toBe(action === 'Next ›' ? '40' : action === 'Last »' ? '80' : action === 'Remove Message' ? '20' : '0');
+        await page.getByRole('button', { name: 'Search', exact: true }).click();
+        await closeError(page);
+        await expect(feedback(page)).toHaveText('Search failed. Try Search again.');
+        expect(requests.at(-1)!.get('textSearch')).toBe('staged criteria');
+        expect(requests.at(-1)!.get('offset')).toBe('0');
+    });
+}
