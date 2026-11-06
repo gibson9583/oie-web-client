@@ -1392,7 +1392,7 @@ function ConfigurationMapTab({ ctx }: any) {
             {/* Controls live in the panel header (this app's convention — panels carry
                 their tools in .panel-tools), so the filter attaches to the table it acts on. */}
             <div className="panel-header">Configuration Map
-                <div className="panel-tools">
+                <div className="panel-tools" data-no-dirty>
                     <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius)] border border-line-strong bg-bg2 text-text-dim min-w-[260px]">
                         <span className="inline-flex" ref={(el: any) => { if (el && !el.firstChild) el.appendChild(icon('search', 15)); }} />
                         <input type="search" placeholder="Filter entries…" autoComplete="off"
@@ -1952,7 +1952,12 @@ function SettingsTab({ def, activate }: any) {
         ctx.markClean();                 // a freshly built tab starts clean
         // Any user edit marks the tab dirty. Programmatic value sets during the
         // builder's load() don't dispatch input/change, so they don't false-trip.
-        const onEdit = () => ctx.markDirty();
+        const onEdit = (e: Event) => {
+            const target = e.target as HTMLElement | null;
+            //Ignore edits that should not make the tab dirty
+            if (target?.closest?.('[data-no-dirty]')) return;
+            ctx.markDirty();
+        };
         host.addEventListener('input', onEdit);
         host.addEventListener('change', onEdit);
         return () => {
