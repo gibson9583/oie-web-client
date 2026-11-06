@@ -2298,6 +2298,19 @@ input.grid-name::placeholder { color: var(--text-faint); }
 
 .loading-block { display: flex; align-items: center; justify-content: center; gap: 11px; padding: 43px; color: var(--text-faint); }
 
+.msg-search-feedback {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 40%;
+    font-size: 11px;
+    line-height: 16px;
+    font-weight: 400;
+    letter-spacing: normal;
+    text-transform: none;
+}
+
 .btn-primary .msg-search-spinner { border-color: currentColor; border-top-color: transparent; }
 @media (prefers-reduced-motion: reduce) {
     .msg-search-spinner { animation: none; }

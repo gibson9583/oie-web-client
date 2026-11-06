@@ -3228,6 +3228,19 @@ export function MessagesView({ params, query }: any) {
         </label>
     );
 
+    const searchFeedback = channelId && <div role="status" aria-live="polite" aria-atomic="true"
+        className={`msg-search-feedback ${searchError && !searching ? 'text-text' : 'text-text-dim'}`}>
+        {searching ? <span className="spinner msg-search-spinner" aria-hidden="true" />
+            : searchError ? <span className="flex-none text-err" aria-hidden="true"><Icon name="warning" /></span>
+                : pager.shown != null ? <span className="flex-none" aria-hidden="true"><Icon name="check" /></span> : null}
+        <span>
+            {searching ? 'Searching messages…'
+                : searchError || (pager.shown == null ? 'Search not run.'
+                    : pager.shown > 0 ? 'Search complete.'
+                        : pager.offset > 0 ? 'Search complete. No messages on this page.' : 'Search complete. No messages found.')}
+        </span>
+    </div>;
+
     const criteria = (
         <>
                         <div className="form-row">
@@ -3364,7 +3377,7 @@ export function MessagesView({ params, query }: any) {
                     button, where Radix owns Escape, outside-click and focus return. */}
                 <div ref={criteriaPanelRef} className="panel filter-collapse flex-none mx-[13px] mt-3 mb-3">
                     {narrowCriteria ? (
-                        <div className="panel-header flex items-center gap-2">
+                        <div className="panel-header flex flex-wrap items-center gap-2">
                             <span className="criteria-heading inline-flex items-center gap-1.5">Search Criteria</span>
                             {channelPicker}
                             <Popover.Root open={filtersOpen} onOpenChange={setFiltersOpen}>
@@ -3380,11 +3393,12 @@ export function MessagesView({ params, query }: any) {
                                     </Popover.Content>
                                 </Popover.Portal>
                             </Popover.Root>
+                            {channelId && <div className="basis-full">{searchFeedback}</div>}
                         </div>
                     ) : (
                         <Collapsible.Root open={!criteriaCollapsed}
                             onOpenChange={(open: any) => setCriteriaCollapsed(!open)}>
-                            <div className="panel-header flex items-center gap-2">
+                            <div className="panel-header flex flex-wrap items-center gap-2">
                                 <Collapsible.Trigger asChild>
                                     <button type="button" className="criteria-heading inline-flex items-center gap-1.5">
                                         <span aria-hidden="true">{criteriaCollapsed ? '▸' : '▾'}</span>
@@ -3392,6 +3406,7 @@ export function MessagesView({ params, query }: any) {
                                     </button>
                                 </Collapsible.Trigger>
                                 {channelPicker}
+                                {searchFeedback}
                             </div>
                             <Collapsible.Content className="panel-body filter-popover">
                                 {criteria}
@@ -3399,18 +3414,7 @@ export function MessagesView({ params, query }: any) {
                         </Collapsible.Root>
                     )}
                 </div>
-                {channelId && <div role="status" aria-live="polite" aria-atomic="true"
-                    className={`flex-none flex items-center gap-2 min-h-6 mx-[13px] mb-2 ${searchError && !searching ? 'text-text' : 'text-text-dim'}`}>
-                    {searching ? <span className="spinner msg-search-spinner" aria-hidden="true" />
-                        : searchError ? <span className="flex-none text-err" aria-hidden="true"><Icon name="warning" /></span>
-                            : pager.shown != null ? <span className="flex-none" aria-hidden="true"><Icon name="check" /></span> : null}
-                    <span>
-                        {searching ? 'Searching messages…'
-                            : searchError || (pager.shown == null ? 'Search not run.'
-                                : pager.shown > 0 ? 'Search complete.'
-                                    : pager.offset > 0 ? 'Search complete. No messages on this page.' : 'Search complete. No messages found.')}
-                    </span>
-                </div>}
+
                 <div role="region" aria-label="Message results" aria-busy={searching}
                     className="flex-1 min-h-0 flex flex-col overflow-hidden oie-tablecard px-[13px] pt-3 pb-3">
                     {!channelId ? (

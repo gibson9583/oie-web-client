@@ -57,6 +57,20 @@ test('pending replacements remain visible with collapsed filters and guard stale
         });
         await expect.poll(() => searches).toBe(2);
         await expect(feedback(page)).toHaveText('Searching messages…');
+        // Progress belongs to the existing header, without another row of
+        // spacing between the criteria panel and results.
+        const assertCompactFeedback = async () => {
+            const geometry = await feedback(page).evaluate(element => {
+                const panel = document.querySelector('.filter-collapse')!.getBoundingClientRect();
+                const table = document.querySelector('[aria-label="Message results"] .dt-wrap')!.getBoundingClientRect();
+                return { inHeader: !!element.closest('.panel-header'), gap: table.top - panel.bottom,
+                    right: element.getBoundingClientRect().right, viewport: innerWidth };
+            });
+            expect(geometry.inHeader).toBe(true);
+            expect(geometry.gap).toBeLessThanOrEqual(26);
+            expect(geometry.right).toBeLessThanOrEqual(geometry.viewport);
+        };
+        await assertCompactFeedback();
         await expect(results(page)).toHaveAttribute('aria-busy', 'true');
         expect(await feedback(page).evaluate(element => !!element.closest('[aria-busy="true"]'))).toBe(false);
         const search = page.getByRole('button', { name: 'Search', exact: true });
@@ -75,6 +89,9 @@ test('pending replacements remain visible with collapsed filters and guard stale
         await expect(page.getByRole('button', { name: 'Filters', exact: true })).toBeVisible();
         await expect(feedback(page)).toBeVisible();
         await expect(search).toHaveCount(0);
+        const filtersBox = await page.getByRole('button', { name: 'Filters', exact: true }).boundingBox();
+        expect(filtersBox!.x + filtersBox!.width).toBeLessThanOrEqual(800);
+        await assertCompactFeedback();
         hold.release();
         await expect(feedback(page)).toHaveText('Search complete.');
         await expect(results(page)).toHaveAttribute('aria-busy', 'false');
