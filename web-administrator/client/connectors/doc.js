@@ -4,12 +4,10 @@
  * Field names and defaults mirror server/src/com/mirth/connect/connectors/doc.
  *
  * React port: def.render(host, ctx) -> def.component(ctx) => JSX. Field schema +
- * defaults reused VERBATIM; only rendering is JSX. The page-size row (width × height
- * unit + preset combo) keeps its imperative DOM node, mounted via a `custom` field,
- * mirroring DocumentWriter.updatePageSizeComboBox / pageSizeComboBoxActionPerformed.
+ * defaults reused VERBATIM; only rendering is JSX.
  */
 import { React } from './react-platform.js';
-import { h, select, taskButton, toast } from '@oie/web-ui';
+import { select, taskButton, toast } from '@oie/web-ui';
 import { ConnectorForm, asBool, YES_NO, defaultDestinationProperties, successToast, apiErrorMessage, requireFields } from './react-forms.js';
 import { post } from '../core/api.js';
 // Swing updateFileEnabled(enable): Directory/File Name/Test Write are greyed when
@@ -122,54 +120,27 @@ const matchingPreset = (p) => {
 };
 // BigDecimal(value).setScale(2, RoundingMode.DOWN) — truncates to two decimals.
 const scale2Down = (value) => (Math.trunc(value * 100) / 100).toFixed(2);
-/* Page Size row: width × height unit preset, all on one line under a single
- * 'Page Size:' label (DocumentWriter.initLayout add(..., "split 5")). The preset
- * combo is a non-persisted convenience that two-way-binds to pageWidth/pageHeight/
- * pageUnit (pageSizeComboBoxActionPerformed). */
-function pageSizeRow(p, onChange) {
-    // Notify the channel directly; ConnectorForm's notification would replace
-    // this custom DOM row on every keystroke and discard focus/the selection.
-    const notify = () => { syncPreset(); onChange(); };
-    const widthField = h('input', {
-        type: 'text', value: p.pageWidth ?? '', class: 'w-[49px]', 'data-fkey': 'pageWidth',
-        onInput: (e) => { p.pageWidth = e.target.value; notify(); }
-    });
-    const heightField = h('input', {
-        type: 'text', value: p.pageHeight ?? '', class: 'w-[49px]', 'data-fkey': 'pageHeight',
-        onInput: (e) => { p.pageHeight = e.target.value; notify(); }
-    });
-    const unitField = select(PAGE_UNITS, p.pageUnit ?? 'INCHES', {
-        class: 'w-[81px]',
-        onChange: (e) => { p.pageUnit = e.target.value; notify(); }
-    });
+/* Helper preset picker combo (mirrors DocumentWriter.pageSizeComboBox): picking
+ * a preset populates pageWidth, pageHeight, and pageUnit; custom values show "Custom". */
+function pageSizePresetPicker(p, ctx) {
     const current = matchingPreset(p);
     const presetOptions = PAGE_SIZES.map((ps) => ({ value: ps.name, label: ps.name }));
     if (current === 'CUSTOM')
         presetOptions.push({ value: 'CUSTOM', label: 'Custom' });
-    const presetField = select(presetOptions, current, {
+    const sel = select(presetOptions, current, {
+        title: 'Page Size Preset',
         onChange: (e) => {
             const ps = PAGE_SIZES.find((x) => x.name === e.target.value);
             if (ps) {
                 p.pageWidth = scale2Down(ps.width);
                 p.pageHeight = scale2Down(ps.height);
                 p.pageUnit = ps.unit;
-                widthField.value = p.pageWidth;
-                heightField.value = p.pageHeight;
-                unitField.value = p.pageUnit;
-                notify();
+                ctx.onChange();
             }
         }
     });
-    function syncPreset() {
-        const current = matchingPreset(p);
-        const custom = Array.from(presetField.options).find(option => option.value === 'CUSTOM');
-        if (current === 'CUSTOM' && !custom)
-            presetField.appendChild(h('option', { value: 'CUSTOM' }, 'Custom'));
-        else if (current !== 'CUSTOM')
-            custom?.remove();
-        presetField.value = current;
-    }
-    return h('div', { class: 'flex items-center gap-1.5' }, widthField, h('span', '×'), heightField, unitField, presetField);
+    sel.style.width = '120px';
+    return sel;
 }
 const documentWriter = {
     defaults(version) {
@@ -218,7 +189,12 @@ const documentWriter = {
                 // Password is greyed when Encrypted=No, including under RTF (which calls
                 // encryptedNoActionPerformed and disables the Encrypted radio).
                 { key: 'password', label: 'Password', type: 'password', width: '124px', disabled: (p) => isRtf(p) || !asBool(p.encrypt) },
-                { label: 'Page Size', type: 'custom', render: (p) => pageSizeRow(p, onChange) },
+                { key: 'pageWidth', label: 'Page Width', type: 'number', templatable: true, width: '90px', refresh: true },
+                { key: 'pageHeight', label: 'Page Height', type: 'number', templatable: true, width: '90px', refresh: true },
+                {
+                    key: 'pageUnit', label: 'Page Unit', type: 'select', options: PAGE_UNITS, width: '90px', refresh: true,
+                    append: (p, ctx) => pageSizePresetPicker(p, ctx)
+                },
                 { key: 'template', label: 'HTML Template', type: 'code', language: 'html', minHeight: '260px' }
             ] }));
     },

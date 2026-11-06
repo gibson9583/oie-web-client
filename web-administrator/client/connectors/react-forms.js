@@ -47,6 +47,135 @@ const DEFAULT_WIDTHS = {
     select: '220px'
 };
 let cformUid = 0;
+function NumericTemplatableInput({ value, disabled, placeholder, style, dataFkey, templatable = false, numeric = false, step = 1, min, max, width = DEFAULT_WIDTHS.number, textWidth = DEFAULT_WIDTHS.text, onChange, }) {
+    const rawStr = value === null || value === undefined ? '' : String(value);
+    const isEmpty = rawStr.trim() === '';
+    const isNumeric = !isEmpty && Number.isFinite(Number(rawStr));
+    const containsTemplates = rawStr.includes("$");
+    // Use textWidth if it contains a template
+    const currentWidth = containsTemplates ? textWidth : width;
+    // Only show arrows if not disabled and the field currently holds a numeric value
+    const showStepArrows = !disabled && isNumeric;
+    function getDecimalPlaces(val) {
+        const str = String(val);
+        if (str.includes('e-')) {
+            const [, exp] = str.split('e-');
+            return parseInt(exp, 10);
+        }
+        const dot = str.indexOf('.');
+        return dot === -1 ? 0 : str.length - dot - 1;
+    }
+    ;
+    const handleStep = (direction) => {
+        const current = Number(rawStr);
+        let next = current + direction * step;
+        if (min !== undefined && next < min)
+            next = min;
+        if (max !== undefined && next > max)
+            next = max;
+        const precision = Math.max(getDecimalPlaces(rawStr), getDecimalPlaces(step));
+        let formatted = next.toFixed(precision);
+        if (Number(formatted) === 0) {
+            formatted = (0).toFixed(precision);
+        }
+        onChange(formatted);
+    };
+    const handleKeyDown = (e) => {
+        if (showStepArrows) {
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                handleStep(1);
+            }
+            else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                handleStep(-1);
+            }
+        }
+    };
+    const handleBlur = () => {
+        if (!isNumeric) {
+            if (numeric) {
+                // Numeric-only fields must fall back to 0
+                onChange('0');
+            }
+            else if (!isEmpty && !containsTemplates) {
+                onChange('');
+            }
+        }
+    };
+    const handleChange = (e) => {
+        const val = e.target.value;
+        // Allow empty value for clearing the field
+        if (val === '') {
+            onChange(val);
+            return;
+        }
+        // Allow valid numeric inputs (supports negative numbers and decimals)
+        const numberBeginPattern = /^-?\d*\.?\d*$/.test(val);
+        if (numberBeginPattern) {
+            onChange(val);
+            return;
+        }
+        // Allow text only if templatable is enabled and the value contains '$'
+        if (templatable && val.includes('$')) {
+            onChange(val);
+            return;
+        }
+        // Ignore any other case
+    };
+    return (React.createElement("div", { style: {
+            position: 'relative',
+            display: 'inline-flex',
+            alignItems: 'center',
+            width: currentWidth,
+            transition: 'width 0.15s ease-out',
+            ...style,
+        } },
+        React.createElement("input", { type: "text", "data-fkey": dataFkey, value: rawStr, placeholder: placeholder, disabled: disabled, onChange: handleChange, onBlur: handleBlur, onKeyDown: handleKeyDown, style: {
+                width: '100%',
+                boxSizing: 'border-box',
+                paddingRight: showStepArrows ? '20px' : undefined,
+            } }),
+        showStepArrows && (React.createElement("div", { style: {
+                position: 'absolute',
+                right: 1,
+                top: 1,
+                bottom: 1,
+                width: '18px',
+                display: 'flex',
+                flexDirection: 'column',
+                borderLeft: '1px solid #ccc',
+                backgroundColor: '#f8f8f8',
+                userSelect: 'none',
+            } },
+            React.createElement("button", { type: "button", tabIndex: -1, onClick: () => handleStep(1), style: {
+                    flex: 1,
+                    padding: 0,
+                    margin: 0,
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    fontSize: '7px',
+                    lineHeight: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                } }, "\u25B2"),
+            React.createElement("button", { type: "button", tabIndex: -1, onClick: () => handleStep(-1), style: {
+                    flex: 1,
+                    padding: 0,
+                    margin: 0,
+                    border: 'none',
+                    borderTop: '1px solid #ddd',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    fontSize: '7px',
+                    lineHeight: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                } }, "\u25BC")))));
+}
 /* Monaco/textarea editor created ONCE; value flows in via initial value, edits
    flow out through onChange (which mutates properties + bumps the form). When the
    value is reassigned PROGRAMMATICALLY (e.g. WS "Generate Envelope" rewrites the
@@ -210,7 +339,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
             break;
         }
         case 'number':
-            control = React.createElement("input", { type: "number", "data-fkey": f.key, value: value ?? '', placeholder: f.placeholder, style: inputStyle, disabled: disabled, onChange: (e) => set(f.numeric ? (parseInt(e.target.value, 10) || 0) : e.target.value) });
+            control = (React.createElement(NumericTemplatableInput, { value: value, dataFkey: f.key, placeholder: f.placeholder, width: f.width || DEFAULT_WIDTHS.number, textWidth: f.textWidth || DEFAULT_WIDTHS.text, disabled: disabled, templatable: f.templatable, numeric: f.numeric, step: f.step, min: f.min, max: f.max, onChange: (v) => set(v) }));
             break;
         case 'select':
             control = (React.createElement("select", { value: value ?? '', "data-fkey": f.key, style: inputStyle, disabled: disabled, onChange: (e) => set(f.numeric ? parseInt(e.target.value, 10) : e.target.value) }, (typeof f.options === 'function' ? f.options(properties) : f.options || []).map((opt, i) => {
