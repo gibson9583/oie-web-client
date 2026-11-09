@@ -61,7 +61,7 @@ const wsListener = {
             <ConnectorForm properties={properties} onChange={onChange} fields={[
                 { section: 'Listener Settings' },
                 listenerAddressField('listenerConnectorProperties.host', 'Local Address'),
-                { key: 'listenerConnectorProperties.port', label: 'Local Port', type: 'number', width: '90px', refresh: true, append: () => portsInUseButton() },
+                { key: 'listenerConnectorProperties.port', label: 'Local Port', type: 'number', templatable: true, width: '90px', refresh: true, append: () => portsInUseButton() },
                 { section: 'Web Service Listener Settings' },
                 {
                     // Swing "Web Service:" Default/Custom selector — no backing property in
@@ -452,7 +452,7 @@ const wsSender = {
                         return h('div', { class: 'flex gap-1.5' }, combo, testBtn);
                     }
                 },
-                { key: 'socketTimeout', label: 'Socket Timeout (ms)', type: 'text', width: '200px', tooltip: '0 = no timeout' },
+                { key: 'socketTimeout', label: 'Socket Timeout (ms)', type: 'number', templatable: true, width: '200px', tooltip: '0 = no timeout' },
                 {
                     key: 'useAuthentication', label: 'Authentication', type: 'radio', options: YES_NO, refresh: true,
                     onSet: (p: any, v: any) => { if (!v) { p.username = ''; p.password = ''; } }

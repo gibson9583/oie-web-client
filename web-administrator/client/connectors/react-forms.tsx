@@ -73,6 +73,206 @@ const DEFAULT_WIDTHS: Record<string, string> = {
 
 let cformUid = 0;
 
+interface NumericTemplatableInputProps {
+    value: any;
+    disabled?: boolean;
+    placeholder?: string;
+    style?: React.CSSProperties;
+    dataFkey?: string;
+    templatable?: boolean;
+    numeric?: boolean;
+    step?: number;
+    min?: number;
+    max?: number;
+    width?: string;
+    textWidth?: string;
+    onChange: (value: string | number) => void;
+}
+
+function NumericTemplatableInput({
+    value,
+    disabled,
+    placeholder,
+    style,
+    dataFkey,
+    templatable = false,
+    numeric = false,
+    step = 1,
+    min,
+    max,
+    width = DEFAULT_WIDTHS.number,
+    textWidth = DEFAULT_WIDTHS.text,
+    onChange,
+}: NumericTemplatableInputProps) {
+    // Text being typed; the model only receives values that can be saved
+    const [draft, setDraft] = useState<string | null>(null);
+    const rawStr = draft ?? (value === null || value === undefined ? '' : String(value));
+    const isEmpty = rawStr.trim() === '';
+    const isNumeric = !isEmpty && Number.isFinite(Number(rawStr));
+    const containsTemplates = rawStr.includes("$")
+
+    // Use textWidth if it contains a template
+    const currentWidth = containsTemplates ? textWidth : width;
+    
+    // Only show arrows if not disabled and the field currently holds a numeric value
+    const showStepArrows = !disabled && isNumeric;
+
+    function getDecimalPlaces(val: string | number): number {
+        const str = String(val);
+        if (str.includes('e-')) {
+            const [, exp] = str.split('e-');
+            return parseInt(exp, 10);
+        }
+        const dot = str.indexOf('.');
+        return dot === -1 ? 0 : str.length - dot - 1;
+    };
+
+    const handleStep = (direction: 1 | -1) => {
+        // Numeric-only fields step from the integer that is saved
+        const current = numeric ? (parseInt(rawStr, 10) || 0) : Number(rawStr);
+        let next = current + direction * step;
+
+        if (min !== undefined && next < min) next = min;
+        if (max !== undefined && next > max) next = max;
+
+        const precision = Math.max(getDecimalPlaces(rawStr), getDecimalPlaces(step));
+        let formatted = next.toFixed(precision);
+
+        if (Number(formatted) === 0) {
+            formatted = (0).toFixed(precision);
+        }
+
+        setDraft(null);
+        onChange(numeric ? Number(formatted) : formatted);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (showStepArrows) {
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                handleStep(1);
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                handleStep(-1);
+            }
+        }
+        
+    };
+
+    const handleBlur = () => {
+        // Show the saved value
+        setDraft(null);
+    };
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        // Allow any text if templatable is enabled, otherwise only numeric input
+        // (supports negative numbers and decimals)
+        if (!templatable && !/^-?\d*\.?\d*$/.test(val)) return;
+
+        setDraft(val);
+        if (templatable) {
+            onChange(val);
+        } else if (numeric) {
+            // Numeric-only fields hold integers and fall back to 0
+            onChange(parseInt(val, 10) || 0);
+        } else {
+            // Incomplete numbers like "-" or "." are saved as blank
+            onChange(val.trim() !== '' && Number.isFinite(Number(val)) ? val : '');
+        }
+    };
+
+    return (
+        <div
+            style={{
+                position: 'relative',
+                display: 'inline-flex',
+                alignItems: 'center',
+                width: currentWidth,
+                transition: 'width 0.15s ease-out',
+                ...style,
+            }}
+        >
+            <input
+                type="text"
+                data-fkey={dataFkey}
+                value={rawStr}
+                placeholder={placeholder}
+                disabled={disabled}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                onKeyDown={handleKeyDown}
+                style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    paddingRight: showStepArrows ? '20px' : undefined,
+                }}
+            />
+
+            {showStepArrows && (
+                <div
+                    style={{
+                        position: 'absolute',
+                        right: 1,
+                        top: 1,
+                        bottom: 1,
+                        width: '18px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        borderLeft: '1px solid var(--line)',
+                        backgroundColor: 'var(--bg3)',
+                        userSelect: 'none',
+                    }}
+                >
+                    <button
+                        type="button"
+                        tabIndex={-1}
+                        onClick={() => handleStep(1)}
+                        style={{
+                            flex: 1,
+                            padding: 0,
+                            margin: 0,
+                            border: 'none',
+                            background: 'transparent',
+                            color: 'var(--text)',
+                            cursor: 'pointer',
+                            fontSize: '7px',
+                            lineHeight: 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}
+                    >
+                        ▲
+                    </button>
+                    <button
+                        type="button"
+                        tabIndex={-1}
+                        onClick={() => handleStep(-1)}
+                        style={{
+                            flex: 1,
+                            padding: 0,
+                            margin: 0,
+                            border: 'none',
+                            borderTop: '1px solid var(--line)',
+                            background: 'transparent',
+                            color: 'var(--text)',
+                            cursor: 'pointer',
+                            fontSize: '7px',
+                            lineHeight: 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}
+                    >
+                        ▼
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
 /* Monaco/textarea editor created ONCE; value flows in via initial value, edits
    flow out through onChange (which mutates properties + bumps the form). When the
    value is reassigned PROGRAMMATICALLY (e.g. WS "Generate Envelope" rewrites the
@@ -260,8 +460,22 @@ function FieldRow({ properties, field, onChange, repaint }: { properties: any; f
             break;
         }
         case 'number':
-            control = <input type="number" data-fkey={f.key} value={value ?? ''} placeholder={f.placeholder} style={inputStyle} disabled={disabled}
-                onChange={(e) => set(f.numeric ? (parseInt(e.target.value, 10) || 0) : e.target.value)} />;
+            control = (
+                <NumericTemplatableInput
+                    value={value}
+                    dataFkey={f.key}
+                    placeholder={f.placeholder}
+                    width={f.width || DEFAULT_WIDTHS.number}
+                    textWidth={f.textWidth || DEFAULT_WIDTHS.text}
+                    disabled={disabled}
+                    templatable={f.templatable}
+                    numeric={f.numeric}
+                    step={f.step}
+                    min={f.min}
+                    max={f.max}
+                    onChange={(v) => set(v)}
+                />
+            );
             break;
         case 'select':
             control = (
