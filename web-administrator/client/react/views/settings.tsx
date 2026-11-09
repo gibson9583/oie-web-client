@@ -1211,6 +1211,15 @@ function detectConfigLanguage(value: string): string {
 
 function openConfigurationValueModal(row: any, onSave: (val: string) => void) {
     let draft = String(row.value ?? '');
+    let isDirty = false;
+    const baseTitle = row.key ? `Value — ${row.key}` : 'Value';
+    const titleEl = h('span', baseTitle);
+    const markDirty = () => {
+        if (!isDirty) {
+            isDirty = true;
+            titleEl.textContent = `${baseTitle} *`;
+        }
+    };
     let currentLang = detectConfigLanguage(draft);
     let detectTimer: any = null;
 
@@ -1234,17 +1243,29 @@ function openConfigurationValueModal(row: any, onSave: (val: string) => void) {
         minHeight: '800px',
         onChange: (v: any) => {
             draft = String(v ?? '');
+            markDirty();
             if (detectTimer) clearTimeout(detectTimer);
             detectTimer = setTimeout(() => {
                 syncEditorLanguage(draft);
             }, 250);
         }
     });
-    modal({
-        title: row.key ? `Value — ${row.key}` : 'Value',
+    let blockOutsideClick: ((e: MouseEvent | PointerEvent) => void) | null = null;
+    let blockEscape: ((e: KeyboardEvent) => void) | null = null;
+    let overlay: HTMLElement | null = null;
+    const dialog = modal({
+        title: titleEl,
         size: 'xwide',
         body: editor.el,
         onClose: () => {
+            if (overlay && blockOutsideClick) {
+                overlay.removeEventListener('pointerdown', blockOutsideClick, true);
+                overlay.removeEventListener('mousedown', blockOutsideClick, true);
+                overlay.removeEventListener('click', blockOutsideClick, true);
+            }
+            if (blockEscape) {
+                window.removeEventListener('keydown', blockEscape, true);
+            }
             if (detectTimer) clearTimeout(detectTimer);
             try { editor.dispose && editor.dispose(); } catch { /* ignore */ }
         },
@@ -1257,6 +1278,7 @@ function openConfigurationValueModal(row: any, onSave: (val: string) => void) {
                         if (file && file.content !== undefined) {
                             draft = String(file.content);
                             editor.setValue(draft);
+                            markDirty();
                             if (detectTimer) clearTimeout(detectTimer);
                             syncEditorLanguage(draft);
                         }
@@ -1274,6 +1296,27 @@ function openConfigurationValueModal(row: any, onSave: (val: string) => void) {
             }
         ]
     });
+    overlay = (dialog.el?.closest('.modal-overlay') || dialog.el?.parentElement) as HTMLElement | null;
+    if (overlay) {
+        blockOutsideClick = (e: MouseEvent | PointerEvent) => {
+            if (e.target === overlay && isDirty) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+            }
+        };
+        overlay.addEventListener('pointerdown', blockOutsideClick, true);
+        overlay.addEventListener('mousedown', blockOutsideClick, true);
+        overlay.addEventListener('click', blockOutsideClick, true);
+    }
+    blockEscape = (e: KeyboardEvent) => {
+        if (e.key === 'Escape' && isDirty) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+        }
+    };
+    window.addEventListener('keydown', blockEscape, true);
     setTimeout(() => { try { editor.focus && editor.focus(); } catch { /* ignore */ } }, 30);
 }
 
