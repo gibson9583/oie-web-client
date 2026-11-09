@@ -1286,6 +1286,8 @@ function ConfigurationMapTab({ ctx }: any) {
     const [rows, setRows] = useState<any>(null);          // null = loading
     const rowsNowRef = useRef(rows);
     rowsNowRef.current = rows;
+    const [loading, setLoading] = useState(false);
+    const loadGenRef = useRef(0);
     const [filterText, setFilterText] = useState('');
     const [showValues, setShowValues] = useState(false);
     const [loadError, setLoadError] = useState<any>(null);
@@ -1299,10 +1301,12 @@ function ConfigurationMapTab({ ctx }: any) {
 
     async function load() {
         if (!currentSession()) return;
+        const gen = ++loadGenRef.current;
+        setLoading(true);
         setLoadError(null);
         try {
             const raw = await api.server.configurationMap();
-            if (!currentSession()) return;
+            if (!currentSession() || gen !== loadGenRef.current) return;
             const next: any[] = [];
             for (const entry of api.asList(raw && raw.entry)) {
                 if (!entry || typeof entry !== 'object') continue;
@@ -1324,16 +1328,18 @@ function ConfigurationMapTab({ ctx }: any) {
             setRows(next);
             bumpStructure();
         } catch (e: any) {
-            if (!currentSession()) return;
+            if (!currentSession() || gen !== loadGenRef.current) return;
             toast(`Failed to load configuration map: ${e.message}`, 'error');
             setLoadError(String(e.message || e));
+        } finally {
+            if (gen === loadGenRef.current) setLoading(false);
         }
     }
 
     function save() { return withEditorSave(saveUnlocked); }
 
     async function saveUnlocked() {
-        if (!currentSession()) return false;
+        if (!currentSession() || loading) return false;
         try {
             /* Round-trip each entry's property-class key and any extra fields
                the engine put on the ConfigurationProperty. */
@@ -1361,7 +1367,7 @@ function ConfigurationMapTab({ ctx }: any) {
     function importMap() { return withEditorSave(importMapUnlocked, 'Importing configuration map…'); }
 
     async function importMapUnlocked() {
-        if (!currentSession()) return;
+        if (!currentSession() || loading) return;
         if (!rowsNowRef.current) { toast('The configuration map has not loaded yet', 'warn'); return; }
         let file;
         try { file = await pickFile('.properties'); }
@@ -1459,12 +1465,13 @@ function ConfigurationMapTab({ ctx }: any) {
     if (!rows) return <div className="loading-block"><div className="spinner" />Loading…</div>;
 
     const shown = rows.filter((r: any) => visibleIds.has(r._id)).length;
-    const patchRow = (id: any, patch: any) => setRows((prev: any) => prev.map((r: any) => (r._id === id ? { ...r, ...patch } : r)));
-    const insertAt = (i: any) => { setRows((prev: any) => { const next = prev.slice(); next.splice(i, 0, newCfgRow()); return next; }); bumpStructure(); ctx.markDirty(); };
-    const deleteAt = (i: any) => { setRows((prev: any) => { const next = prev.slice(); next.splice(i, 1); return next; }); bumpStructure(); ctx.markDirty(); };
-    const addRow = () => { setRows((prev: any) => [...prev, newCfgRow()]); bumpStructure(); ctx.markDirty(); };
+    const patchRow = (id: any, patch: any) => { if (loading) return; setRows((prev: any) => prev.map((r: any) => (r._id === id ? { ...r, ...patch } : r))); };
+    const insertAt = (i: any) => { if (loading) return; setRows((prev: any) => { const next = prev.slice(); next.splice(i, 0, newCfgRow()); return next; }); bumpStructure(); ctx.markDirty(); };
+    const deleteAt = (i: any) => { if (loading) return; setRows((prev: any) => { const next = prev.slice(); next.splice(i, 1); return next; }); bumpStructure(); ctx.markDirty(); };
+    const addRow = () => { if (loading) return; setRows((prev: any) => [...prev, newCfgRow()]); bumpStructure(); ctx.markDirty(); };
 
     const editValue = (row: any) => {
+        if (loading) return;
         openConfigurationValueModal(row, (newValue: string) => {
             if (newValue !== row.value) {
                 patchRow(row._id, { value: newValue });
@@ -1494,14 +1501,14 @@ function ConfigurationMapTab({ ctx }: any) {
                     {/* Add Row rides the tab's doSave permission — adding a row is
                         meaningless without save rights, so no separate identifier. */}
                     {platform.checkTask('settings_Configuration Map', 'doSave') && (
-                        <button type="button" className="btn" onClick={addRow}>
+                        <button type="button" className="btn" disabled={loading} onClick={addRow}>
                             <span className="inline-flex" ref={(el: any) => { if (el && !el.firstChild) el.appendChild(icon('plus')); }} />Add Row
                         </button>
                     )}
                 </div>
             </div>
             <div className="panel-body flush">
-                <div className="dt-wrap">
+                <div className={`dt-wrap${loading ? ' opacity-50 pointer-events-none select-none' : ''}`} inert={loading || undefined}>
                     <table className="dt">
                         <thead><tr><th>Key</th><th>Value</th><th>Comment</th><th className="w-10"></th></tr></thead>
                         <tbody>
