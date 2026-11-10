@@ -370,3 +370,69 @@ test('the Stats toggle slides the KPI strip shut, leaving no gap above the table
     await expect.poll(() => wrap.evaluate((el) => getComputedStyle(el).overflow), { timeout: 3000 })
         .toBe('visible');
 });
+
+// Swing highlights Queued and Errored above 0 on group, channel and connector rows,
+// and an out-of-sync Rev Δ on channel rows.
+const stats = (error: number) => ({ entry: [{ 'com.mirth.connect.donkey.model.message.Status': 'ERROR', long: error }] });
+const STATUSES_WITH_ERRORS = {
+    list: {
+        dashboardStatus: [
+            {
+                channelId: 'c-busy', name: 'Busy Channel', state: 'STARTED', statistics: stats(3), queued: 2, deployedRevisionDelta: 1,
+                childStatuses: {
+                    dashboardStatus: [
+                        { channelId: 'c-busy', metaDataId: 0, name: 'Source', state: 'STARTED', statistics: stats(0), queued: 0 },
+                        { channelId: 'c-busy', metaDataId: 1, name: 'Destination 1', state: 'STARTED', statistics: stats(3), queued: 2 },
+                    ],
+                },
+            },
+            { channelId: 'c-quiet', name: 'Quiet Channel', state: 'STARTED', statistics: stats(0), queued: 0 },
+        ],
+    },
+};
+
+test('highlights Queued, Errored and Rev Δ cells with Swing\'s solid fills on every row kind', async ({ page }) => {
+    await mockEngine(page, {
+        'GET /channels/statuses': STATUSES_WITH_ERRORS,
+        'GET /channelgroups': { list: { channelGroup: { id: 'g-err', name: 'Error group', channels: { channel: { id: 'c-busy' } } } } },
+    });
+    await page.goto('/dashboard');
+    const row = (text: string) => page.getByRole('row').filter({ has: page.getByRole('gridcell', { name: text, exact: true }) });
+    const QUEUED = '.cell-flag:not(.cell-flag-err, .cell-flag-rev)';
+    await expect(row('Busy Channel')).toBeVisible();
+
+    for (const text of ['[Error group]', 'Busy Channel']) {
+        await expect(row(text).locator('.cell-flag-err')).toHaveText('3');
+        await expect(row(text).locator(QUEUED)).toHaveText('2');
+    }
+    await expect(row('Busy Channel').locator('.cell-flag-rev')).toHaveText('1');
+    await expect(row('Quiet Channel').locator('.cell-flag')).toHaveCount(0);
+
+    await row('Busy Channel').locator('.twisty').click();
+    await expect(row('Destination 1').locator('.cell-flag-err')).toHaveText('3');
+    await expect(row('Destination 1').locator(QUEUED)).toHaveText('2');
+    await expect(row('Source').locator('.cell-flag')).toHaveCount(0);
+
+    // The whole cell takes the fill, over the group-row and hover tints: Swing's solid
+    // colors in light, a tint of the same hue (number in that hue) in dark.
+    const cell = (text: string, flag: string) => row(text).locator(`td:has(> ${flag})`)
+        .evaluate((el) => { const cs = getComputedStyle(el); return [cs.backgroundColor, cs.color]; });
+    const INK = 'rgb(31, 44, 56)';
+    const THEMES = {
+        dark: {
+            err: ['rgba(255, 95, 95, 0.2)', 'rgb(255, 175, 175)'],
+            queued: ['rgba(240, 230, 140, 0.16)', 'rgb(240, 230, 140)'],
+            rev: ['rgba(255, 204, 0, 0.2)', 'rgb(255, 204, 0)'],
+        },
+        light: { err: ['rgb(255, 175, 175)', INK], queued: ['rgb(240, 230, 140)', INK], rev: ['rgb(255, 204, 0)', INK] },
+    };
+    for (const [theme, want] of Object.entries(THEMES)) {
+        await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
+        for (const text of ['[Error group]', 'Busy Channel', 'Destination 1']) {
+            await row(text).hover();
+            expect(await cell(text, '.cell-flag-err')).toEqual(want.err);
+            expect(await cell(text, QUEUED)).toEqual(want.queued);
+        }
+        expect(await cell('Busy Channel', '.cell-flag-rev')).toEqual(want.rev);
+    }
+});
