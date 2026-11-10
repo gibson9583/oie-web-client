@@ -635,24 +635,23 @@ function DashboardView({ onToggleView }: any) {
 
     /* ---- columns ---- */
 
-    /* Numeric stat cell content (JSX): colored on warn/err, plain otherwise. The
+    /* Numeric stat cell content (JSX): a filled cell flag on warn/err above 0 (Swing
+       highlights Queued and Errored on every row kind), plain otherwise. The
        owning column sets align:'right' + mono so the td matches the legacy
        `td.num` (right-aligned, monospace tabular). */
-    const statCellContent = (value: any, warnLevel: any) => {
+    const statCellContent = (value: any, warnLevel: any, dim?: boolean) => {
         const text = fmtNumber(value);
-        if (value && warnLevel === 'err') return <span className="text-err">{text}</span>;
-        if (value && warnLevel === 'warn') return <span className="text-warn">{text}</span>;
-        return text;
+        if (value > 0 && warnLevel === 'err') return <span className="cell-flag cell-flag-err">{text}</span>;
+        if (value > 0 && warnLevel === 'warn') return <span className="cell-flag">{text}</span>;
+        return dim ? <span className="text-text-dim">{text}</span> : text;
     };
 
     const statColumn = (key: any, label: any, statKey: any, warnLevel?: any) => ({
         key, label, align: 'right', mono: true,
         sortValue: (st: any) => (statsOf(st, lifetime) as any)[statKey] || 0,
         renderChannel: (st: any, stats: any) => statCellContent(stats[statKey], warnLevel),
-        renderGroupAggregate: (totals: any) => statKey === 'ERROR'
-            ? (totals.ERROR ? <span className="text-err">{fmtNumber(totals.ERROR)}</span> : '0')
-            : fmtNumber(totals[statKey]),
-        renderConnector: (child: any, stats: any) => <span className="text-text-dim">{fmtNumber(stats[statKey])}</span>
+        renderGroupAggregate: (totals: any) => statCellContent(totals[statKey], warnLevel),
+        renderConnector: (child: any, stats: any) => statCellContent(stats[statKey], warnLevel, true)
     });
 
     /* Column-definition model: each column knows how to render its CELL CONTENT
@@ -709,7 +708,7 @@ function DashboardView({ onToggleView }: any) {
                 const title = d > 0 && ct ? 'Channel and code templates changed since last deployment'
                     : d > 0 ? 'Channel changed since last deployment'
                         : ct ? 'Code templates changed since last deployment' : undefined;
-                return (d > 0 || ct) ? <span className="cell-flag" title={title}>{String(d)}</span> : '0';
+                return (d > 0 || ct) ? <span className="cell-flag cell-flag-rev" title={title}>{String(d)}</span> : '0';
             },
             renderGroupAggregate: () => '--',
             renderConnector: () => ''

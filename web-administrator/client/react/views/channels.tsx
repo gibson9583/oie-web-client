@@ -657,7 +657,7 @@ export function ChannelsView() {
         const revTitle = delta > 0 && ctChanged ? 'Channel and code templates changed since last deployment'
             : delta > 0 ? 'Channel changed since last deployment'
                 : 'Code templates changed since last deployment';
-        return <span className="cell-flag" title={revTitle}>{String(delta)}</span>;
+        return <span className="cell-flag cell-flag-rev" title={revTitle}>{String(delta)}</span>;
     }
 
     /* Cell CONTENT for each column, for both group rows and channel rows. The

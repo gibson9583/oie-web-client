@@ -128,6 +128,14 @@
        --shadow, which stays the heavy drop for floating layers (menus/toasts). */
     --elev: 0 1px 2px rgba(0, 0, 0, 0.28), 0 6px 18px rgba(0, 0, 0, 0.34);
     --grid-dot: rgba(133, 158, 178, 0.05);
+    /* Dashboard cell flags: Swing's khaki, amber (Rev Δ) and pink (errored) as a
+       soft tint with the number in the same hue. Light theme uses Swing's solid fills. */
+    --flag-bg: rgba(240, 230, 140, 0.16);
+    --flag-fg: #f0e68c;
+    --flag-rev-bg: rgba(255, 204, 0, 0.2);
+    --flag-rev-fg: #ffcc00;
+    --flag-err-bg: rgba(255, 95, 95, 0.2);
+    --flag-err-fg: #ffafaf;
 }
 
 /* A wide spread on purpose. At 2/5/9 the compact step was a single row's worth of
@@ -190,6 +198,12 @@
     --shadow: 0 8px 28px rgba(29, 41, 53, 0.18);
     --elev: 0 1px 2px rgba(29, 41, 53, 0.06), 0 6px 18px rgba(29, 41, 53, 0.10);
     --grid-dot: rgba(29, 41, 53, 0.045);
+    --flag-bg: #f0e68c;
+    --flag-fg: #1f2c38;
+    --flag-rev-bg: #ffcc00;
+    --flag-rev-fg: #1f2c38;
+    --flag-err-bg: #ffafaf;
+    --flag-err-fg: #1f2c38;
 }
 
 /* Everything below lives in Tailwind's `components` layer (declared above), one
@@ -2274,11 +2288,10 @@ input.grid-name::placeholder { color: var(--text-faint); }
 /* The bespoke text-color helpers (.muted/.faint/.accent-text/.err-text/.warn-text)
    were retired in favour of Tailwind utilities (text-text-dim / text-text-faint /
    text-accent / text-err / text-warn). */
-/* Filled amber cell flag — draws the eye to a "needs attention" cell (out-of-sync
-   Rev Δ, the one-time just-deployed cue) far more than colored text alone. */
-/* display:block + negative margins cancel the td's 6px 12px padding so the
-   highlight fills the whole cell (not just the text), matching Swing. */
-.cell-flag { display: block; margin: -5px -11px; padding: 5px 11px; background: #f0e68c; color: #1f2c38; font-weight: 600; }
+/* Cell flag — marks a "needs attention" cell (out-of-sync Rev Δ, the one-time
+   just-deployed cue, queued and errored messages). The fill is on the cell that
+   holds it (see the .dt row treatment below). */
+.cell-flag { font-weight: 600; }
 /* Retired in favour of Tailwind utilities: .flex/.grow (-> flex / flex-1),
    .right (-> ml-auto), .mt/.mb (-> mt-[14px]/mb-[14px]), .nowrap (-> whitespace-nowrap),
    .ellipsis (-> truncate). `.flex-wrap` is kept — it matches Tailwind's utility of the
@@ -3555,6 +3568,12 @@ input.cform-invalid, select.cform-invalid, textarea.cform-invalid,
 .dt tbody td { border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
 .dt tbody tr:hover td { background: color-mix(in srgb, var(--text) 5%, transparent); }
 .dt tbody tr.group-row td { background: color-mix(in srgb, var(--text) 3%, transparent); font-weight: 600; }
+/* Swing's cell highlighters: the whole cell takes the fill, over the hover and
+   group-row tints. Khaki by default, amber for an out-of-sync Rev Δ, pink for
+   errored messages (colors are the --flag-* theme tokens). */
+.dt tbody tr td:has(> .cell-flag) { background: var(--flag-bg); color: var(--flag-fg); }
+.dt tbody tr td:has(> .cell-flag-rev) { background: var(--flag-rev-bg); color: var(--flag-rev-fg); }
+.dt tbody tr td:has(> .cell-flag-err) { background: var(--flag-err-bg); color: var(--flag-err-fg); }
 
 /* Filter bar → shadcn card + inputs + buttons + radios */
 .dash-shadcn .dash-filterbar { padding: 0 14px 11px; }
