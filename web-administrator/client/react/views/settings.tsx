@@ -1207,6 +1207,8 @@ function ConfigurationMapTab({ ctx }: any) {
     const [rows, setRows] = useState<any>(null);          // null = loading
     const rowsNowRef = useRef(rows);
     rowsNowRef.current = rows;
+    const [loading, setLoading] = useState(false);
+    const loadGenRef = useRef(0);
     const [filterText, setFilterText] = useState('');
     const [showValues, setShowValues] = useState(false);
     const [loadError, setLoadError] = useState<any>(null);
@@ -1221,6 +1223,8 @@ function ConfigurationMapTab({ ctx }: any) {
 
     async function load() {
         if (!currentSession()) return;
+        const gen = ++loadGenRef.current;
+        setLoading(true);
         setLoadError(null);
         try {
             const [raw, showValuesPref] = await Promise.all([
@@ -1229,7 +1233,7 @@ function ConfigurationMapTab({ ctx }: any) {
                     ? api.users.getPreference(userId, 'showConfigMapValues').catch(() => null)
                     : Promise.resolve(null)
             ]);
-            if (!currentSession()) return;
+            if (!currentSession() || gen !== loadGenRef.current) return;
             if (showValuesPref !== null && showValuesPref !== undefined) {
                 setShowValues(showValuesPref === 'true' || showValuesPref === true);
             }
@@ -1254,9 +1258,11 @@ function ConfigurationMapTab({ ctx }: any) {
             setRows(next);
             bumpStructure();
         } catch (e: any) {
-            if (!currentSession()) return;
+            if (!currentSession() || gen !== loadGenRef.current) return;
             toast(`Failed to load configuration map: ${e.message}`, 'error');
             setLoadError(String(e.message || e));
+        } finally {
+            if (gen === loadGenRef.current) setLoading(false);
         }
     }
 
@@ -1419,11 +1425,12 @@ function ConfigurationMapTab({ ctx }: any) {
                             className="flex-1 min-w-0 bg-transparent border-0 outline-none text-text"
                             value={filterText} onChange={(e: any) => setFilterText(e.target.value)} />
                     </div>
-                    <label className="check">
+                    <label className={`check ${loading ? 'cursor-not-allowed text-text-faint' : ''}`}>
                         <input
                             type="checkbox"
                             checked={showValues}
                             onChange={(e: any) => toggleShowValues(e.target.checked)}
+                            disabled={loading}
                         />
                         Show values
                     </label>
