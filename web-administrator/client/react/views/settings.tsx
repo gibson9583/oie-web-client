@@ -1255,7 +1255,7 @@ function openConfigurationValueModal(
     const editor = createCodeEditor({
         value: draft,
         language: currentLang,
-        minHeight: '800px',
+        minHeight: '60vh',
         onChange: (v: any) => {
             draft = String(v ?? '');
             markDirty();
