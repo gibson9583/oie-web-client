@@ -1209,15 +1209,30 @@ function detectConfigLanguage(value: string): string {
     return 'text';
 }
 
-function openConfigurationValueModal(row: any, onSave: (val: string) => void) {
+interface ConfigurationValueModalHandle {
+    rowId: any;
+    isDirty: () => boolean;
+    getDraft: () => string;
+    markSaved: () => void;
+    close: () => void;
+}
+
+function openConfigurationValueModal(
+    row: any,
+    onSave: (val: string) => void,
+    onCancel?: () => void,
+    onDirty?: () => void
+): ConfigurationValueModalHandle {
     let draft = String(row.value ?? '');
     let isDirty = false;
+    let saved = false;
     const baseTitle = row.key ? `Value — ${row.key}` : 'Value';
     const titleEl = h('span', baseTitle);
     const markDirty = () => {
         if (!isDirty) {
             isDirty = true;
             titleEl.textContent = `${baseTitle} *`;
+            onDirty?.();
         }
     };
     let currentLang = detectConfigLanguage(draft);
@@ -1268,6 +1283,7 @@ function openConfigurationValueModal(row: any, onSave: (val: string) => void) {
             }
             if (detectTimer) clearTimeout(detectTimer);
             try { editor.dispose && editor.dispose(); } catch { /* ignore */ }
+            if (!saved && onCancel) onCancel();
         },
         buttons: [
             {
@@ -1292,7 +1308,10 @@ function openConfigurationValueModal(row: any, onSave: (val: string) => void) {
             {
                 label: 'OK',
                 primary: true,
-                onClick: () => { onSave(draft); }
+                onClick: () => {
+                    saved = true;
+                    onSave(draft);
+                }
             }
         ]
     });
@@ -1318,6 +1337,13 @@ function openConfigurationValueModal(row: any, onSave: (val: string) => void) {
     };
     window.addEventListener('keydown', blockEscape, true);
     setTimeout(() => { try { editor.focus && editor.focus(); } catch { /* ignore */ } }, 30);
+    return {
+        rowId: row._id,
+        isDirty: () => isDirty,
+        getDraft: () => draft,
+        markSaved: () => { saved = true; },
+        close: () => dialog.close()
+    };
 }
 
 function ConfigurationMapTab({ ctx }: any) {
@@ -1341,6 +1367,7 @@ function ConfigurationMapTab({ ctx }: any) {
     // legacy grid's re-filter timing.
     const [structureVersion, setStructureVersion] = useState(0);
     const bumpStructure = () => setStructureVersion(v => v + 1);
+    const activeModalRef = useRef<ConfigurationValueModalHandle | null>(null);
 
     async function load() {
         if (!currentSession()) return;
@@ -1384,9 +1411,13 @@ function ConfigurationMapTab({ ctx }: any) {
     async function saveUnlocked() {
         if (!currentSession() || loading) return false;
         try {
+            const openModal = activeModalRef.current;
+            const baseRows = rowsNowRef.current || [];
             /* Round-trip each entry's property-class key and any extra fields
                the engine put on the ConfigurationProperty. */
-            const current = rowsNowRef.current || [];
+            const current = (openModal && openModal.isDirty())
+                ? baseRows.map((r: any) => (r._id === openModal.rowId ? { ...r, value: openModal.getDraft() } : r))
+                : baseRows;
             if (current.some((row: any) => !row.key.trim() && (row.value.trim() || row.comment.trim()))) {
                 toast('Blank keys are not allowed.', 'warn');
                 return false;
@@ -1397,6 +1428,15 @@ function ConfigurationMapTab({ ctx }: any) {
             }));
             await api.server.setConfigurationMap({ entry });
             if (!currentSession()) return false;
+            if (openModal && activeModalRef.current === openModal) {
+                if (openModal.isDirty()) {
+                    rowsNowRef.current = current;
+                    setRows(current);
+                }
+                activeModalRef.current = null;
+                openModal.markSaved();
+                openModal.close();
+            }
             ctx.markClean();
             toast('Configuration map saved');
             return true;
@@ -1485,6 +1525,12 @@ function ConfigurationMapTab({ ctx }: any) {
             taskButton('Export Map', 'export', () => exportRef.current(), { task: 'doExportMap', group: 'settings_Configuration Map' })
         ]);
         loadRef.current();
+        return () => {
+            //Close any opened modal when disposing the tab
+            if (activeModalRef.current) {
+                activeModalRef.current.close();
+            }
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -1508,19 +1554,45 @@ function ConfigurationMapTab({ ctx }: any) {
     if (!rows) return <div className="loading-block"><div className="spinner" />Loading…</div>;
 
     const shown = rows.filter((r: any) => visibleIds.has(r._id)).length;
-    const patchRow = (id: any, patch: any) => { if (loading) return; setRows((prev: any) => prev.map((r: any) => (r._id === id ? { ...r, ...patch } : r))); };
+    const patchRow = (id: any, patch: any) => {
+        if (loading) return;
+        setRows((prev: any) => {
+            const next = prev.map((r: any) => (r._id === id ? { ...r, ...patch } : r));
+            rowsNowRef.current = next;
+            return next;
+        });
+    };
     const insertAt = (i: any) => { if (loading) return; setRows((prev: any) => { const next = prev.slice(); next.splice(i, 0, newCfgRow()); return next; }); bumpStructure(); ctx.markDirty(); };
     const deleteAt = (i: any) => { if (loading) return; setRows((prev: any) => { const next = prev.slice(); next.splice(i, 1); return next; }); bumpStructure(); ctx.markDirty(); };
     const addRow = () => { if (loading) return; setRows((prev: any) => [...prev, newCfgRow()]); bumpStructure(); ctx.markDirty(); };
 
+    const restoreDirty = (wasDirty: boolean) => {
+        if (wasDirty) ctx.markDirty();
+        else ctx.markClean();
+    };
+
     const editValue = (row: any) => {
-        if (loading) return;
-        openConfigurationValueModal(row, (newValue: string) => {
-            if (newValue !== row.value) {
+        if (loading || activeModalRef.current) return;
+        const wasDirty = Boolean(ctx.isDirty?.());
+        const handle = openConfigurationValueModal(
+            row,
+            (newValue: string) => {
+                if (activeModalRef.current === handle) activeModalRef.current = null;
+                if (!currentSession()) return;
                 patchRow(row._id, { value: newValue });
                 ctx.markDirty();
+            },
+            () => {
+                if (activeModalRef.current === handle) activeModalRef.current = null;
+                if (!currentSession()) return;
+                restoreDirty(wasDirty); //Restore the dirty status previous to the dialog opening
+            },
+            () => { // Fires as soon as the user types or loads a file into the editor
+                if (!currentSession()) return;
+                ctx.markDirty();
             }
-        });
+        );
+        activeModalRef.current = handle;
     };
 
     const valueType = showValues ? 'text' : 'password';
@@ -2221,6 +2293,7 @@ function SettingsContent({ query, defs }: any) {
             setTasks(title: any, items: any) { tasksRef.current = { title, items }; force(); },
             markDirty: setDirty,
             markClean: setClean,
+            isDirty: () => dirtyRef.current,
             setSave(fn: any) { saveRef.current = fn || null; }
         };
         return {
@@ -2235,6 +2308,7 @@ function SettingsContent({ query, defs }: any) {
                         setTasks(title: any, items: any) { if (current()) context.setTasks(title, items); },
                         markDirty() { if (current()) context.markDirty(); },
                         markClean() { if (current()) context.markClean(); },
+                        isDirty() { return current() ? context.isDirty() : false; },
                         setSave(fn: any) { if (current()) context.setSave(fn); }
                     },
                     dispose() { if (current()) activationRef.current = null; }
