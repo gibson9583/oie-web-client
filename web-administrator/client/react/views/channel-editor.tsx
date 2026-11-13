@@ -46,6 +46,7 @@ import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import * as router from '../../core/router.js';
 import { routeUrl } from '../../core/deployment.js';
+import { resolveChannelEditorTab, resolveChannelScriptKey, resolveDestinationId } from '../../core/editor-navigation.js';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { validateScript } from '../../core/serialize.js';
 import { channelResponseVariables, loadCustomResponseVariables } from '../../core/channel-response.js';
@@ -2148,14 +2149,17 @@ function MappingsRail({ onInsert, dragRef, mappings }: any) {
     );
 }
 
-function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef, destTasksRef, onTasksChange, gotoElements }: any) {
+function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef, destTasksRef, onTasksChange, gotoElements, initialMetaDataId }: any) {
     const mountedRef = useRef(true);
     const importingRef = useRef(false);
     useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
     // Selection lives in the ref (execution-time reads); the state twin only
     // drives re-renders.
-    const [, setSelectedIdState] = useState<any>(null);
-    const selectedIdRef = useRef<any>(null);
+    const initialSelectedId = useMemo(() => resolveDestinationId(oie.destinationsOf(channel), initialMetaDataId),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        []);
+    const [, setSelectedIdState] = useState<any>(initialSelectedId);
+    const selectedIdRef = useRef<any>(initialSelectedId);
     const setSelectedId = (id: any) => { selectedIdRef.current = id; setSelectedIdState(id); };
     const tableHostRef = useRef<any>(null);
     const tableRef = useRef<any>(null);
@@ -2386,6 +2390,9 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
         tableRef.current = table;
         host.appendChild(table.el);
         refresh();
+        if (initialMetaDataId != null && String(initialMetaDataId).trim() !== '') {
+            table.el.querySelector('tbody tr.selected')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
         return () => {
             tableRef.current = null;
             host.replaceChildren();
@@ -2393,6 +2400,19 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    const prevInitialMetaDataIdRef = useRef(initialMetaDataId);
+    useEffect(() => {
+        if (prevInitialMetaDataIdRef.current === initialMetaDataId) return;
+        prevInitialMetaDataIdRef.current = initialMetaDataId;
+        if (initialMetaDataId == null || String(initialMetaDataId).trim() === '') return;
+        const nextId = resolveDestinationId(dests(), initialMetaDataId);
+        if (nextId == null || String(nextId) === String(selectedIdRef.current)) return;
+        setSelectedId(nextId);
+        refresh();
+        tableRef.current?.el?.querySelector('tbody tr.selected')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialMetaDataId]);
 
     /* Mapping token insertion (click) — into the last focused field/editor. */
     function insertToken(token: any) {
@@ -2502,12 +2522,36 @@ const CHANNEL_SCRIPTS = [
     { key: 'postprocessingScript', label: 'Postprocessor', hint: 'Runs after every message is processed', context: 'CHANNEL_POSTPROCESSOR' }
 ];
 
-function ScriptsTab({ channel, markDirty }: any) {
-    const [current, setCurrent] = useState(CHANNEL_SCRIPTS[0]);
+function resolveChannelScript(rawScript: any) {
+    const key = resolveChannelScriptKey(rawScript);
+    return CHANNEL_SCRIPTS.find(s => s.key === key) || CHANNEL_SCRIPTS[0];
+}
+
+function ScriptsTab({ channel, markDirty, initialScript }: any) {
+    const [current, setCurrent] = useState(() => resolveChannelScript(initialScript));
     const currentRef = useRef(current);
     const hostRef = useRef<any>(null);
     const editorRef = useRef<any>(null);
     const switchingRef = useRef(false);   // suppress markDirty while loading a script
+
+    const prevInitialScriptRef = useRef(initialScript);
+    useEffect(() => {
+        if (prevInitialScriptRef.current === initialScript) return;
+        prevInitialScriptRef.current = initialScript;
+        if (initialScript == null || String(initialScript).trim() === '') return;
+        const next = resolveChannelScript(initialScript);
+        if (next.key === currentRef.current.key) return;
+        const editor = editorRef.current;
+        if (editor) channel[currentRef.current.key] = editor.getValue();
+        currentRef.current = next;
+        setCurrent(next);
+        if (editor) {
+            switchingRef.current = true;
+            editor.setValue(channel[next.key] ?? '');
+            switchingRef.current = false;
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialScript]);
 
     // One editor switches between the four channel scripts, so scope the
     // code-template completions to whichever script is showing.
@@ -2569,7 +2613,7 @@ function ScriptsTab({ channel, markDirty }: any) {
 
 /* ---- the editor body ---------------------------------------------------------- */
 
-function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
+function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
     /* ---- one-time setup: working model + save baseline ---- */
     const setupRef = useRef<any>(null);
     if (!setupRef.current) {
@@ -2599,13 +2643,26 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
     });
 
     const [, bumpRev] = useReducer((x: any) => x + 1, 0);
-    const [activeTab, setActiveTabState] = useState('Summary');
-    const activeTabRef = useRef('Summary');
+    const pluginTabs = platform.channelTabs();
+    const [activeTab, setActiveTabState] = useState(() => resolveChannelEditorTab(query, pluginTabs));
+    const activeTabRef = useRef(activeTab);
+    const [destTarget, setDestTarget] = useState(() => query?.metaDataId);
+    const [scriptTarget, setScriptTarget] = useState(() => query?.script);
     const mountedRef = useRef(true);
     const sourceImportingRef = useRef(false);
     useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
     const [sourceImportRevision, bumpSourceImportRevision] = useReducer((revision: number) => revision + 1, 0);
     const setActiveTab = (label: any) => { activeTabRef.current = label; setActiveTabState(label); onTasksChange(); };
+    const handleTabChange = (label: any) => { setDestTarget(undefined); setScriptTarget(undefined); setActiveTab(label); };
+    const prevQueryRef = useRef(query);
+    useEffect(() => {
+        if (prevQueryRef.current === query) return;
+        prevQueryRef.current = query;
+        setDestTarget(query?.metaDataId);
+        setScriptTarget(query?.script);
+        setActiveTab(resolveChannelEditorTab(query, platform.channelTabs()));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [query]);
     const destTasksRef = useRef<any>(null);
     const actionsRef = useRef<any>(null);
     const guardImplRef = useRef<any>(null);
@@ -2948,7 +3005,6 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
 
     /* ---- tabs ---- */
 
-    const pluginTabs = platform.channelTabs();
     const tabLabels = ['Summary', 'Source', 'Destinations', 'Scripts', ...pluginTabs.map(d => d.label)];
     const fill = activeTab === 'Destinations' || activeTab === 'Scripts';
 
@@ -2962,9 +3018,9 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
     } else if (activeTab === 'Destinations') {
         body = <DestinationsTab key="Destinations" channel={channel} version={version} engineTypes={engineTypes}
             markDirty={markDirty} actionsRef={actionsRef} destTasksRef={destTasksRef}
-            onTasksChange={onTasksChange} gotoElements={gotoElements} />;
+            onTasksChange={onTasksChange} gotoElements={gotoElements} initialMetaDataId={destTarget} />;
     } else if (activeTab === 'Scripts') {
-        body = <ScriptsTab key="Scripts" channel={channel} markDirty={markDirty} />;
+        body = <ScriptsTab key="Scripts" channel={channel} markDirty={markDirty} initialScript={scriptTarget} />;
     } else {
         const def = pluginTabs.find(d => d.label === activeTab);
         // Plugin channel tabs are React components — rendered in-tree, keyed by
@@ -2976,7 +3032,7 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
 
     return (
         <div className="view-body flex flex-col flex-1 min-h-0">
-            <TabsPrimitive.Root value={activeTab} onValueChange={setActiveTab}
+            <TabsPrimitive.Root value={activeTab} onValueChange={handleTabChange}
                 className="flex flex-col flex-1 overflow-hidden min-h-0">
                 {/* mx-0/max-w-full: .tabs carries 13px side margins for flush-body
                     views (Settings), but THIS view-body is padded (16px) and the
