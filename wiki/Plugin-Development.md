@@ -674,6 +674,17 @@ platform.setAuthorizationController({
 | `platform.registerLoginAuthenticator(clientPluginClass, authenticate)` | Register a multi-factor / extended-login handler (Swing `MultiFactorAuthenticationClientPlugin`). See [MFA / extended login](#mfa--extended-login) — MUST be registered pre-login, so it only works from a **bundled** plugin. |
 | Registry lookups (`navItems()`, `dashboardTabs()`, `channelTabs()`, `stepType()` / `stepTypes()`, `connectorPanel()` / `connectorPanels()`, and their peers) | Read the current public registries. Prefer the singular lookup when you know an id/type; collection accessors return the currently registered values for plugin-to-plugin integration. |
 
+### Editor deep-link query parameters
+
+Plugins can navigate directly to a specific channel-editor tab, destination, channel script, or filter/transformer step via `platform.router.navigate(...)`:
+
+- **`/channels/:id/edit`**
+  - `?tab=summary|source|destinations|scripts|<pluginId>` — opens the requested tab (case/whitespace-insensitive). Plugins should target a registered channel tab by its `id` rather than its `label`. Unknown values fall back to `Summary`.
+  - `?metaDataId=<id>` — pre-selects the destination with that `metaDataId` (and implies the `Destinations` tab when `tab` is omitted, or `Source` when `metaDataId=0`). Falls back to the first destination if not found.
+  - `?script=<key>` — pre-selects a channel script (`deploy`/`deployScript`, `undeploy`/`undeployScript`, `preprocessor`/`preprocessingScript`, `postprocessor`/`postprocessingScript`; implies the `Scripts` tab when `tab` is omitted). Falls back to `deployScript`.
+- **`/channels/:id/{filter|transformer|response}/:metaDataId`**
+  - `?step=<indexPath>` — selects the step/rule at the given **0-based** index or dot-separated iterator path (e.g. `0`, `1.0`). Note that `?step=` is 0-based while the `#` column in the grid starts at 1. Invalid or out-of-bounds paths fall back to `[0]` (or no selection when empty).
+
 ### Channel tag helpers
 
 Both helpers return `Promise<ChannelTag[]>` through the shared engine session:
