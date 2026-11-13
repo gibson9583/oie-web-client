@@ -52,6 +52,7 @@ import { generateElementScript } from '../../core/step-script.js';
 import { normalizeLineEndings } from '../../core/content-highlight.js';
 import * as router from '../../core/router.js';
 import { routeUrl } from '../../core/deployment.js';
+import { resolveStepPath } from '../../core/editor-navigation.js';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { setActiveScope, clearActiveScope, referencesFor, dropTextFor, cleanDesc, templateCompletionCode } from '../../core/script-completions.js';
 import { serializeTemplate, validateScript } from '../../core/serialize.js';
@@ -1289,7 +1290,7 @@ function SidePanel({ ctx }: any) {
  * fresh closures. `embedded` skips the webadmin:set-title dispatch (the wizard
  * owns its banner); the code-template completion scope is set in both modes.
  */
-function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) {
+function EditorBody({ params, query, kindName, onTasksChange, apiRef, embedded }: any) {
     const kind = (KINDS as any)[kindName];
     const isFilter = kindName === 'filter';
 
@@ -1333,7 +1334,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     const importingRef = useRef(false);
     useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
     const [selectedPath, setSelectedPathState] = useState(() =>
-        setupRef.current.elements.length ? [0] : null);
+        resolveStepPath(setupRef.current.elements, query?.step, (els, p) => !!elementAtPath(els, p)));
     const selectedPathRef = useRef(selectedPath);
     const setSelected = (path: any) => { selectedPathRef.current = path; setSelectedPathState(path); };
     const [rev, bump] = useReducer((x: any) => x + 1, 0);
@@ -1344,6 +1345,28 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     const dragRef = useRef<any>(null);
     const rootRef = useRef<any>(null);
     const guardImplRef = useRef<any>(null);
+
+    useEffect(() => {
+        if (query?.step == null || String(query.step).trim() === '') return;
+        rootRef.current?.querySelector('tr.selected')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const prevStepRef = useRef(query?.step);
+    useEffect(() => {
+        if (prevStepRef.current === query?.step) return;
+        prevStepRef.current = query?.step;
+        if (query?.step == null || String(query.step).trim() === '') return;
+        const next = resolveStepPath(elementsRef.current, query.step, (els, p) => !!elementAtPath(els, p));
+        if (!pathEquals(next, selectedPathRef.current)) {
+            setSelected(next);
+            onTasksChange();
+        }
+        window.requestAnimationFrame(() => {
+            rootRef.current?.querySelector('tr.selected')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [query?.step]);
 
     const missingConnector = !connector;
 
@@ -2083,7 +2106,7 @@ export function FilterView(props: any) { return <FilterTransformerView {...props
 export function TransformerView(props: any) { return <FilterTransformerView {...props} kindName="transformer" />; }
 export function ResponseTransformerView(props: any) { return <FilterTransformerView {...props} kindName="response" />; }
 
-function FilterTransformerView({ params, kindName }: any) {
+function FilterTransformerView({ params, query, kindName }: any) {
     const [, forceRender] = useReducer((x: any) => x + 1, 0);
     // The channel travels through the store (seeded by the channel editor). When a
     // user deep-links straight to a sub-editor route the store is empty, so the
@@ -2168,7 +2191,7 @@ function FilterTransformerView({ params, kindName }: any) {
                         <div className="flex flex-col flex-1 min-h-0"
                             onDragOver={(e: any) => apiRef.current && apiRef.current.onAccessorDragOver(e)}
                             onDrop={(e: any) => apiRef.current && apiRef.current.onAccessorDrop(e)}>
-                            <EditorBody params={params} kindName={kindName}
+                            <EditorBody params={params} query={query} kindName={kindName}
                                 onTasksChange={forceRender} apiRef={apiRef} embedded={false} />
                         </div>
                     )}
