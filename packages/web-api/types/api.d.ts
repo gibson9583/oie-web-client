@@ -138,7 +138,7 @@ export interface MessagesApi {
     processNew(channelId: string, rawData: string, destinationMetaDataIds?: number[] | null, sourceMapEntries?: string[]): Promise<Json>;
     reprocess(channelId: string, messageId: string | number, replace?: boolean, filterDestinations?: boolean, metaDataIds?: number[]): Promise<Json>;
     /** A destination ID removes only that connector; 0 or omission removes the whole message. */
-    remove(channelId: string, messageId: string | number, metaDataId?: number, patientId?: string): Promise<Json>;
+    remove(channelId: string, messageId: string | number, metaDataId?: number): Promise<Json>;
     removeAll(channelId: string, restartRunningChannels?: boolean, clearStatistics?: boolean): Promise<Json>;
     auditAccessedPHI(attributes: Record<string, string>): Promise<Json>;
     auditQueriedPHI(attributes: Record<string, string>): Promise<Json>;

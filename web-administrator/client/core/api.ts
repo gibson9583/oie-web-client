@@ -570,7 +570,7 @@ export interface MessagesApi {
         metaDataIds?: number[]
     ): Promise<Json>;
     /** A destination ID removes only that connector; 0 or omission removes the whole message. */
-    remove(channelId: string, messageId: string | number, metaDataId?: number, patientId?: string): Promise<Json>;
+    remove(channelId: string, messageId: string | number, metaDataId?: number): Promise<Json>;
     removeAll(channelId: string, restartRunningChannels?: boolean, clearStatistics?: boolean): Promise<Json>;
     auditAccessedPHI(attributes: Record<string, string>): Promise<Json>;
     auditQueriedPHI(attributes: Record<string, string>): Promise<Json>;
@@ -989,8 +989,8 @@ export const messages: MessagesApi = {
         post(`/channels/${enc(channelId)}/messages/${enc(messageId)}/_reprocess`, null, {
             params: { replace, filterDestinations, metaDataId: metaDataIds }
         }),
-    remove: (channelId, messageId, metaDataId, patientId) =>
-        del(`/channels/${enc(channelId)}/messages/${enc(messageId)}`, { metaDataId, patientId }),
+    remove: (channelId, messageId, metaDataId) =>
+        del(`/channels/${enc(channelId)}/messages/${enc(messageId)}`, { metaDataId }),
     // The engine waits for stop/remove/restart to finish before responding, so a
     // large message table can legitimately outlast the normal request ceiling.
     removeAll: (channelId, restartRunningChannels = false, clearStatistics = true) =>
