@@ -2894,7 +2894,7 @@ export function MessagesView({ params, query }: any) {
             },
             ...(pluginItems.length ? ['-', ...pluginItems] : []),
             '-',
-            { label: 'Remove Message', icon: 'trash', danger: true, task: 'doRemoveMessage', group: 'message', onClick: () => removeMessageTask(m) },
+            { label: 'Remove Message', icon: 'trash', danger: true, task: 'doRemoveMessage', group: 'message', onClick: () => removeMessageTask({ m, metaDataId }) },
             { label: 'Remove Results', icon: 'trash', danger: true, task: 'doRemoveFilteredMessages', group: 'message', onClick: () => removeResultsTask() },
             { label: 'Remove All Messages', icon: 'trash', danger: true, task: 'doRemoveAllMessages', group: 'message', onClick: () => removeAllTask() }
         ]);
@@ -2923,15 +2923,28 @@ export function MessagesView({ params, query }: any) {
         });
     }
 
-    async function removeMessageTask(row = requireSelection()) {
-        if (!row) return;
+    async function removeMessageTask(selection = selectedRef.current) {
+        if (!selection) { toast('Select a message first', 'warn'); return; }
+        // Capture the row and connector before confirmation; later selection
+        // changes must not broaden a destination removal to the whole message.
+        const { messageId } = selection.m;
+        const metaDataId = Number(selection.metaDataId);
+        const connector = connectorMessagesOf(selection.m).find((cm: any) => Number(cm.metaDataId) === metaDataId);
+        const target = metaDataId > 0
+            ? `destination "${connector?.connectorName || metaDataId}" (ID ${metaDataId}) from message ${messageId}`
+            : `message ${messageId} and all its destinations`;
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         if (getPref('confirmReprocessRemove') !== false &&
-            !await confirmDialog('Remove message', `Permanently remove message ${row.messageId} from ${describeTargets('channel', [{ id: channelId, name: channelName }])}? This cannot be undone.`, { danger: true, okLabel: 'Remove' })) return;
+            !await confirmDialog('Remove message', `Permanently remove ${target} from ${describeTargets('channel', [{ id: channelId, name: channelName }])}? This cannot be undone.`, { danger: true, okLabel: 'Remove' })) return;
         try {
-            await api.messages.remove(channelId, row.messageId);
+            assertSession();
+            await api.messages.remove(channelId, messageId, metaDataId);
+            assertSession();
             toast('Message removed');
             searchRef.current(false);
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(`Remove failed: ${e.message}`, 'error');
         }
     }
