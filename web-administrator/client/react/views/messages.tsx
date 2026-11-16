@@ -622,7 +622,7 @@ function Cell({ value, cls, indent }: any) {
  * out through callbacks — the table renders pure state.
  */
 function ResultsTable({
-    cols, mgr, rows, loading, expandedIds, allExpanded, selKey, anchorKey,
+    cols, mgr, rows, loading, emptyText, expandedIds, allExpanded, selKey, anchorKey,
     sortKey, sortDir, onSort, onToggleAll, onToggleRow, onSelect, onRowMenu,
     onColumnMenu, onColumnsChange
 }: any) {
@@ -742,7 +742,7 @@ function ResultsTable({
                         {colgroup}{thead}
                     </table>
                 </div>
-                {loading ? <Loading text="Loading messages…" /> : <div className="dt-empty">No messages found</div>}
+                <div className="dt-empty">{loading ? null : emptyText}</div>
             </>
         );
     }
@@ -2177,6 +2177,7 @@ export function MessagesView({ params, query }: any) {
     const [metaDataError, setMetaDataError] = useState<string | null>(null);
     const [messages, setMessages] = useState([] as any[]);
     const [searching, setSearching] = useState(!!channelId && !invalidTarget);
+    const [searchError, setSearchError] = useState<string | null>(invalidTarget ? 'Search not run. Check the message ID.' : null);
     // shown: null = no search has completed yet (blank counts label, legacy
     // parity) — distinct from a completed search with zero rows ('No results').
     const [pager, setPager] = useState<any>({ offset: 0, shown: null, total: null, hasNext: false });
@@ -2387,13 +2388,17 @@ export function MessagesView({ params, query }: any) {
         // Validate before invalidating the active search or requesting metadata.
         if (resetOffset && (!/^\d{1,3}$/.test(pageSize) || Number(pageSize) < 1)) {
             // Bootstrap is finished even when validation prevents its first search.
-            if (automatic && searchGenRef.current === 0) setSearching(false);
+            if (automatic && searchGenRef.current === 0) {
+                setSearching(false);
+                setSearchError('Search not run. Enter a page size from 1 to 999.');
+            }
             toast('Page size must be a whole number from 1 to 999.', 'error');
             return;
         }
         const gen = ++searchGenRef.current;
         searchPendingRef.current = true;
         setSearching(true);
+        setSearchError(null);
         // A navigation target positions the opening page; it never becomes a
         // search filter. Explicit Search/Refresh supersedes that navigation.
         const openingTarget = automatic ? pendingTargetRef.current : null;
@@ -2412,7 +2417,10 @@ export function MessagesView({ params, query }: any) {
             total: resetOffset ? null : totalRef.current
         };
         try {
-            if (!metaDataReadyRef.current && !await loadMetaDataColumns()) return;
+            if (!metaDataReadyRef.current && !await loadMetaDataColumns()) {
+                if (gen === searchGenRef.current) setSearchError('Search could not start. Channel metadata failed to load. Try Search again.');
+                return;
+            }
             if (gen !== searchGenRef.current) return;
             // Swing suppresses only the search it runs automatically while opening the
             // channel browser. A user-submitted search is audited even when it first has
@@ -2520,6 +2528,7 @@ export function MessagesView({ params, query }: any) {
             }
         } catch (e: any) {
             if (gen !== searchGenRef.current) return;   // superseded — its results are on screen
+            setSearchError(resetOffset ? 'Search failed. Try Search again.' : 'Search failed.');
             toast(`Search failed: ${e.message}`, 'error');
         } finally {
             if (gen === searchGenRef.current) {
@@ -2529,6 +2538,13 @@ export function MessagesView({ params, query }: any) {
         }
     }
     searchRef.current = runSearch;
+
+    function goToPage(offset: number) {
+        // Only paging is paused: post-write refreshes must still supersede a
+        // pending request that may contain rows from before the write.
+        if (searchPendingRef.current) return;
+        runSearch(false, { offset });
+    }
 
     /* The total match count is resolved lazily (Swing's Count button): a COUNT is
        expensive on large tables, so we don't run one on every search. */
@@ -2554,6 +2570,7 @@ export function MessagesView({ params, query }: any) {
         return n;
     }
     async function doCount() {
+        if (searchPendingRef.current || !resultRef.current) return;
         const gen = searchGenRef.current;
         setCountBusy(true);
         let n;
@@ -3160,6 +3177,9 @@ export function MessagesView({ params, query }: any) {
                 searchRef.current(true, { automatic: true });
             } else if (!cancelled && searchGenRef.current === 0) {
                 setSearching(false);
+                if (channelId && !metaDataReadyRef.current && !invalidTarget) {
+                    setSearchError('Search could not start. Channel metadata failed to load. Try Search again.');
+                }
             }
         })();
         if (channelId && query.send === '1') setTimeout(() => { if (!cancelled) sendMessageTask(); }, 200);
@@ -3207,6 +3227,19 @@ export function MessagesView({ params, query }: any) {
             </select>
         </label>
     );
+
+    const searchFeedback = channelId && <div role="status" aria-live="polite" aria-atomic="true"
+        className={`msg-search-feedback ${searchError && !searching ? 'text-text' : 'text-text-dim'}`}>
+        {searching ? <span className="spinner msg-search-spinner" aria-hidden="true" />
+            : searchError ? <span className="flex-none text-err" aria-hidden="true"><Icon name="warning" /></span>
+                : pager.shown != null ? <span className="flex-none" aria-hidden="true"><Icon name="check" /></span> : null}
+        <span>
+            {searching ? 'Searching messages…'
+                : searchError || (pager.shown == null ? 'Search not run.'
+                    : pager.shown > 0 ? 'Search complete.'
+                        : pager.offset > 0 ? 'Search complete. No messages on this page.' : 'Search complete. No messages found.')}
+        </span>
+    </div>;
 
     const criteria = (
         <>
@@ -3281,7 +3314,9 @@ export function MessagesView({ params, query }: any) {
                                     value={pageSize} onChange={(e: any) => setPageSize(e.target.value)}
                                     onKeyDown={(e: any) => { if (e.key === 'Enter') { e.preventDefault(); runSearch(true); } }} />
                             </Field>
-                            <button className="btn btn-primary" onClick={() => runSearch(true)}><Icon name="search" />Search</button>
+                            <button className="btn btn-primary" aria-busy={searching} onClick={() => runSearch(true)}>
+                                {searching ? <span className="spinner msg-search-spinner" aria-hidden="true" /> : <Icon name="search" />}Search
+                            </button>
                             <button className="btn" onClick={resetSearch}>Reset</button>
                             {/* The Advanced… button carries a dot whenever any advanced
                                 criterion is staged. Applying advanced criteria does NOT
@@ -3342,7 +3377,7 @@ export function MessagesView({ params, query }: any) {
                     button, where Radix owns Escape, outside-click and focus return. */}
                 <div ref={criteriaPanelRef} className="panel filter-collapse flex-none mx-[13px] mt-3 mb-3">
                     {narrowCriteria ? (
-                        <div className="panel-header flex items-center gap-2">
+                        <div className="panel-header flex flex-wrap items-center gap-2">
                             <span className="criteria-heading inline-flex items-center gap-1.5">Search Criteria</span>
                             {channelPicker}
                             <Popover.Root open={filtersOpen} onOpenChange={setFiltersOpen}>
@@ -3358,11 +3393,12 @@ export function MessagesView({ params, query }: any) {
                                     </Popover.Content>
                                 </Popover.Portal>
                             </Popover.Root>
+                            {channelId && <div className="basis-full">{searchFeedback}</div>}
                         </div>
                     ) : (
                         <Collapsible.Root open={!criteriaCollapsed}
                             onOpenChange={(open: any) => setCriteriaCollapsed(!open)}>
-                            <div className="panel-header flex items-center gap-2">
+                            <div className="panel-header flex flex-wrap items-center gap-2">
                                 <Collapsible.Trigger asChild>
                                     <button type="button" className="criteria-heading inline-flex items-center gap-1.5">
                                         <span aria-hidden="true">{criteriaCollapsed ? '▸' : '▾'}</span>
@@ -3370,6 +3406,7 @@ export function MessagesView({ params, query }: any) {
                                     </button>
                                 </Collapsible.Trigger>
                                 {channelPicker}
+                                {searchFeedback}
                             </div>
                             <Collapsible.Content className="panel-body filter-popover">
                                 {criteria}
@@ -3377,7 +3414,9 @@ export function MessagesView({ params, query }: any) {
                         </Collapsible.Root>
                     )}
                 </div>
-                <div className="flex-1 min-h-0 flex flex-col overflow-hidden oie-tablecard px-[13px] pt-3 pb-3">
+
+                <div role="region" aria-label="Message results" aria-busy={searching}
+                    className="flex-1 min-h-0 flex flex-col overflow-hidden oie-tablecard px-[13px] pt-3 pb-3">
                     {!channelId ? (
                         <div className="dt-empty">
                             <div className="empty-icon"><Icon name="messages" size={30} /></div>
@@ -3386,6 +3425,8 @@ export function MessagesView({ params, query }: any) {
                     ) : (
                     <ResultsTable
                         cols={visibleCols} mgr={mgr} rows={sortedMessages} loading={searching}
+                        emptyText={searchError ? 'Search did not complete.' : pager.shown == null ? 'Run a search to find messages.'
+                            : pager.offset > 0 ? 'No messages on this page' : 'No messages found'}
                         expandedIds={expandedIds} allExpanded={allExpanded}
                         selKey={selected ? `${selected.m.messageId}:${selected.metaDataId}` : null}
                         anchorKey={anchor && String(anchor.channelId) === String(channelId)
@@ -3406,16 +3447,16 @@ export function MessagesView({ params, query }: any) {
                 </div>
 
                 <div className="filterbar flex-none panel overflow-visible mx-[13px]">
-                    <button className="btn" disabled={pager.offset <= 0}
-                        onClick={() => runSearch(false, { offset: 0 })}>« First</button>
-                    <button className="btn" disabled={pager.offset <= 0}
-                        onClick={() => runSearch(false, { offset: Math.max(0, offsetRef.current - limitRef.current) })}>‹ Prev</button>
-                    <button className="btn" disabled={!pager.hasNext}
-                        onClick={() => runSearch(false, { offset: offsetRef.current + limitRef.current })}>Next ›</button>
+                    <button className="btn" disabled={searching || pager.offset <= 0}
+                        onClick={() => goToPage(0)}>« First</button>
+                    <button className="btn" disabled={searching || pager.offset <= 0}
+                        onClick={() => goToPage(Math.max(0, offsetRef.current - limitRef.current))}>‹ Prev</button>
+                    <button className="btn" disabled={searching || !pager.hasNext}
+                        onClick={() => goToPage(offsetRef.current + limitRef.current)}>Next ›</button>
                     {/* Can't jump to the last page without a total. */}
-                    <button className="btn" disabled={pager.total == null}
+                    <button className="btn" disabled={searching || pager.total == null}
                         onClick={() => {
-                            runSearch(false, { offset: Math.max(0, Math.floor(Math.max(0, totalRef.current - 1) / limitRef.current) * limitRef.current) });
+                            goToPage(Math.max(0, Math.floor(Math.max(0, totalRef.current - 1) / limitRef.current) * limitRef.current));
                         }}>Last »</button>
                     <span className="counts">
                         {pager.shown == null ? ''
@@ -3423,7 +3464,7 @@ export function MessagesView({ params, query }: any) {
                                 : `${fmtNumber(pager.offset + 1)}–${fmtNumber(pager.offset + pager.shown)} of ${totalStr}`}
                     </span>
                     {/* Nothing left to count once the total is known. */}
-                    <button className="btn" disabled={pager.total != null || countBusy} onClick={doCount}>Count</button>
+                    <button className="btn" disabled={searching || pager.shown == null || pager.total != null || countBusy} onClick={doCount}>Count</button>
                 </div>
 
                 <div className="split-handle mx-[13px]" data-orient="v" data-resize="next" />

@@ -196,7 +196,7 @@ function attachCodeView(editor, opts) {
         insertAtCursor(editor, token);
     }
     function buildVarsRail() {
-        const vars = opts.popoutVars;
+        const vars = typeof opts.popoutVars === 'function' ? opts.popoutVars() : opts.popoutVars;
         if (!Array.isArray(vars) || vars.length === 0 || opts.readOnly)
             return null;
         const list = h('div.ce-popout-vars-list');

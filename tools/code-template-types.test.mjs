@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { transform } from 'esbuild';
+import { ApiError, parseBody } from '../web-administrator/client/core/api.js';
 
 const root = new URL('../web-administrator/client/react/views/', import.meta.url);
 const { code: modelCode } = await transform(await readFile(new URL('code-template-types.ts', root), 'utf8'), { loader: 'ts', format: 'cjs' });
@@ -111,6 +112,9 @@ test('unsupported imported contexts are preserved and reported, including a sing
 const { code: viewCode } = await transform(
     await readFile(new URL('code-templates.tsx', root), 'utf8') + '\nexport { TemplateEditor, ContextPanel };',
     { loader: 'tsx', format: 'cjs', jsx: 'automatic' });
+const { code: loadErrorCode } = await transform(await readFile(new URL('../load-error.ts', root), 'utf8'), { loader: 'ts', format: 'cjs' });
+const loadError = { exports: {} };
+new Function('require', 'module', 'exports', loadErrorCode)(() => ({ parseBody }), loadError, loadError.exports);
 const nodes = value => {
     if (!value) return [];
     if (Array.isArray(value)) return value.flatMap(nodes);
@@ -119,13 +123,14 @@ const nodes = value => {
 };
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 function harness(template = sampleTemplate(), registry = new Map(providers), imports = null) {
-    const state = [], refs = [], effects = [], cleanups = [], calls = { changed: 0, validateJs: 0, toasts: [], writes: [], exports: [] };
+    const state = [], refs = [], effects = [], cleanups = [], calls = { changed: 0, validateJs: 0, toasts: [], writes: [], exports: [], filePicks: 0, menus: [] };
     let stateIndex = 0, refIndex = 0, first = true, allowed = true, sessionActive = true, navigation = 0;
     const library = { id: 'lib1', name: 'Library', codeTemplates: { codeTemplate: [template] } };
     const store = { getState: () => '4.6.0', setState() {}, subscribe: () => () => {} };
     const ui = { toast: (...args) => calls.toasts.push(args), confirmDialog: async () => true,
         saveFile: async (_name, _mime, content) => calls.exports.push(await content()),
-        pickFile: async () => imports && { name: 'templates.xml', content: '<list/>' }, contextMenu() {}, fmtDate: String };
+        pickFile: async () => { calls.filePicks++; return imports && { name: 'templates.xml', content: '<list/>' }; },
+        contextMenu: (_x, _y, items) => calls.menus.push(items), fmtDate: String };
     const api = { asList: (value, key) => {
         const items = key ? value?.[key] : value;
         return Array.isArray(items) ? items : items == null || items === '' ? [] : [items];
@@ -140,13 +145,14 @@ function harness(template = sampleTemplate(), registry = new Map(providers), imp
             useState: initial => { const index = stateIndex++; if (first) state[index] = typeof initial === 'function' ? initial() : initial;
                 return [state[index], next => { state[index] = typeof next === 'function' ? next(state[index]) : next; }]; },
             useEffect: effect => { if (first) effects.push(effect); }, useLayoutEffect() {}, useMemo: callback => callback() },
-        '@oie/web-ui': ui, '@oie/web-shell': { platform }, '@oie/web-api': { __esModule: true, default: api, uuid: () => 'new-id' },
+        '@oie/web-ui': ui, '@oie/web-shell': { platform }, '@oie/web-api': { __esModule: true, default: api, parseBody, uuid: () => 'new-id' },
         '../../core/store.js': store,
         '../../core/router.js': { navigationToken: () => navigation },
         '../../core/engine-fetch.js': { captureEngineSession: () => () => { if (!sessionActive) throw new Error('Expired session'); } },
         '../../core/serialize.js': { validateScript: async () => { calls.validateJs++; return { ok: true }; } },
         '../../core/script-completions.js': { invalidate() {} }, '../../core/unsaved.js': { registerUnsavedCheck: () => () => {} },
         '../save-lock.js': { withEditorSave: callback => callback() }, '../tree-table.jsx': { TreeTable: 'TreeTable', TreeLabel: 'TreeLabel' },
+        '../load-error.js': loadError.exports,
         '../mount.jsx': { ViewTasks: 'ViewTasks' }, '../ui.jsx': { RailPane: 'RailPane', TaskButton: 'TaskButton', CodeEditor: 'CodeEditor' },
         '../bridges.jsx': { Icon: 'Icon' }, '../error-boundary.jsx': { ErrorBoundary: 'ErrorBoundary' },
         '../palette-context.js': { usePaletteContext() {} },
@@ -164,7 +170,7 @@ function harness(template = sampleTemplate(), registry = new Map(providers), imp
     const render = (fn, props) => { stateIndex = 0; refIndex = 0; const tree = fn(props); first = false; return tree; };
     const editorProps = { template, entry: { library, templates: [template] }, entries: [],
         markDirty: () => calls.changed++, onFocusConsumed() {}, onMoveTemplate() {}, onToggleMax() {} };
-    return { calls, template, registry, platform, renderEditor: () => render(module.exports.TemplateEditor, editorProps),
+    return { calls, api, template, registry, platform, renderEditor: () => render(module.exports.TemplateEditor, editorProps),
         renderContexts: props => render(module.exports.ContextPanel, { template, markDirty: () => calls.changed++, ...props }),
         renderView: () => render(module.exports.CodeTemplatesView, { query: { templateId: template.id } }),
         async mountView() { this.renderView(); effects.forEach(effect => cleanups.push(effect())); await new Promise(resolve => setImmediate(resolve)); return this.renderView(); },
@@ -172,6 +178,70 @@ function harness(template = sampleTemplate(), registry = new Map(providers), imp
         navigateAwayAndBack: () => { navigation += 2; }, unmount: () => cleanups.forEach(cleanup => cleanup?.()),
         treeNodes: nodes };
 }
+
+for (const phase of ['pending', 'failed']) test(`initial ${phase} load blocks mutation and save handlers even when disabled UI is bypassed`, async () => {
+    const h = harness(), pending = deferred();
+    h.api.codeTemplates.libraries = phase === 'pending' ? () => pending.promise : async () => { throw new ApiError(500, 'Request failed.'); };
+    const tree = await h.mountView();
+    const task = key => nodes(tree).find(node => node.type === 'TaskButton' && node.props.task === key);
+    for (const key of ['doNewLibrary', 'doImportCodeTemplates', 'doImportLibraries']) {
+        assert.equal(task(key).props.disabled, true);
+        await task(key).props.onClick(); // action-time guard, independent of button disabling
+    }
+    const table = nodes(tree).find(node => node.type === 'TreeTable');
+    assert.deepEqual(table.props.data, []);
+    const event = { preventDefault() {}, target: { closest: () => null }, clientX: 0, clientY: 0 };
+    table.props.onEmptyContextMenu(event);
+    const emptyMenu = h.calls.menus.at(-1);
+    for (const key of ['doNewLibrary', 'doNewCodeTemplate', 'doImportCodeTemplates', 'doImportLibraries']) {
+        const item = emptyMenu.find(item => item.task === key);
+        assert.equal(item.disabled, true);
+        await item.onClick();
+    }
+    // Invoke the shipped menu save callback directly, as a stale action may do.
+    // The model has no loaded rows; the handler must reject an empty baseline.
+    table.props.onRowContextMenu({ kind: 'library', id: 'stale-library' }, event);
+    await h.calls.menus.at(-1).find(item => item.task === 'doSaveCodeTemplates').onClick();
+    assert.equal(h.calls.filePicks, 0);
+    assert.deepEqual(h.calls.writes, []);
+    assert.deepEqual(nodes(h.renderView()).find(node => node.type === 'TreeTable').props.data, []);
+    assert.equal(nodes(h.renderView()).some(node => node.type === 'TaskButton' && node.props.task === 'doSaveCodeTemplates'), false);
+    h.unmount();
+    pending.resolve([]);
+});
+
+test('a successful empty initial load unlocks captured creation handlers and permits saving a new library', async () => {
+    const h = harness(), pending = deferred();
+    h.api.codeTemplates.libraries = () => pending.promise;
+    const first = await h.mountView();
+    const create = nodes(first).find(node => node.type === 'TaskButton' && node.props.task === 'doNewLibrary');
+    assert.equal(create.props.disabled, true);
+    pending.resolve([]);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(nodes(h.renderView()).find(node => node.type === 'TaskButton' && node.props.task === 'doNewLibrary').props.disabled, false);
+    create.props.onClick(); // old render must read the successful baseline at action time
+    const save = nodes(h.renderView()).find(node => node.type === 'TaskButton' && node.props.task === 'doSaveCodeTemplates');
+    await save.props.onClick();
+    assert.equal(h.calls.writes.length, 1);
+    assert.equal(h.calls.writes[0][0][0].id, 'new-id');
+    assert.deepEqual(h.calls.writes[0].slice(2, 4), [[], []]);
+});
+
+test('the first successful load publishes its complete model before a captured save handler can run', async () => {
+    const h = harness(), pending = deferred();
+    const baseline = await h.api.codeTemplates.libraries();
+    h.api.codeTemplates.libraries = () => pending.promise;
+    const tree = await h.mountView();
+    nodes(tree).find(node => node.type === 'TreeTable').props.onRowContextMenu({ kind: 'library', id: 'lib1' },
+        { preventDefault() {}, clientX: 0, clientY: 0 });
+    const save = h.calls.menus.at(-1).find(item => item.task === 'doSaveCodeTemplates').onClick;
+    pending.resolve(baseline);
+    await new Promise(resolve => setImmediate(resolve));
+    await save(); // deliberately do not render between load completion and save
+    assert.equal(h.calls.writes.length, 1);
+    assert.deepEqual(h.calls.writes[0][0].map(library => library.id), ['lib1']);
+    assert.deepEqual(h.calls.writes[0].slice(2, 4), [[], []]);
+});
 
 test('actual editor routes custom source to the plugin and unknown classes to a nonmutating fallback', () => {
     const h = harness(), tree = h.renderEditor();

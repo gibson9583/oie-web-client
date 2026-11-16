@@ -20,6 +20,7 @@ import { PluginSlot } from '../plugin-slot.jsx';
 import { mountReact } from '../mount.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { CodeEditor } from '../ui.jsx';
+import { loadErrorMessage } from '../load-error.js';
 import { Icon } from '../bridges.jsx';
 import { openRadixDialog } from '../dialog-host.jsx';
 import { setActiveScope, clearActiveScope } from '../../core/script-completions.js';
@@ -230,9 +231,11 @@ export function DependenciesStep({ channel, libState, depState, onChange, onLoad
             const results = [libraryResult, resourceResult, dependencyResult, nameResult];
             const keys = ['libraries', 'resources', 'dependencies', 'names'];
             const failed = new Set(keys.filter((_key, index) => results[index].status === 'rejected'));
+            const labels = ['code template libraries', 'resources', 'channel dependencies', 'channel names'];
             const message = results
-                .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
-                .map(result => String(result.reason?.message || result.reason))
+                .map((result, index) => result.status === 'rejected'
+                    ? `${labels[index]}: ${loadErrorMessage(result.reason, labels[index])}` : '')
+                .filter(Boolean)
                 .join('; ');
             setFailedLoads(failed);
             setLoadError(message || null);
@@ -320,7 +323,7 @@ export function DependenciesStep({ channel, libState, depState, onChange, onLoad
 
             {!loaded && <div className="hint">Loading…</div>}
             {loadError && <div className="panel border-danger text-danger" role="alert">
-                Failed to load dependency choices: {loadError}
+                Failed to load dependency choices: <span className="whitespace-pre-wrap">{loadError}</span>
             </div>}
 
             <TabsPrimitive.Content value="libraries">

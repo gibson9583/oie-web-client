@@ -1,4 +1,5 @@
 import { describeTargets } from '../action-targets.js';
+import { loadErrorMessage } from '../load-error.js';
 import { channelEditState, loadChannelForEdit } from '../../core/channel-save.js';
 import { useConnectorTypeSwitch } from '../connector-type-switch.js';
 import { persistChannelEdits, confirmLibraryOverwrite, channelSessionActive } from '../channel-persistence.js';
@@ -100,6 +101,7 @@ const DEFAULT_ATTACHMENT_SCRIPT = '// Modify the message variable below to creat
    lives in core/mappings.js (shared with the wizard rail and the code-view vars). */
 export { DESTINATION_MAPPINGS } from '../../core/mappings.js';
 import { destinationMappingsFor, SCRIPT_REFERENCE } from '../../core/mappings.js';
+import { ConnectorMappingProvider } from '../../connectors/react-forms.js';
 
 /* Summary text shown next to the Advanced Queue Settings button, replicating
    the Swing DestinationSettingsPanel.updateAdvancedSettingsLabel(). */
@@ -642,7 +644,7 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
         ]);
         if (!isCurrent()) return;
     } catch (e: any) {
-        if (isCurrent()) toast(`Could not load dependencies: ${e.message}`, 'error');
+        if (isCurrent()) toast(`Could not load dependencies: ${loadErrorMessage(e, 'dependencies')}`, 'error');
         return;
     }
 
@@ -1779,8 +1781,9 @@ function ConnectorPanelHost({ connector, mode, channel, markDirty, panelRev }: a
         // section title(s), so no wrapper header (Swing parity).
         if (hasPanel) {
             const inner = h('div');
-            roots.push(mountReact(inner, <PluginSlot def={def}
-                ctx={{ properties: connector.properties, connector, channel, platform, onChange: markDirty }} />));
+            roots.push(mountReact(inner, <ConnectorMappingProvider channel={channel} connector={connector}>
+                <PluginSlot def={def} ctx={{ properties: connector.properties, connector, channel, platform, onChange: markDirty }} />
+            </ConnectorMappingProvider>));
             host.appendChild(h('div.panel', h('div.panel-body', inner)));
         }
         return () => {
@@ -1792,7 +1795,7 @@ function ConnectorPanelHost({ connector, mode, channel, markDirty, panelRev }: a
         // Import Connector) — otherwise the panel stays bound to the detached
         // pre-import object and edits are silently lost on save.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [connector, connector.transportName, connector.properties, panelRev]);
+    }, [channel, connector, connector.transportName, connector.properties, panelRev]);
 
     return (
         <div className="mt-3.5">
@@ -2127,7 +2130,7 @@ function MappingsRail({ onInsert, dragRef, mappings }: any) {
             </div>
             <div className="overflow-auto flex-1 py-1 px-0">
                 {mappings.map(([label, token]: [string, string]) => (
-                    <div key={token} draggable title={token}
+                    <div key={label} draggable title={token}
                         className="py-[3px] px-3 cursor-pointer text-[11px] truncate hover:bg-bg3"
                         onClick={() => onInsert(token)}
                         onDragStart={(e: any) => {
@@ -2485,7 +2488,7 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
                 </div>
             </div>
             <MappingsRail onInsert={insertToken} dragRef={dragRef}
-                mappings={destinationMappingsFor(selectedDest()?.properties)} />
+                mappings={destinationMappingsFor(selectedDest()?.properties, channel, selectedDest())} />
         </div>
     );
 }
@@ -3033,7 +3036,7 @@ export function ChannelEditorView({ params, query }: any) {
         }).catch((e: any) => {
             if (!alive) return;
             if (query.new === '1') toast('The unsaved new channel was discarded.');
-            else toast(e.message, 'error');
+            else toast(`Load failed: ${loadErrorMessage(e, 'channel', 'channels')}`, 'error');
             history.replaceState(null, '', routeUrl('/channels'));
             router.navigate('/channels');
         });

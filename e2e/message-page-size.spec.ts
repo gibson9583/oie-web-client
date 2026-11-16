@@ -154,10 +154,16 @@ for (const replacement of ['invalid', 'newer'] as const) {
             await size.fill('37');
             await size.press('Enter');
             await expect.poll(() => searches.at(-1)?.limit).toBe(38);
+            await expect(page.getByRole('status').filter({ hasText: /^Search/ })).toContainText('Searching messages…');
             await size.fill(replacement === 'invalid' ? '' : '1');
             await size.press('Enter');
-            if (replacement === 'invalid') await closeError(page, 'Page size must be a whole number from 1 to 999.');
-            else await expect(page.locator('.counts')).toHaveText('1–1 of ?');
+            if (replacement === 'invalid') {
+                await closeError(page, 'Page size must be a whole number from 1 to 999.');
+                await expect(page.getByRole('status').filter({ hasText: /^Search/ })).toContainText('Searching messages…');
+            } else {
+                await expect(page.locator('.counts')).toHaveText('1–1 of ?');
+                await expect(page.getByRole('status').filter({ hasText: /^Search/ })).toHaveText('Search complete.');
+            }
             const completed = page.waitForResponse(response => new URL(response.url()).pathname === `/api${path}`
                 && new URL(response.url()).searchParams.get('limit') === '38');
             release();
@@ -165,6 +171,7 @@ for (const replacement of ['invalid', 'newer'] as const) {
             // Let the older response's promise continuation update React before checking.
             await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
             await expect(page.locator('.counts')).toHaveText(replacement === 'invalid' ? '1–37 of ?' : '1–1 of ?');
+            await expect(page.getByRole('status').filter({ hasText: /^Search/ })).toHaveText('Search complete.');
             expect(searches).toHaveLength(replacement === 'invalid' ? 2 : 3);
         } finally { release(); }
     });

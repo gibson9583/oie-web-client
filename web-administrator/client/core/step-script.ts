@@ -149,24 +149,32 @@ export function generateElementScript(element: any, getChildren?: (el: any) => a
     return null;
 }
 
-/* IteratorProperties.getScript = pre + iteration + post (children joined).
-   A pragmatic port: pre = child list-decls, iteration = the for-loop with each
-   child's script, post = child .put(...toArray()) lines. Nested iterators use
-   the same for-loop shape. Sufficient for the design-time preview. */
+/* IteratorProperties.getScript = pre + iteration + post. Nested accumulators
+   are declared before the outer loop and their map writes follow that loop;
+   this ordering also determines the destination variable list. */
 function iteratorScript(element: any, getChildren?: (el: any) => any[]): string {
+    return iteratorPhase(element, 'pre', getChildren)
+        + iteratorPhase(element, 'iteration', getChildren)
+        + iteratorPhase(element, 'post', getChildren);
+}
+
+function iteratorPhase(element: any, phase: 'pre' | 'iteration' | 'post', getChildren?: (el: any) => any[]): string {
     const props = element.properties || element;
     const target = props.target ?? '';
     const idx = props.indexVariable || 'i';
-    const kids = (typeof getChildren === 'function' ? getChildren(element) : (props.children || [])) || [];
-    const enabled = kids.filter((c: any) => c && c.enabled !== false);
-
-    const pre = enabled.map((c: any) => iterPre(c)).filter(Boolean).map((s: any) => s + '\n').join('');
-    const body = enabled.map((c: any) => '\n' + (iterIteration(c, getChildren) ?? generateElementScript(c, getChildren) ?? '') + '\n').join('');
-    const post = enabled.map((c: any) => iterPost(c)).filter(Boolean).map((s: any) => s + '\n').join('');
-
-    return pre
-        + `for (var ${idx} = 0; ${idx} < getArrayOrXmlLength(${target}); ${idx}++) {\n${body}\n}\n`
-        + post;
+    const kids: any[] = (typeof getChildren === 'function' ? getChildren(element) : (props.children || [])) || [];
+    const enabled = kids.filter((c: any) => c && c.enabled !== false && c.enabled !== 'false');
+    const childScript = (child: any): string | null => {
+        if (ITERATOR_TYPES.has(child.__type)) return iteratorPhase(child, phase, getChildren);
+        if (phase === 'pre') return iterPre(child);
+        if (phase === 'post') return iterPost(child);
+        return iterIteration(child) ?? generateElementScript(child, getChildren);
+    };
+    if (phase !== 'iteration') {
+        return enabled.map(childScript).filter(script => script !== null).map(script => script + '\n').join('');
+    }
+    const body = enabled.map(child => '\n' + (childScript(child) ?? '') + '\n').join('');
+    return `for (var ${idx} = 0; ${idx} < getArrayOrXmlLength(${target}); ${idx}++) {\n${body}\n}\n`;
 }
 
 /* Iterable child pre/iteration/post (Mapper/XSLT declare list accumulators). */
@@ -177,7 +185,7 @@ function iterPre(el: any): string | null {
         return `var _${convertIdentifier(el.resultVariable)} = Lists.list();`;
     return null;
 }
-function iterIteration(el: any, getChildren?: (el: any) => any[]): string | null {
+function iterIteration(el: any): string | null {
     if (el.__type === 'com.mirth.connect.plugins.mapper.MapperStep') {
         const mapping = (el.mapping && String(el.mapping).trim()) ? el.mapping : "''";
         const def = (el.defaultValue && String(el.defaultValue).length) ? el.defaultValue : "''";
@@ -187,7 +195,6 @@ function iterIteration(el: any, getChildren?: (el: any) => any[]): string | null
     if (el.__type === 'com.mirth.connect.plugins.xsltstep.XsltStep') {
         return xsltScript(el).replace(/channelMap\.put\([^\n]*\n$/, `_${convertIdentifier(el.resultVariable)}.add(resultVar.toString());`);
     }
-    if (ITERATOR_TYPES.has(el.__type)) return iteratorScript(el, getChildren);
     return null;   // non-iterable child -> caller uses getScript
 }
 function iterPost(el: any): string | null {

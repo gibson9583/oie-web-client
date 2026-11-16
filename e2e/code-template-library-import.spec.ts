@@ -362,7 +362,7 @@ test('failure to fetch current libraries aborts import before any update', async
     await openLibraries(page);
     state.failReads = true;
     await startImport(page, [beta()]);
-    await expect(page.getByRole('dialog', { name: 'Error', exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Error', exact: true })).toContainText('Import failed: HTTP 503. Library read unavailable');
     expect(state.writes).toHaveLength(0);
     expect(state.libraries).toEqual([alpha()]);
 });

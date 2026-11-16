@@ -20,8 +20,8 @@ export interface CodeEditorOptions {
     maximizable?: boolean;
     popoutable?: boolean;
     popoutTitle?: string;
-    /** [[label, insertText]] variables rail in the code view. */
-    popoutVars?: Array<[string, string]>;
+    /** [[label, insertText]] variables rail, resolved on each code-view open. */
+    popoutVars?: Array<[string, string]> | (() => Array<[string, string]>);
     /** This editor's own completion context (Swing's per-editor ContextType): it
         takes the code-template and Reference completion scope while focused. */
     completionScope?: {

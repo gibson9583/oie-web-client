@@ -168,14 +168,14 @@ const httpListener = {
             <ConnectorForm properties={properties} onChange={onChange} fields={[
                 { section: 'Listener Settings' },
                 listenerAddressField('listenerConnectorProperties.host', 'Local Address'),
-                { key: 'listenerConnectorProperties.port', label: 'Local Port', type: 'number', width: '90px', append: () => portsInUseButton() },
+                { key: 'listenerConnectorProperties.port', label: 'Local Port', type: 'number', templatable: true, width: '90px', append: () => portsInUseButton() },
                 // HTTP authentication is provided by the httpauth connector-properties
                 // plugin (renders as a separate "Authentication" panel).
                 { section: 'HTTP Listener Settings' },
                 { key: 'contextPath', label: 'Base Context Path', type: 'text', width: '320px', placeholder: '/' },
-                { key: 'timeout', label: 'Receive Timeout (ms)', type: 'number', width: '120px' },
+                { key: 'timeout', label: 'Receive Timeout (ms)', type: 'number', templatable: true, width: '120px' },
                 {
-                    key: 'requestHeaderSize', label: 'Request Header Size (bytes)', type: 'text', width: '160px',
+                    key: 'requestHeaderSize', label: 'Request Header Size (bytes)', type: 'number', templatable: true, width: '160px',
                     visible: hasRequestHeaderSize, placeholder: '8192',
                     tooltip: 'Maximum combined request header size in bytes. Defaults to 8192 when unset. Accepts template substitutions and must resolve to a positive integer. Larger requests are rejected with HTTP 431 before reaching the channel.'
                 },
@@ -204,7 +204,7 @@ const httpListener = {
                     ]
                 },
                 { key: 'charset', label: 'Charset Encoding', type: 'select', options: HTTP_CHARSETS, width: '160px', disabled: (p: any) => asBool(p.responseDataTypeBinary) },
-                { key: 'responseStatusCode', label: 'Response Status Code', type: 'text', width: '120px', placeholder: 'Default (200/500)' },
+                { key: 'responseStatusCode', label: 'Response Status Code', type: 'number', templatable: true, width: '120px', placeholder: 'Default (200/500)' },
                 { key: 'useResponseHeadersVariable', label: 'Response Headers', type: 'radio', refresh: true, options: USE_TABLE_MAP },
                 // Swing useResponseHeadersVariableFieldsEnabled() greys (setEnabled) both controls while
                 // leaving both visible: the table is disabled when Use Map is selected, the variable field
@@ -286,7 +286,7 @@ const httpSender = {
                 },
                 { key: 'useProxyServer', label: 'Use Proxy Server', type: 'radio', refresh: true, options: YES_NO },
                 { key: 'proxyAddress', label: 'Proxy Address', type: 'text', width: '320px', disabled: (p: any) => !asBool(p.useProxyServer) },
-                { key: 'proxyPort', label: 'Proxy Port', type: 'text', width: '200px', disabled: (p: any) => !asBool(p.useProxyServer) },
+                { key: 'proxyPort', label: 'Proxy Port', type: 'number', templatable: true, width: '200px', disabled: (p: any) => !asBool(p.useProxyServer) },
                 {
                     // Method=POST is the only one that allows Multipart; switching
                     // away forces it off, matching the Swing checkMultipartEnabled.
@@ -301,7 +301,7 @@ const httpSender = {
                     ]
                 },
                 { key: 'multipart', label: 'Multipart', type: 'radio', options: YES_NO, disabled: (p: any) => String(p.method) !== 'post' || httpFormUrlEncoded(p) },
-                { key: 'socketTimeout', label: 'Send Timeout (ms)', type: 'text', width: '200px' },
+                { key: 'socketTimeout', label: 'Send Timeout (ms)', type: 'number', templatable: true, width: '200px' },
                 {
                     key: 'responseXmlBody', label: 'Response Content', type: 'radio', refresh: true,
                     options: [

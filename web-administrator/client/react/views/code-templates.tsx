@@ -23,6 +23,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast, confirmDialog, saveFile, pickFile, contextMenu, fmtDate } from '@oie/web-ui';
 import { TreeTable, TreeLabel } from '../tree-table.jsx';
 import api, { uuid } from '@oie/web-api';
+import { explainLoad, loadErrorMessage } from '../load-error.js';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import { navigationToken } from '../../core/router.js';
@@ -146,6 +147,11 @@ function bulkSaveError(result: any): string {
     return failure;
 }
 
+/** Preserve the Code Templates operation label around the shared diagnostic. */
+export function codeTemplateLoadError(error: any): string {
+    return `Load failed: ${loadErrorMessage(error, 'code template libraries', 'code templates')}`;
+}
+
 export function CodeTemplatesView({ query = {} }: { query?: Record<string, string> } = {}) {
     const mountedRef = useRef(false);
     useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
@@ -174,6 +180,9 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
     const [entries, setEntries] = useState([] as any[]);
     const entriesNowRef = useRef(entries);
     entriesNowRef.current = entries;
+    const [loaded, setLoaded] = useState(false);
+    const [loadFailed, setLoadFailed] = useState(false);
+    const loadedRef = useRef(false);
     const [selected, setSelected] = useState<any>(null);   // { kind: 'library'|'template', id }
     // Route targets are consumed only after a successful load. Refresh and
     // plugin reloads must preserve the user's subsequent selection rather than
@@ -208,6 +217,12 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
         setDirty(false);
     }
 
+    function requireLoaded() {
+        if (loadedRef.current) return true;
+        toast('Code template libraries must load successfully before making changes. Use Refresh to try again.', 'warn');
+        return false;
+    }
+
     // Resolve a { kind, id } selection against a library list (defaults to the
     // current render's). Menus/actions pass their own resolution explicitly.
     function resolve(sel: any, list = entries) {
@@ -227,6 +242,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
     /* Reads no render state (fetch + setState only), so the mount-captured
        codeTemplates:changed listener can safely call the first render's closure. */
     async function load() {
+        setLoadFailed(false);
         try {
             const list = await api.codeTemplates.libraries(true);
             const next = list.map(library => ({ library, templates: templatesOf(library) }));
@@ -244,6 +260,12 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
             persistedTemplateIdsRef.current = new Set(next.flatMap(entry => entry.templates.map((template: any) => String(template.id))));
             persistedTemplatesRef.current = new Map(next.flatMap(entry => entry.templates)
                 .map((template: any) => [String(template.id), JSON.stringify(template)]));
+            // Bulk save replaces the library collection. A failed initial load
+            // is not an empty baseline: saving it could remove unseen libraries.
+            // Keep a previous successful baseline available after refresh fails.
+            entriesNowRef.current = next;
+            loadedRef.current = true;
+            setLoaded(true);
             setEntries(next);
             markClean();
             const target = initialTargetRef.current;
@@ -262,7 +284,8 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
                 setSelected((prev: any) => (prev && resolve(prev, next) ? prev : null));
             }
         } catch (e: any) {
-            toast(`Load failed: ${e.message}`, 'error');
+            setLoadFailed(true);
+            toast(codeTemplateLoadError(e), 'error');
         }
     }
 
@@ -315,11 +338,11 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
         contextMenu(e.clientX, e.clientY, [
             { label: 'Refresh', icon: 'refresh', task: 'doRefreshCodeTemplates', group: 'codeTemplate', onClick: () => load() },
             '-',
-            { label: 'New Code Template', icon: 'plus', task: 'doNewCodeTemplate', group: 'codeTemplate', onClick: () => newTemplate(found && found.entry) },
-            { label: 'New Library', icon: 'folder', task: 'doNewLibrary', group: 'codeTemplate', onClick: () => newLibrary() },
+            { label: 'New Code Template', icon: 'plus', task: 'doNewCodeTemplate', group: 'codeTemplate', disabled: !loaded, onClick: () => newTemplate(found && found.entry) },
+            { label: 'New Library', icon: 'folder', task: 'doNewLibrary', group: 'codeTemplate', disabled: !loaded, onClick: () => newLibrary() },
             '-',
-            { label: 'Import Code Templates', icon: 'import', task: 'doImportCodeTemplates', group: 'codeTemplate', onClick: () => importCodeTemplates(found && found.entry) },
-            { label: 'Import Libraries', icon: 'import', task: 'doImportLibraries', group: 'codeTemplate', onClick: () => importLibraries() },
+            { label: 'Import Code Templates', icon: 'import', task: 'doImportCodeTemplates', group: 'codeTemplate', disabled: !loaded, onClick: () => importCodeTemplates(found && found.entry) },
+            { label: 'Import Libraries', icon: 'import', task: 'doImportLibraries', group: 'codeTemplate', disabled: !loaded, onClick: () => importLibraries() },
             { label: 'Export All Libraries', icon: 'export', task: 'doExportAllLibraries', group: 'codeTemplate', onClick: () => exportLibraries() }
         ]);
     }
@@ -346,20 +369,20 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
         contextMenu(e.clientX, e.clientY, [
             { label: 'Refresh', icon: 'refresh', task: 'doRefreshCodeTemplates', group: 'codeTemplate', onClick: () => load() },
             '-',
-            { label: 'New Code Template', icon: 'plus', task: 'doNewCodeTemplate', group: 'codeTemplate', onClick: () => newTemplate((resolved as any).entry) },
-            { label: 'New Library', icon: 'folder', task: 'doNewLibrary', group: 'codeTemplate', onClick: () => newLibrary() },
+            { label: 'New Code Template', icon: 'plus', task: 'doNewCodeTemplate', group: 'codeTemplate', disabled: !loaded, onClick: () => newTemplate((resolved as any).entry) },
+            { label: 'New Library', icon: 'folder', task: 'doNewLibrary', group: 'codeTemplate', disabled: !loaded, onClick: () => newLibrary() },
             '-',
-            { label: 'Import Code Templates', icon: 'import', task: 'doImportCodeTemplates', group: 'codeTemplate', onClick: () => importCodeTemplates((resolved as any).entry) },
-            { label: 'Import Libraries', icon: 'import', task: 'doImportLibraries', group: 'codeTemplate', onClick: () => importLibraries() },
+            { label: 'Import Code Templates', icon: 'import', task: 'doImportCodeTemplates', group: 'codeTemplate', disabled: !loaded, onClick: () => importCodeTemplates((resolved as any).entry) },
+            { label: 'Import Libraries', icon: 'import', task: 'doImportLibraries', group: 'codeTemplate', disabled: !loaded, onClick: () => importLibraries() },
             { label: 'Export Code Template', icon: 'export', hidden: !isTpl, task: 'doExportCodeTemplate', group: 'codeTemplate', onClick: () => exportTemplate(resolved) },
             { label: 'Export Library', icon: 'export', hidden: !isLib, task: 'doExportLibrary', group: 'codeTemplate', onClick: () => exportLibrary(resolved) },
             { label: 'Export All Libraries', icon: 'export', task: 'doExportAllLibraries', group: 'codeTemplate', onClick: () => exportLibraries() },
             '-',
             { label: 'Validate Script', icon: 'check', hidden: !isTpl, task: 'doValidateCodeTemplate', group: 'codeTemplate', onClick: () => validateScriptTask(resolved) },
             ...(pluginItems.length ? ['-', ...pluginItems] : []),
-            { label: 'Delete', icon: 'trash', danger: true, task: isTpl ? 'doDeleteCodeTemplate' : 'doDeleteLibrary', group: 'codeTemplate', onClick: () => deleteSelected(sel) },
+            { label: 'Delete', icon: 'trash', danger: true, task: isTpl ? 'doDeleteCodeTemplate' : 'doDeleteLibrary', group: 'codeTemplate', disabled: !loaded, onClick: () => deleteSelected(sel) },
             '-',
-            { label: 'Save All', icon: 'save', task: 'doSaveCodeTemplates', group: 'codeTemplate', onClick: () => saveAll() }
+            { label: 'Save All', icon: 'save', task: 'doSaveCodeTemplates', group: 'codeTemplate', disabled: !loaded, onClick: () => saveAll() }
         ]);
     }
 
@@ -370,6 +393,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
     /* ---- tasks --------------------------------------------------------------------- */
 
     function newLibrary() {
+        if (!requireLoaded()) return;
         // No name prompt — create the library and select it with the empty Name
         // field focused (the library editor focuses it when focusNewName is set).
         const library = {
@@ -391,6 +415,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
     }
 
     function newTemplate(entryArg: any) {
+        if (!requireLoaded()) return;
         // Re-resolve by id at execution time: the menu that offered this action
         // may have outlived a reload, leaving entryArg detached from the live
         // list (pushing onto it would silently never reach saveAll).
@@ -421,6 +446,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
        dialog was open would otherwise leave a detached entry whose removal
        no-ops, letting a later Save All resurrect the engine-deleted templates. */
     async function deleteSelected(sel: any) {
+        if (!requireLoaded()) return;
         let found = resolve(sel, entriesNowRef.current);
         if (!sel || !found) { toast('Select a library or code template first', 'warn'); return; }
 
@@ -449,6 +475,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
     function saveAll() { return withEditorSave(() => saveAllUnlocked()); }
 
     async function saveAllUnlocked(overrideConflicts = false, session?: () => void): Promise<any> {
+        if (!requireLoaded()) return;
         if (!platform.checkTask('codeTemplate', 'doSaveCodeTemplates')) return;
         let assertSession: () => void;
         try { assertSession = session || captureEngineSession(); assertSession(); } catch { return; }
@@ -623,6 +650,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
     }
 
     async function importLibrariesUnlocked() {
+        if (!requireLoaded()) return;
         if (!platform.checkTask('codeTemplate', 'doImportLibraries')) return;
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
@@ -655,7 +683,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
                 { okLabel: 'Import' });
             assertSession();
             if (!confirmed) return;
-            const current = await api.codeTemplates.libraries(true);
+            const current = await explainLoad(api.codeTemplates.libraries(true), 'code template libraries', 'code templates');
             assertSession();
             const payload = await prepareLibraryImport(current, pending.libraries, v,
                 libraryImportCallbacks(assertSession, pending.ids));
@@ -696,6 +724,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
     }
 
     async function importCodeTemplatesUnlocked(entryArg: any) {
+        if (!requireLoaded()) return;
         if (!platform.checkTask('codeTemplate', 'doImportCodeTemplates')) return;
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
@@ -727,7 +756,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
                 templateImportRef.current = { xml, targetId, templates: parseTemplateImport(xml, version), ids: new Map() };
             }
             const pending = templateImportRef.current;
-            const current = await api.codeTemplates.libraries(true);
+            const current = await explainLoad(api.codeTemplates.libraries(true), 'code template libraries', 'code templates');
             assertSession();
             const payload = await prepareTemplateImport(current, pending.templates, targetId, version,
                 libraryImportCallbacks(assertSession, pending.ids));
@@ -819,6 +848,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
        form). Mutates both entries' template lists, expands the target, and
        keeps the template selected. */
     function moveTemplate(entry: any, template: any, targetId: any) {
+        if (!requireLoaded()) return;
         if (targetId === entry.library.id) return;
         const target = entries.find(en => en.library.id === targetId);
         if (!target) return;
@@ -897,7 +927,9 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
         ? (n: any) => (n.kind === 'library' ? (n.lib.name || '').toLowerCase().includes(term) : templateMatches(n.tpl, term))
         : undefined;
     const totalTemplates = entries.reduce((sum: any, en: any) => sum + en.templates.length, 0);
-    const countsText = `${entries.length} Librar${entries.length === 1 ? 'y' : 'ies'}, ${totalTemplates} Code Template${totalTemplates === 1 ? '' : 's'}`;
+    const countsText = loaded
+        ? `${entries.length} Librar${entries.length === 1 ? 'y' : 'ies'}, ${totalTemplates} Code Template${totalTemplates === 1 ? '' : 's'}`
+        : loadFailed ? 'Code template libraries have not loaded' : 'Loading code template libraries…';
 
     return (
         <div className="view">
@@ -905,11 +937,11 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
                 <RailPane title="Code Template Tasks" paneKey="tasks:Code Template Tasks" group="codeTemplate">
                     <div className="taskbar" data-pane-title="Code Template Tasks">
                         <TaskButton label="Refresh" icon="refresh" task="doRefreshCodeTemplates" onClick={refreshTask} />
-                        {dirty && <TaskButton label="Save Changes" icon="save" primary task="doSaveCodeTemplates" onClick={() => saveAll()} />}
-                        {found && <TaskButton label="New Code Template" icon="plus" task="doNewCodeTemplate" onClick={() => newTemplate(found.entry)} />}
-                        <TaskButton label="New Library" icon="folder" task="doNewLibrary" onClick={newLibrary} />
-                        <TaskButton label="Import Code Templates" icon="import" task="doImportCodeTemplates" onClick={() => importCodeTemplates(found && found.entry)} />
-                        <TaskButton label="Import Libraries" icon="import" task="doImportLibraries" onClick={importLibraries} />
+                        {dirty && <TaskButton label="Save Changes" icon="save" primary task="doSaveCodeTemplates" disabled={!loaded} onClick={() => saveAll()} />}
+                        {found && <TaskButton label="New Code Template" icon="plus" task="doNewCodeTemplate" disabled={!loaded} onClick={() => newTemplate(found.entry)} />}
+                        <TaskButton label="New Library" icon="folder" task="doNewLibrary" disabled={!loaded} onClick={newLibrary} />
+                        <TaskButton label="Import Code Templates" icon="import" task="doImportCodeTemplates" disabled={!loaded} onClick={() => importCodeTemplates(found && found.entry)} />
+                        <TaskButton label="Import Libraries" icon="import" task="doImportLibraries" disabled={!loaded} onClick={importLibraries} />
                         {isTemplate && <TaskButton label="Export Code Template" icon="export" task="doExportCodeTemplate" onClick={() => exportTemplate(found)} />}
                         {isLibrary && <TaskButton label="Export Library" icon="export" task="doExportLibrary" onClick={() => exportLibrary(found)} />}
                         {isTemplate && <TaskButton label="Delete Code Template" icon="trash" danger task="doDeleteCodeTemplate" onClick={() => deleteSelected(selected)} />}
@@ -950,7 +982,9 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
                                 columnWidths={CT_COL_WIDTHS}
                                 defaultHidden={['id']}
                                 pinnedKeys={['name']}
-                                emptyText="No code template libraries" />
+                                emptyText={loaded ? 'No code template libraries'
+                                    : loadFailed ? 'Code template libraries must load before changes can be made.'
+                                    : <div className="loading-block" role="status"><div className="spinner" />Loading code template libraries…</div>} />
                         </div>
                         <div className="filterbar flex-none panel overflow-visible mx-[13px] my-2">
                             <span className="counts">{countsText}</span>

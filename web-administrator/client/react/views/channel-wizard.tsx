@@ -1,6 +1,7 @@
 import { channelEditState, isNewChannelDraft, loadChannelForEdit } from '../../core/channel-save.js';
 import { persistChannelModel, confirmLibraryOverwrite, channelSessionActive } from '../channel-persistence.js';
 import { withEditorSave } from '../save-lock.js';
+import { loadErrorMessage } from '../load-error.js';
 import { channelDependencyState, persistLibraryAssociations, persistChannelDependencies } from '../../core/channel-dependencies.js';
 /*
  * Guided channel builder — a step-by-step ALTERNATIVE to the classic tabbed
@@ -41,6 +42,7 @@ import {
 // the wizard has no other reason to reference the classic editor, and that lone
 // import is what would otherwise chain the two into one bundle chunk.
 import { destinationMappingsFor } from '../../core/mappings.js';
+import { ConnectorMappingProvider } from '../../connectors/react-forms.js';
 import { useConnectorTypeSwitch } from '../connector-type-switch.js';
 import { usePaletteContext } from '../palette-context.js';
 
@@ -130,9 +132,11 @@ function ConnectorPanelMount({ channel, connector, mode, onChange }: any) {
         const host = hostRef.current;
         const def = platform.connectorPanel(connector.transportName, mode) || platform.connectorPanel('*', mode);
         if (!host || !def || typeof def.component !== 'function') return undefined;
-        return mountReact(host, <PluginSlot def={def} ctx={{ properties: connector.properties, connector, channel, platform, onChange }} />);
+        return mountReact(host, <ConnectorMappingProvider channel={channel} connector={connector}>
+            <PluginSlot def={def} ctx={{ properties: connector.properties, connector, channel, platform, onChange }} />
+        </ConnectorMappingProvider>);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [connector, connector.transportName, mode]);
+    }, [channel, connector, connector.transportName, connector.properties, mode]);
     return <div ref={hostRef} />;
 }
 
@@ -281,7 +285,7 @@ function insertIntoTarget(target: any, token: any, position?: any) {
     return true;
 }
 
-function DestinationMappingsRail({ hostRef, properties }: any) {
+function DestinationMappingsRail({ hostRef, channel, connector }: any) {
     const targetRef = useRef<any>(null);   // last focused insertable inside hostRef
     const dragTokenRef = useRef<any>(null);
     // Shares its collapse flag with the classic editor's rail (same rail). The
@@ -353,8 +357,8 @@ function DestinationMappingsRail({ hostRef, properties }: any) {
             </div>
             <div className="panel-body flex flex-col gap-2">
                 <div className="border border-line rounded overflow-auto max-h-[324px] min-h-[108px]">
-                    {destinationMappingsFor(properties).map(([label, token]) => (
-                        <div key={token} role="button" draggable title={token}
+                    {destinationMappingsFor(connector.properties, channel, connector).map(([label, token]) => (
+                        <div key={label} role="button" draggable title={token}
                             onDragStart={(e: any) => {
                                 dragTokenRef.current = token;
                                 e.dataTransfer.effectAllowed = 'copy';
@@ -434,7 +438,7 @@ function ConnectorTabs({ channel, connector, mode, version, onChange, destIndex 
                                 <ConnectorPanelMount key={connector.transportName} channel={channel} connector={connector} mode={mode} onChange={onChange} />
                             </div>
                         </div>
-                        {isDest && <DestinationMappingsRail hostRef={settingsHostRef} properties={connector.properties} />}
+                        {isDest && <DestinationMappingsRail hostRef={settingsHostRef} channel={channel} connector={connector} />}
                     </div>
                 </div>
             )}</TabsPrimitive.Content>
@@ -639,6 +643,7 @@ function ChannelWizardView({ params, query = {} }: any) {
             return c;
         },
         fetch: (id: any) => loadChannelForEdit(id),
+        formatLoadError: (error: any) => `Load failed: ${loadErrorMessage(error, 'channel', 'channels')}`,
         backPath: '/channels'
     });
     if (!ready || !model) return <div className="view"><div className="view-body"><div className="dt-empty">Loading channel…</div></div></div>;

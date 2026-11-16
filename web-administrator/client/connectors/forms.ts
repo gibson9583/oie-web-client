@@ -21,12 +21,17 @@ export interface FormField {
     type?: 'text' | 'password' | 'number' | 'select' | 'checkbox' | 'radio' | 'display' | 'textarea' | 'code' | 'keyvalue' | 'custom' | string;
     options?: Array<string | { value: any; label: string }> | ((properties: any) => Array<string | { value: any; label: string }>);
     width?: string;
+    /** Allow the field to contain templates*/
+    templatable?: boolean;
+    /** Special width to use when containing templates*/
+    templateWidth?: string;
     placeholder?: string;
     checkLabel?: string;
     minHeight?: string;
     language?: string | ((properties: any) => string);
     rows?: number;
     numeric?: boolean;
+    step?: number,
     mapShape?: 'string' | 'list';
     /** Full-width control (label above). */
     span?: boolean;
