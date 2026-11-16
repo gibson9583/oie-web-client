@@ -2935,11 +2935,30 @@ export function MessagesView({ params, query }: any) {
             : `message ${messageId} and all its destinations`;
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
+        let patientId: string | undefined;
+        try {
+            // Search JSON can coerce numeric-looking patient IDs. Like Swing,
+            // use cached full content or load it losslessly before confirmation.
+            const cached = detailRef.current;
+            const message = cached.status === 'ready'
+                && String(cached.message.messageId) === String(messageId)
+                && String(cached.message.channelId) === String(channelId)
+                ? cached.message : await api.messages.get(channelId, messageId);
+            assertSession();
+            if (String(message?.messageId) !== String(messageId)
+                || String(message?.channelId) !== String(channelId)) throw new Error('Engine returned a different message');
+            const auditConnector = connectorMessagesOf(message).find(cm => Number(cm.metaDataId) === metaDataId);
+            patientId = metaOfCm(auditConnector, 'PATIENT_ID') || undefined;
+        } catch (e: any) {
+            try { assertSession(); } catch { return; }
+            // Swing logs metadata lookup failures and still permits removal.
+            console.warn('Unable to read patient ID for removal audit', e);
+        }
         if (getPref('confirmReprocessRemove') !== false &&
             !await confirmDialog('Remove message', `Permanently remove ${target} from ${describeTargets('channel', [{ id: channelId, name: channelName }])}? This cannot be undone.`, { danger: true, okLabel: 'Remove' })) return;
         try {
             assertSession();
-            await api.messages.remove(channelId, messageId, metaDataId);
+            await api.messages.remove(channelId, messageId, metaDataId, patientId);
             assertSession();
             toast('Message removed');
             searchRef.current(false);

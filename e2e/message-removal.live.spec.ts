@@ -2,6 +2,11 @@ import { test, expect } from './base.js';
 import { login } from './mock.js';
 
 const appBase = new URL(process.env.E2E_BASE_URL || 'http://localhost:3030').pathname.replace(/\/$/, '');
+const patients: Record<number, string> = {
+    0: '9007199254740993',
+    7: 'Destination +7 / patient?x=1&y=2',
+    2: 'Destination &2=patient'
+};
 
 for (const surface of ['rail', 'context menu'] as const) {
     for (const source of [false, true]) {
@@ -17,11 +22,14 @@ for (const surface of ['rail', 'context menu'] as const) {
                     .filter({ hasText: 'Web Support plugin is not installed' })
                     .getByRole('button', { name: 'Close', exact: true }).last().click();
             }
-            const channelId = await page.evaluate(async name => {
+            const channelId = await page.evaluate(async ({ name, patients }) => {
                 const pkg = '@oie/web-api';
                 const m = await import(pkg);
                 const api = m.default;
                 const channel = m.newChannel(name, '4.6.0');
+                channel.properties.metaDataColumns.metaDataColumn.push({
+                    name: 'PATIENT_ID', type: 'STRING', mappingName: 'removal_patient'
+                });
                 const destination = channel.destinationConnectors.connector[0];
                 destination.metaDataId = 7;
                 destination.name = 'Destination Seven';
@@ -36,10 +44,18 @@ for (const surface of ['rail', 'context menu'] as const) {
                 second.metaDataId = 2;
                 second.name = 'Destination Two';
                 channel.destinationConnectors.connector.push(second);
+                for (const connector of channel.destinationConnectors.connector) {
+                    connector.transformer.elements = {
+                        'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': {
+                            '@version': '4.6.0', name: 'Select audit patient', sequenceNumber: 0, enabled: true,
+                            script: `connectorMap.put("removal_patient", ${JSON.stringify(patients[connector.metaDataId])});`
+                        }
+                    };
+                }
                 channel.nextMetaDataId = 8;
                 if (String(await api.channels.create(channel)) !== 'true') throw new Error('Channel creation failed');
                 return channel.id;
-            }, `Removal ${surface === 'rail' ? 'rail' : 'menu'} ${source ? 'src' : 'dest'} ${String(testInfo.config.metadata.runId).slice(-8)}`);
+            }, { name: `Removal ${surface === 'rail' ? 'rail' : 'menu'} ${source ? 'src' : 'dest'} ${String(testInfo.config.metadata.runId).slice(-8)}`, patients });
             const writes: Array<{ url: string; status?: number }> = [];
             page.on('response', response => {
                 if (response.request().method() === 'DELETE' && response.url().includes(`/channels/${channelId}/messages/`)) {
@@ -47,20 +63,25 @@ for (const surface of ['rail', 'context menu'] as const) {
                 }
             });
             try {
-                const messageId = await page.evaluate(async id => {
+                const messageId = await page.evaluate(async ({ id, patientId }) => {
                     const pkg = '@oie/web-api';
                     const api = (await import(pkg)).default;
                     await api.engine.deploy(id);
-                    return api.messages.processNew(id, 'Retained source payload', null, []);
-                }, channelId);
+                    return api.messages.processNew(id, 'Retained source payload', null, [`removal_patient=${patientId}`]);
+                }, { id: channelId, patientId: patients[0] });
                 const observations = () => page.evaluate(async ({ channelId, messageId }) => {
                     const pkg = '@oie/web-api';
-                    const api = (await import(pkg)).default;
+                    const m = await import(pkg);
+                    const api = m.default;
                     const rows = await api.messages.search(channelId, { minMessageId: messageId, maxMessageId: messageId, offset: 0, limit: 20 });
                     return rows.map((row: any) => ({ messageId: String(row.messageId), processed: row.processed,
-                        connectorIds: api.asList(row.connectorMessages, 'entry').map((entry: any) => Number(entry.int)) }));
+                        connectorIds: api.asList(row.connectorMessages, 'entry').map((entry: any) => Number(entry.int)),
+                        patients: Object.fromEntries(api.asList(row.connectorMessages, 'entry').map((entry: any) => {
+                            const connector: any = Object.entries(entry).find(([key]) => key !== 'int')?.[1];
+                            return [String(entry.int), Object.fromEntries(m.mappingEntries(connector.metaDataMap)).PATIENT_ID];
+                        })) }));
                 }, { channelId, messageId });
-                await expect.poll(observations).toEqual([{ messageId: String(messageId), processed: true, connectorIds: [0, 7, 2] }]);
+                await expect.poll(observations).toEqual([{ messageId: String(messageId), processed: true, connectorIds: [0, 7, 2], patients }]);
                 const before = await observations();
                 await page.goto(`${appBase}/messages/${channelId}`);
                 if (process.env.E2E_WEB_SUPPORT === '0') {
@@ -87,20 +108,40 @@ for (const surface of ['rail', 'context menu'] as const) {
                 const response = await removed;
                 expect(response.ok()).toBe(true);
                 expect(new URL(response.url()).searchParams.get('metaDataId')).toBe(String(targetId));
+                const patientId = patients[targetId];
+                expect(new URL(response.url()).searchParams.get('patientId')).toBe(patientId);
+                const audit = () => page.evaluate(async channelId => {
+                    const pkg = '@oie/web-api';
+                    const m = await import(pkg);
+                    // Derby's attribute filter matches the start of an XML
+                    // string value; the channel attribute starts with Channel[id=.
+                    const events = await m.get('/events', {
+                        name: 'Remove message', attributeSearch: `Channel[id=${channelId}`, offset: 0, limit: 20
+                    });
+                    return m.default.asList(events, 'event').map((event: any) => ({ id: event.id, name: event.name, outcome: event.outcome,
+                        attributes: Object.fromEntries(m.mappingEntries(event.attributes)) }));
+                }, channelId);
+                await expect.poll(audit, { timeout: 15_000 }).toEqual([expect.objectContaining({
+                    name: 'Remove message', outcome: 'SUCCESS', attributes: expect.objectContaining({
+                        messageId: `${messageId}\n`, metaDataId: `${targetId}\n`, patientId: `${patientId}\n`
+                    })
+                })]);
+                const removalAudit = await audit();
                 const after = await observations();
                 if (source) expect(after).toEqual([]);
                 else {
                     expect(after).toEqual([{ messageId: String(messageId), processed: true,
-                        connectorIds: targetId === 7 ? [0, 2] : [0, 7] }]);
+                        connectorIds: targetId === 7 ? [0, 2] : [0, 7],
+                        patients: { 0: patients[0], [targetId === 7 ? 2 : 7]: patients[targetId === 7 ? 2 : 7] } }]);
                     // Repeating an already removed destination must remain a no-op.
-                    await page.evaluate(async ({ channelId, messageId, targetId }) => {
+                    await page.evaluate(async ({ channelId, messageId, targetId, patientId }) => {
                         const pkg = '@oie/web-api';
-                        await (await import(pkg)).default.messages.remove(channelId, messageId, targetId);
-                    }, { channelId, messageId, targetId });
+                        await (await import(pkg)).default.messages.remove(channelId, messageId, targetId, patientId);
+                    }, { channelId, messageId, targetId, patientId });
                     expect(await observations()).toEqual(after);
                 }
                 await testInfo.attach('engine-removal-observations', {
-                    body: JSON.stringify({ channelId, messageId, targetId, before, after, writes }, null, 2), contentType: 'application/json'
+                    body: JSON.stringify({ channelId, messageId, targetId, patientId, before, after, writes, removalAudit }, null, 2), contentType: 'application/json'
                 });
             } finally {
                 await page.evaluate(async id => {
