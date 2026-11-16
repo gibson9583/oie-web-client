@@ -22,8 +22,9 @@
 import { withEditorSave } from '../save-lock.js';
 import { loadConfigurationMapImport, serializeConfigurationMap } from './configuration-map-import.js';
 import { useState, useEffect, useRef, useReducer, useMemo } from 'react';
-import { h, icon, toast, taskButton, confirmDialog, promptDialog, modal, field, textInput, checkbox, saveFile, pickFile, contextMenu } from '@oie/web-ui';
+import { h, icon, toast, taskButton, confirmDialog, promptDialog, modal, field, textInput, checkbox, saveFile, pickFile, contextMenu, createCodeEditor } from '@oie/web-ui';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
+import { detectType } from '../../core/content-highlight.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import api from '@oie/web-api';
 import { platform } from '@oie/web-shell';
@@ -1198,6 +1199,153 @@ let cfgRowSeq = 0;
 const newCfgRow = (key = '', value = '', comment = '', propKey = CONFIGURATION_PROPERTY_CLASS, prop = null) =>
     ({ _id: ++cfgRowSeq, key, value, comment, propKey, prop });
 
+function detectConfigLanguage(value: string): string {
+    const trimmed = String(value ?? '').trim();
+    if (!trimmed) return 'text';
+    try {
+        const kind = detectType(trimmed);
+        if (kind === 'json' || kind === 'xml') return kind;
+    } catch { /* ignore */ }
+    return 'text';
+}
+
+interface ConfigurationValueModalHandle {
+    rowId: any;
+    isDirty: () => boolean;
+    getDraft: () => string;
+    markSaved: () => void;
+    close: () => void;
+}
+
+function openConfigurationValueModal(
+    row: any,
+    onSave: (val: string) => void,
+    onCancel?: () => void,
+    onDirty?: () => void
+): ConfigurationValueModalHandle {
+    let draft = String(row.value ?? '');
+    let isDirty = false;
+    let saved = false;
+    const baseTitle = row.key ? `Value — ${row.key}` : 'Value';
+    const titleEl = h('span', baseTitle);
+    const markDirty = () => {
+        if (!isDirty) {
+            isDirty = true;
+            titleEl.textContent = `${baseTitle} *`;
+            onDirty?.();
+        }
+    };
+    let currentLang = detectConfigLanguage(draft);
+    let detectTimer: any = null;
+
+    const syncEditorLanguage = (content: string) => {
+        const nextLang = detectConfigLanguage(content);
+        if (nextLang !== currentLang) {
+            currentLang = nextLang;
+            try {
+                const monaco = (window as any).monaco;
+                const model = (editor as any)?.monaco?.getModel();
+                if (monaco?.editor?.setModelLanguage && model) {
+                    monaco.editor.setModelLanguage(model, nextLang === 'text' ? 'plaintext' : nextLang);
+                }
+            } catch { /* ignore */ }
+        }
+    };
+
+    const editor = createCodeEditor({
+        value: draft,
+        language: currentLang,
+        minHeight: '60vh',
+        onChange: (v: any) => {
+            draft = String(v ?? '');
+            markDirty();
+            if (detectTimer) clearTimeout(detectTimer);
+            detectTimer = setTimeout(() => {
+                syncEditorLanguage(draft);
+            }, 250);
+        }
+    });
+    let blockOutsideClick: ((e: MouseEvent | PointerEvent) => void) | null = null;
+    let blockEscape: ((e: KeyboardEvent) => void) | null = null;
+    let overlay: HTMLElement | null = null;
+    const dialog = modal({
+        title: titleEl,
+        size: 'xwide',
+        body: editor.el,
+        onClose: () => {
+            if (overlay && blockOutsideClick) {
+                overlay.removeEventListener('pointerdown', blockOutsideClick, true);
+                overlay.removeEventListener('mousedown', blockOutsideClick, true);
+                overlay.removeEventListener('click', blockOutsideClick, true);
+            }
+            if (blockEscape) {
+                window.removeEventListener('keydown', blockEscape, true);
+            }
+            if (detectTimer) clearTimeout(detectTimer);
+            try { editor.dispose && editor.dispose(); } catch { /* ignore */ }
+            if (!saved && onCancel) onCancel();
+        },
+        buttons: [
+            {
+                label: 'Open File…',
+                onClick: async () => {
+                    try {
+                        const file = await pickFile();
+                        if (file && file.content !== undefined) {
+                            draft = String(file.content);
+                            editor.setValue(draft);
+                            markDirty();
+                            if (detectTimer) clearTimeout(detectTimer);
+                            syncEditorLanguage(draft);
+                        }
+                    } catch (e: any) {
+                        toast(`Failed to open file: ${e.message || e}`, 'error');
+                    }
+                    return false;
+                }
+            },
+            { label: 'Cancel' },
+            {
+                label: 'OK',
+                primary: true,
+                onClick: () => {
+                    saved = true;
+                    onSave(draft);
+                }
+            }
+        ]
+    });
+    overlay = (dialog.el?.closest('.modal-overlay') || dialog.el?.parentElement) as HTMLElement | null;
+    if (overlay) {
+        blockOutsideClick = (e: MouseEvent | PointerEvent) => {
+            if (e.target === overlay && isDirty) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+            }
+        };
+        overlay.addEventListener('pointerdown', blockOutsideClick, true);
+        overlay.addEventListener('mousedown', blockOutsideClick, true);
+        overlay.addEventListener('click', blockOutsideClick, true);
+    }
+    blockEscape = (e: KeyboardEvent) => {
+        if (e.key === 'Escape' && isDirty) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+        }
+    };
+    window.addEventListener('keydown', blockEscape, true);
+    setTimeout(() => { try { editor.focus && editor.focus(); } catch { /* ignore */ } }, 30);
+    return {
+        rowId: row._id,
+        isDirty: () => isDirty,
+        getDraft: () => draft,
+        markSaved: () => { saved = true; },
+        close: () => dialog.close()
+    };
+}
+
 function ConfigurationMapTab({ ctx }: any) {
     const currentSession = useSettingsSession();
     /* Rows are plain state; inputs are controlled with STABLE per-row keys so
@@ -1207,6 +1355,8 @@ function ConfigurationMapTab({ ctx }: any) {
     const [rows, setRows] = useState<any>(null);          // null = loading
     const rowsNowRef = useRef(rows);
     rowsNowRef.current = rows;
+    const [loading, setLoading] = useState(false);
+    const loadGenRef = useRef(0);
     const [filterText, setFilterText] = useState('');
     const [showValues, setShowValues] = useState(false);
     const [loadError, setLoadError] = useState<any>(null);
@@ -1217,13 +1367,16 @@ function ConfigurationMapTab({ ctx }: any) {
     // legacy grid's re-filter timing.
     const [structureVersion, setStructureVersion] = useState(0);
     const bumpStructure = () => setStructureVersion(v => v + 1);
+    const activeModalRef = useRef<ConfigurationValueModalHandle | null>(null);
 
     async function load() {
         if (!currentSession()) return;
+        const gen = ++loadGenRef.current;
+        setLoading(true);
         setLoadError(null);
         try {
             const raw = await api.server.configurationMap();
-            if (!currentSession()) return;
+            if (!currentSession() || gen !== loadGenRef.current) return;
             const next: any[] = [];
             for (const entry of api.asList(raw && raw.entry)) {
                 if (!entry || typeof entry !== 'object') continue;
@@ -1245,20 +1398,26 @@ function ConfigurationMapTab({ ctx }: any) {
             setRows(next);
             bumpStructure();
         } catch (e: any) {
-            if (!currentSession()) return;
+            if (!currentSession() || gen !== loadGenRef.current) return;
             toast(`Failed to load configuration map: ${e.message}`, 'error');
             setLoadError(String(e.message || e));
+        } finally {
+            if (gen === loadGenRef.current) setLoading(false);
         }
     }
 
     function save() { return withEditorSave(saveUnlocked); }
 
     async function saveUnlocked() {
-        if (!currentSession()) return false;
+        if (!currentSession() || loading) return false;
         try {
+            const openModal = activeModalRef.current;
+            const baseRows = rowsNowRef.current || [];
             /* Round-trip each entry's property-class key and any extra fields
                the engine put on the ConfigurationProperty. */
-            const current = rowsNowRef.current || [];
+            const current = (openModal && openModal.isDirty())
+                ? baseRows.map((r: any) => (r._id === openModal.rowId ? { ...r, value: openModal.getDraft() } : r))
+                : baseRows;
             if (current.some((row: any) => !row.key.trim() && (row.value.trim() || row.comment.trim()))) {
                 toast('Blank keys are not allowed.', 'warn');
                 return false;
@@ -1269,6 +1428,15 @@ function ConfigurationMapTab({ ctx }: any) {
             }));
             await api.server.setConfigurationMap({ entry });
             if (!currentSession()) return false;
+            if (openModal && activeModalRef.current === openModal) {
+                if (openModal.isDirty()) {
+                    rowsNowRef.current = current;
+                    setRows(current);
+                }
+                activeModalRef.current = null;
+                openModal.markSaved();
+                openModal.close();
+            }
             ctx.markClean();
             toast('Configuration map saved');
             return true;
@@ -1282,7 +1450,7 @@ function ConfigurationMapTab({ ctx }: any) {
     function importMap() { return withEditorSave(importMapUnlocked, 'Importing configuration map…'); }
 
     async function importMapUnlocked() {
-        if (!currentSession()) return;
+        if (!currentSession() || loading) return;
         if (!rowsNowRef.current) { toast('The configuration map has not loaded yet', 'warn'); return; }
         let file;
         try { file = await pickFile('.properties'); }
@@ -1357,6 +1525,12 @@ function ConfigurationMapTab({ ctx }: any) {
             taskButton('Export Map', 'export', () => exportRef.current(), { task: 'doExportMap', group: 'settings_Configuration Map' })
         ]);
         loadRef.current();
+        return () => {
+            //Close any opened modal when disposing the tab
+            if (activeModalRef.current) {
+                activeModalRef.current.close();
+            }
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -1380,10 +1554,46 @@ function ConfigurationMapTab({ ctx }: any) {
     if (!rows) return <div className="loading-block"><div className="spinner" />Loading…</div>;
 
     const shown = rows.filter((r: any) => visibleIds.has(r._id)).length;
-    const patchRow = (id: any, patch: any) => setRows((prev: any) => prev.map((r: any) => (r._id === id ? { ...r, ...patch } : r)));
-    const insertAt = (i: any) => { setRows((prev: any) => { const next = prev.slice(); next.splice(i, 0, newCfgRow()); return next; }); bumpStructure(); ctx.markDirty(); };
-    const deleteAt = (i: any) => { setRows((prev: any) => { const next = prev.slice(); next.splice(i, 1); return next; }); bumpStructure(); ctx.markDirty(); };
-    const addRow = () => { setRows((prev: any) => [...prev, newCfgRow()]); bumpStructure(); ctx.markDirty(); };
+    const patchRow = (id: any, patch: any) => {
+        if (loading) return;
+        setRows((prev: any) => {
+            const next = prev.map((r: any) => (r._id === id ? { ...r, ...patch } : r));
+            rowsNowRef.current = next;
+            return next;
+        });
+    };
+    const insertAt = (i: any) => { if (loading) return; setRows((prev: any) => { const next = prev.slice(); next.splice(i, 0, newCfgRow()); return next; }); bumpStructure(); ctx.markDirty(); };
+    const deleteAt = (i: any) => { if (loading) return; setRows((prev: any) => { const next = prev.slice(); next.splice(i, 1); return next; }); bumpStructure(); ctx.markDirty(); };
+    const addRow = () => { if (loading) return; setRows((prev: any) => [...prev, newCfgRow()]); bumpStructure(); ctx.markDirty(); };
+
+    const restoreDirty = (wasDirty: boolean) => {
+        if (wasDirty) ctx.markDirty();
+        else ctx.markClean();
+    };
+
+    const editValue = (row: any) => {
+        if (loading || activeModalRef.current) return;
+        const wasDirty = Boolean(ctx.isDirty?.());
+        const handle = openConfigurationValueModal(
+            row,
+            (newValue: string) => {
+                if (activeModalRef.current === handle) activeModalRef.current = null;
+                if (!currentSession()) return;
+                patchRow(row._id, { value: newValue });
+                ctx.markDirty();
+            },
+            () => {
+                if (activeModalRef.current === handle) activeModalRef.current = null;
+                if (!currentSession()) return;
+                restoreDirty(wasDirty); //Restore the dirty status previous to the dialog opening
+            },
+            () => { // Fires as soon as the user types or loads a file into the editor
+                if (!currentSession()) return;
+                ctx.markDirty();
+            }
+        );
+        activeModalRef.current = handle;
+    };
 
     const valueType = showValues ? 'text' : 'password';
 
@@ -1406,14 +1616,14 @@ function ConfigurationMapTab({ ctx }: any) {
                     {/* Add Row rides the tab's doSave permission — adding a row is
                         meaningless without save rights, so no separate identifier. */}
                     {platform.checkTask('settings_Configuration Map', 'doSave') && (
-                        <button type="button" className="btn" onClick={addRow}>
+                        <button type="button" className="btn" disabled={loading} onClick={addRow}>
                             <span className="inline-flex" ref={(el: any) => { if (el && !el.firstChild) el.appendChild(icon('plus')); }} />Add Row
                         </button>
                     )}
                 </div>
             </div>
             <div className="panel-body flush">
-                <div className="dt-wrap">
+                <div className={`dt-wrap${loading ? ' opacity-50 pointer-events-none select-none' : ''}`} inert={loading || undefined}>
                     <table className="dt">
                         <thead><tr><th>Key</th><th>Value</th><th>Comment</th><th className="w-10"></th></tr></thead>
                         <tbody>
@@ -1423,6 +1633,8 @@ function ConfigurationMapTab({ ctx }: any) {
                                         e.preventDefault();
                                         // Row edits ride doSave like the Add Row button (RBAC.md §3).
                                         contextMenu(e.clientX, e.clientY, [
+                                            { label: 'Edit Value', icon: 'edit', onClick: () => editValue(row) },
+                                            '-',
                                             { label: 'Insert Row Above', icon: 'plus', task: 'doSave', group: 'settings_Configuration Map', onClick: () => insertAt(i) },
                                             { label: 'Insert Row Below', icon: 'plus', task: 'doSave', group: 'settings_Configuration Map', onClick: () => insertAt(i + 1) },
                                             '-',
@@ -1430,7 +1642,23 @@ function ConfigurationMapTab({ ctx }: any) {
                                         ]);
                                     }}>
                                     <td><input type="text" value={row.key} onChange={(e: any) => patchRow(row._id, { key: e.target.value })} /></td>
-                                    <td><input type={valueType} value={row.value} onChange={(e: any) => patchRow(row._id, { value: e.target.value })} /></td>
+                                    <td onClick={() => editValue(row)} className="cursor-pointer">
+                                        <div className="flex items-center gap-1">
+                                            <input
+                                                type={valueType}
+                                                readOnly
+                                                className="cursor-pointer flex-1"
+                                                title="Click to edit value"
+                                                value={row.value}
+                                                onKeyDown={(e: any) => {
+                                                    if (e.key === 'Enter' || e.key === ' ') {
+                                                        e.preventDefault();
+                                                        editValue(row);
+                                                    }
+                                                }}
+                                            />
+                                        </div>
+                                    </td>
                                     <td><input type="text" value={row.comment} onChange={(e: any) => patchRow(row._id, { comment: e.target.value })} /></td>
                                     <td>
                                         <button type="button" className="icon-btn" title="Remove row" onClick={() => deleteAt(i)}>
@@ -2077,6 +2305,7 @@ function SettingsContent({ query, defs }: any) {
             setTasks(title: any, items: any) { tasksRef.current = { title, items }; force(); },
             markDirty: setDirty,
             markClean: setClean,
+            isDirty: () => dirtyRef.current,
             setSave(fn: any) { saveRef.current = fn || null; }
         };
         return {
@@ -2091,6 +2320,7 @@ function SettingsContent({ query, defs }: any) {
                         setTasks(title: any, items: any) { if (current()) context.setTasks(title, items); },
                         markDirty() { if (current()) context.markDirty(); },
                         markClean() { if (current()) context.markClean(); },
+                        isDirty() { return current() ? context.isDirty() : false; },
                         setSave(fn: any) { if (current()) context.setSave(fn); }
                     },
                     dispose() { if (current()) activationRef.current = null; }
