@@ -12,7 +12,10 @@ use the minimum access required by your role.
 2. Add start/end dates, status, text, regex, connector, and advanced metadata
    criteria as needed.
 3. Choose a page size and run Search.
-4. Expand a message to see source and destination connector rows.
+4. Expand a message to see source and destination connector rows. When a status or
+   connector filter hides sibling connectors, click the **Show All Connectors** icon
+   beside the message ID (or choose **Show All Connectors** from the row menu or
+   **Message Tasks**) to load all connectors of that message in place.
 
 Explicit PHI-oriented searches and message access can be audited by the engine.
 Use narrow criteria to reduce both result size and exposure.
