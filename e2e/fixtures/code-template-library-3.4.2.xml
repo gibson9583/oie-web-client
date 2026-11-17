@@ -1,0 +1,27 @@
+<list>
+  <codeTemplateLibrary version="3.4.2">
+    <id>10000000-0000-4000-8000-000000000001</id>
+    <name>Test Library</name>
+    <revision>1</revision>
+    <description/>
+    <includeNewChannels>false</includeNewChannels>
+    <enabledChannelIds/>
+    <disabledChannelIds/>
+    <codeTemplates>
+      <codeTemplate version="3.4.2">
+        <id>10000000-0000-4000-8000-000000000002</id>
+        <name>Test Function</name>
+        <revision>1</revision>
+        <type>FUNCTION</type>
+        <contextSet>
+          <delegate>
+            <contextType>SOURCE_FILTER_TRANSFORMER</contextType>
+          </delegate>
+        </contextSet>
+        <code>function testFunction() {
+    return 1 &lt; 2 &amp;&amp; 2 &gt; 1;
+}</code>
+      </codeTemplate>
+    </codeTemplates>
+  </codeTemplateLibrary>
+</list>

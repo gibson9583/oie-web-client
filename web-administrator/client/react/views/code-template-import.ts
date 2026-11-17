@@ -66,7 +66,20 @@ export function parseLibraryImport(xml: string, version: string): Model[] {
         const imported: Model[] = [];
         for (const child of [...(container?.children || [])]) {
             if (child.tagName !== 'codeTemplate') continue;
-            const properties = [...child.children].find(field => field.tagName === 'properties');
+            let properties = [...child.children].find(field => field.tagName === 'properties');
+            if (!properties) {
+                // Match Swing's CodeTemplate.migrate3_5_0 for 3.3/3.4 exports.
+                // Older formats require additional migrations.
+                const [major, minor] = (child.getAttribute('version') || '').split('.').map(Number);
+                const type = [...child.children].find(field => field.tagName === 'type');
+                const code = [...child.children].find(field => field.tagName === 'code');
+                if (major === 3 && minor >= 3 && minor < 5 && type && code) {
+                    properties = doc.createElement('properties');
+                    properties.setAttribute('class', 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties');
+                    properties.append(type, code);
+                    child.append(properties);
+                }
+            }
             if (!properties) continue;
             const template = xstreamObject(child);
             template['@version'] ||= version;
