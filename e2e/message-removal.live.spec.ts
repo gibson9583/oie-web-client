@@ -178,7 +178,7 @@ for (const surface of ['rail', 'context menu'] as const) {
                     connectorIds: api.asList(row.connectorMessages, 'entry').map((entry: any) => Number(entry.int)) }));
             }, channelId);
             await expect.poll(observations).toEqual([{ messageId: String(originalId), processed: true, connectorIds: [0, 7, 2] }]);
-            const rootFolder = path.join(process.env.E2E_OWNED_ENGINE!, 'orphan-export', testInfo.project.name, surface === 'rail' ? 'rail' : 'menu');
+            const rootFolder = path.join(process.env.E2E_OWNED_ENGINE!, 'orphan-export', channelId);
             const exportCount = await page.evaluate(async ({ channelId, originalId, rootFolder }) => {
                 const pkg = '@oie/web-api';
                 const api = (await import(pkg)).default;
