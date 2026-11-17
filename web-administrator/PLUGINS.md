@@ -787,6 +787,19 @@ platform.setAuthorizationController({
 | `platform.registerLoginAuthenticator(clientPluginClass, authenticate)` | Register a multi-factor / extended-login handler (Swing `MultiFactorAuthenticationClientPlugin`). See [MFA / extended login](#mfa--extended-login) — MUST be registered pre-login, so it only works from a **bundled** plugin. |
 | Registry lookups (`navItems()`, `dashboardTabs()`, `channelTabs()`, `stepType()` / `stepTypes()`, `connectorPanel()` / `connectorPanels()`, and their peers) | Read the current public registries. Prefer the singular lookup when you know an id/type; collection accessors return the currently registered values for plugin-to-plugin integration. |
 
+### Messages view query parameters
+
+Plugins can navigate directly to filtered channel messages via `platform.router.navigate('/messages/:channelId?...')`:
+
+- **Main search bar:**
+  - `?metaDataId=<id>` (or comma-separated / repeated keys) — a single ID selects that connector in the toolbar **Connector** dropdown without activating *Advanced*; multiple IDs stage `includedMetaDataIds` in *Advanced*.
+  - `?status=<STATUS>` (comma-separated or repeated keys, case-insensitive: `RECEIVED`, `TRANSFORMED`, `FILTERED`, `QUEUED`, `SENT`, `ERROR`, `PENDING`) — selects the matching statuses in the toolbar **Status** filter.
+  - `?startDate=YYYY-MM-DDTHH:mm` / `?endDate=YYYY-MM-DDTHH:mm` — pre-fills the toolbar date range inputs.
+  - `?textSearch=<text>` and `?textSearchRegex=true` — pre-fills the toolbar text search input and regex checkbox.
+  - `?messageId=<id>` — positions the opening page on the target message and selects it.
+- **Scalar & boolean *Advanced* filters:**
+  - `?minMessageId=`, `?maxMessageId=`, `?minOriginalId=`, `?maxOriginalId=`, `?minImportId=`, `?maxImportId=`, `?serverId=`, `?excludedMetaDataId=`, `?minSendAttempts=`, `?maxSendAttempts=`, `?attachment=true`, `?error=true`.
+
 ### Channel tag helpers
 
 Both helpers return `Promise<ChannelTag[]>` through the shared engine session:
