@@ -9,6 +9,8 @@ const name = '[\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}][\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Mn}\\
 const identifier = new RegExp('^' + name, 'u');
 const identifierOnly = new RegExp('^' + name + '$', 'u');
 const propertyAccess = new RegExp('^(\\.{1,2})(@?(?:(?:' + name + '|\\*)::)?(?:' + name + '|\\*))', 'u');
+const nameChain = new RegExp('^' + name + '(?:\\.' + name + ')*$', 'u');
+const elementRefAccess = new RegExp('^\\.{1,2}(@|@?(?:' + name + '|\\*)::)(?=\\s*\\[)', 'u');
 const keywordLiterals = new Set(['true', 'false', 'null', 'this']);
 const numericLiteral = /^(?:0[xX][\da-fA-F]+|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)$/;
 function elementType(element) {
@@ -118,6 +120,28 @@ function stringLiteralSource(literal) {
     }
     return source + quote;
 }
+function bracketEnd(text) {
+    let index = 1;
+    let depth = 1;
+    let quote = '';
+    for (; index < text.length && depth; index++) {
+        const ch = text[index];
+        if (quote) {
+            if (ch === '\\')
+                index++;
+            else if (ch === quote)
+                quote = '';
+        }
+        else if (ch === '"' || ch === "'")
+            quote = ch;
+        else if (ch === '[')
+            depth++;
+        else if (ch === ']')
+            depth--;
+    }
+    return depth || quote ? -1 : index;
+}
+const quotedKey = /^(?:"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')$/;
 /* A member-expression reader, rather than a global [number] replacement: a
  * quoted key containing "[0]", a binary expression, a call or arbitrary code
  * must not have its source edited as though it were a tree path. Rhino's
@@ -165,7 +189,24 @@ function expressionParts(expression, nested = false) {
     const parts = rootName && !keywordLiterals.has(rootName) ? [{ value: first }] : [];
     while (text.trim()) {
         text = text.trimStart();
-        if (text[0] === '.') {
+        const elementRef = elementRefAccess.exec(text);
+        if (elementRef) {
+            // XmlElemRef (ns::[expr], @[expr]) is one part. Rhino prints its
+            // index expression; only literal keys print identically here.
+            text = text.slice(elementRef[0].length).trimStart();
+            const end = bracketEnd(text);
+            if (end < 0)
+                return null;
+            const key = text.slice(1, end - 1).trim();
+            const value = quotedKey.test(key) ? stringLiteralSource(key)
+                : nameChain.test(key) || numericLiteral.test(key) ? key : null;
+            if (value == null)
+                return null;
+            if (nested || parts.length)
+                parts.push({ value: `.${elementRef[1]}[${value}]` });
+            text = text.slice(end);
+        }
+        else if (text[0] === '.') {
             const property = propertyAccess.exec(text);
             if (!property)
                 return null;
@@ -178,32 +219,15 @@ function expressionParts(expression, nested = false) {
             text = text.slice(property[0].length);
         }
         else if (text[0] === '[') {
-            let index = 1;
-            let depth = 1;
-            let quote = '';
-            for (; index < text.length && depth; index++) {
-                const ch = text[index];
-                if (quote) {
-                    if (ch === '\\')
-                        index++;
-                    else if (ch === quote)
-                        quote = '';
-                }
-                else if (ch === '"' || ch === "'")
-                    quote = ch;
-                else if (ch === '[')
-                    depth++;
-                else if (ch === ']')
-                    depth--;
-            }
-            if (depth || quote)
+            const index = bracketEnd(text);
+            if (index < 0)
                 return null;
             const key = text.slice(1, index - 1).trim();
             // Default Rhino Parser does not accept binary/octal ES6 literal
             // syntax; its parse failure returns the entire original source.
             if (/^0[bBoO][\da-f]/.test(key))
                 return null;
-            const quoted = /^(?:"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')$/.test(key);
+            const quoted = quotedKey.test(key);
             if (quoted || (identifierOnly.test(key) && !keywordLiterals.has(key)) || numericLiteral.test(key)) {
                 const value = quoted ? stringLiteralSource(key) : key;
                 if (value == null)
@@ -250,7 +274,10 @@ export function iteratorWizardPrefixes(expression, ancestorIndices) {
         const component = prefixes[index]?.slice(prefixes[index - 1]?.length || 0);
         // XmlPropRef exposes the local name for both @i and ns::i. Quoted
         // element keys retain their quotes and must not match a variable.
-        const property = component?.startsWith('.') ? component.slice(1).replace(/^@/, '').split('::').at(-1) : component;
+        // XmlElemRef exposes its index expression: ns::[i] matches i.
+        const elementRef = component?.match(/^\.@?(?:[^[]*::)?\[([\s\S]*)\]$/);
+        const property = elementRef ? elementRef[1]
+            : component?.startsWith('.') ? component.slice(1).replace(/^@/, '').split('::').at(-1) : component;
         return ancestorIndices.some(variable => component === `[${variable}]` || property === variable);
     };
     const choices = prefixes.map((value, index) => ({ value, index }))

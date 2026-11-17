@@ -219,6 +219,34 @@ assert.equal(iteratorWizardPrefixes('msg.i.OBX', ['i']).choices[0].value, 'msg.i
 for (const property of ['@i', 'ns::i', '@ns::i', '*::i']) {
     assert.equal(iteratorWizardPrefixes(`msg.${property}['value']`, ['i']).choices[0].index, 1, 'E4X attributes and namespaces expose their local property name');
 }
+// Swing's MirthTree emits XmlElemRef paths for namespaced XML. These match
+// JavaScriptSharedUtil (Rhino 1.7.13) output.
+for (const [expression, expected] of [
+    ["msg['OBX'][0].*::['OBX.5'][1].toString()", "msg['OBX'].*::['OBX.5'].toString()"],
+    ["msg.*::['ClinicalDocument'][0].*::['component'][2]", "msg.*::['ClinicalDocument'].*::['component']"],
+    ["msg..*::['x'][0]", "msg.*::['x']"],
+    ["msg['a'][0].@*::['id']", "msg['a'].@*::['id']"],
+    ["msg.@['id']", "msg.@['id']"],
+    ["msg.ns::['x'][1]", "msg.ns::['x']"],
+    ["msg.*::[i][0]", 'msg.*::[i]'],
+    ["msg.*::[0]['x'][1]", "msg.*::[0]['x']"],
+    ["msg.*::[true][0]", 'msg.*::[true]'],
+    ["msg['x'].*::[foo.bar][0]", "msg['x'].*::[foo.bar]"],
+    ["msg.*:: ['x'][0]", "msg.*::['x']"],
+    ["msg.*::['a::b'][0]", "msg.*::['a::b']"],
+    [String.raw`msg.*::["aé"][0]`, String.raw`msg.*::["a\xe9"]`]
+]) assert.equal(removeNumberLiterals(expression), expected);
+assert.equal(removeNumberLiterals("msg.*::['a'+'b'][0]"), "msg.*::['a'+'b'][0]", 'Rhino reprints computed keys; keep the whole expression');
+assert.deepEqual(iteratorExpressionParts("msg['OBX'][0].*::['OBX.5'].toString()"), ['msg', "msg['OBX']", "msg['OBX'].*::['OBX.5']"]);
+assert.deepEqual(iteratorWizardPrefixes("msg.*::['OBR'].*::[i].*::['OBX']", ['i']).choices.map(choice => choice.value),
+    ['msg', "msg.*::['OBR'].*::[i]", "msg.*::['OBR'].*::[i].*::['OBX']"], 'an XmlElemRef index exposes its expression as the property name');
+assert.equal(iteratorWizardPrefixes("msg.*::['i']['OBX']", ['i']).choices[0].value, 'msg', 'a quoted XmlElemRef key is not an index variable');
+const namespaced = { ...mapper(), mapping: "msg.*::['OBX'][1].*::['OBX.5'][0].toString()" };
+const namespacedIterator = iterator("msg.*::['OBX']");
+rewriteElementIteratorVariables(namespaced, [namespacedIterator], true);
+assert.equal(namespaced.mapping, "msg.*::['OBX'][i].*::['OBX.5'].toString()", 'namespaced repetitions are replaced by the iterator index');
+rewriteElementIteratorVariables(namespaced, [namespacedIterator], false);
+assert.equal(namespaced.mapping, "msg.*::['OBX'].*::['OBX.5'].toString()");
 assert.equal(iteratorWizardPrefixes('', []).selected, undefined);
 assert.equal(validIteratorIndex(['i', 'j'], ['k']), 'l');
 assert.equal(validIteratorIndex('ijklmnopqrstuvwxyz'.split(''), ['ii']), 'jj');
