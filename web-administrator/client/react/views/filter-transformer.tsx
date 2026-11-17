@@ -49,6 +49,7 @@ import { createCodeEditor } from '@oie/web-ui';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import { generateElementScript } from '../../core/step-script.js';
+import { rewriteElementIteratorVariables, normalizeIteratorTarget, getIteratorInfo, iteratorExpressionParts } from '../../core/iterator-substitutions.js';
 import { normalizeLineEndings } from '../../core/content-highlight.js';
 import * as router from '../../core/router.js';
 import { routeUrl } from '../../core/deployment.js';
@@ -492,9 +493,9 @@ function ElementsGrid({ kind, isFilter, elements, selectedPath, typeOptions, can
    The plugin editor is an imperative island: mountReact's flushSync render is
    bracketed with the `settling` flag (via settlingRef) so plugins that
    onChange() defaults during mount don't mark the channel dirty. The island
-   remounts only when the selected ELEMENT (identity or type) changes — never
-   on rev bumps, so plugin editor state (Monaco etc.) survives grid edits. */
-function StepEditorPanel({ kind, isFilter, element, headerIndex, settlingRef, onChange, onReplaceElement, destinations }: any) {
+   remounts when the selected element or iterator context changes — never on
+   ordinary rev bumps, so plugin state (Monaco etc.) survives grid edits. */
+function StepEditorPanel({ kind, isFilter, element, contextRevision, headerIndex, settlingRef, onChange, onReplaceElement, destinations }: any) {
     const hostRef = useRef<any>(null);
     const def = element ? typeDefFor(isFilter, element.__type) : null;
     const hasComponent = !!(def && typeof def.component === 'function');
@@ -529,9 +530,9 @@ function StepEditorPanel({ kind, isFilter, element, headerIndex, settlingRef, on
             settlingRef.current = false;   // unmounted before the render flushed
             try { teardown(); } catch { /* ignore */ }
         };
-        // Remount on the element itself (selection/type change), not on repaints.
+        // Remount on selection/type/context changes, not ordinary repaints.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [element, element && element.__type]);
+    }, [element, element && element.__type, contextRevision]);
 
     if (!element) {
         return (
@@ -1337,6 +1338,9 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     const selectedPathRef = useRef(selectedPath);
     const setSelected = (path: any) => { selectedPathRef.current = path; setSelectedPathState(path); };
     const [rev, bump] = useReducer((x: any) => x + 1, 0);
+    // Membership edits rewrite model fields outside plugin-local React state.
+    // Remount the selected plugin after those edits to display the new values.
+    const [elementContextRevision, bumpElementContext] = useReducer((x: number) => x + 1, 0);
     const [bottomTab, setBottomTab] = useState(0);
     // True only while a step plugin's flushSync mount runs (see StepEditorPanel).
     const settlingRef = useRef(false);
@@ -1784,33 +1788,155 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // Iterators the element at `path` could move into: not itself, not a
     // descendant of it, and not its current parent.
     function iteratorTargets(path: any) {
+        const source = elementAtPath(elementsRef.current, path);
+        if (!source) return [];
+        const indices = new Set(allIteratorPaths([source]).map(ip => elementAtPath([source], ip).properties?.indexVariable));
         return allIteratorPaths(elementsRef.current)
             .filter(ip => !pathEquals(ip, path) && !isAncestorPath(path, ip) && !pathEquals(ip, path.slice(0, -1)))
+            .filter(ip => ![...iteratorAncestors(ip), elementAtPath(elementsRef.current, ip)]
+                .some(it => indices.has(it.properties?.indexVariable)))
             .map(ip => elementAtPath(elementsRef.current, ip))
             .filter(Boolean);
     }
 
+    function iteratorAncestors(path: number[]) {
+        return path.slice(0, -1).map((_, i) => elementAtPath(elementsRef.current, path.slice(0, i + 1)));
+    }
+
+    function canEditElements() {
+        return mountedRef.current && store.getState('editingChannel') === channel
+            && !store.getState('editorSave') && platform.checkTask('channelEdit', 'doSaveChannel');
+    }
+
     function moveIntoIterator(el: any, iterator: any) {
-        const selPath = selectedPathRef.current;
-        listAtPath(elementsRef.current, selPath).splice(selPath![selPath!.length! - 1], 1);
-        childrenOf(iterator).push(isFilter ? { ...el, operator: 'AND' } : el);
-        setSelected(pathOf(iterator.__children[iterator.__children.length - 1], elementsRef.current));
+        if (!canEditElements()) return;
+        // Dialogs capture identities. Selection and array positions may change
+        // before acceptance; resolve both objects again before any mutation.
+        const elements = elementsRef.current;
+        const sourcePath = pathOf(el, elements);
+        const targetPath = pathOf(iterator, elements);
+        if (!sourcePath || !targetPath || !isIteratorType(iterator.__type)
+            || !iteratorTargets(sourcePath).includes(iterator)) return;
+        rewriteElementIteratorVariables(el, iteratorAncestors(sourcePath), false);
+        normalizeIteratorTarget(el);
+        listAtPath(elements, sourcePath).splice(sourcePath.at(-1), 1);
+        childrenOf(iterator).push(el);
+        const newPath = pathOf(el, elements);
+        rewriteElementIteratorVariables(el, iteratorAncestors(newPath), true);
+        setSelected(newPath);
+        bumpElementContext();
         commitRef.current();
+    }
+
+    // A compact equivalent of Swing's iterator wizard: choose an existing
+    // iterator or create one from a target prefix, with an optional outbound
+    // prefix for Message Builder. No model changes occur before acceptance.
+    function chooseIterator(el: any, parent: any, onChoose: (iterator: any, created: boolean) => void,
+        onWithout?: () => void) {
+        const isCurrent = channelSessionActive();
+        const elements = elementsRef.current;
+        const sourcePath = pathOf(el, elements);
+        const parentPath = parent ? pathOf(parent, elements) : null;
+        const ancestors = sourcePath ? iteratorAncestors(sourcePath)
+            : parentPath ? [...iteratorAncestors(parentPath), parent] : [];
+        const preview = structuredClone(el);
+        if (sourcePath) rewriteElementIteratorVariables(preview, ancestors, false);
+        normalizeIteratorTarget(preview);
+        if (ancestors.length) rewriteElementIteratorVariables(preview, ancestors, true);
+        const info = getIteratorInfo(preview);
+        const prefixes = iteratorExpressionParts(info.target);
+        const outboundPrefixes = iteratorExpressionParts(info.outbound || '');
+        const targets = sourcePath ? iteratorTargets(sourcePath)
+            : allIteratorPaths(elements).map(path => elementAtPath(elements, path));
+        const choice = h('select', { 'aria-label': 'Iterator' },
+            h('option', { value: 'new' }, 'Create New Iterator'),
+            targets.map((it: any, i: number) => h('option', { value: String(i) }, it.name || `Iterator ${i + 1}`))) as HTMLSelectElement;
+        const target = h('select', { 'aria-label': 'Iterate On' },
+            prefixes.map(prefix => h('option', { value: prefix }, prefix))) as HTMLSelectElement;
+        const outbound = h('select', { 'aria-label': 'Outbound Prefix' },
+            outboundPrefixes.map(prefix => h('option', { value: prefix }, prefix))) as HTMLSelectElement;
+        const used = new Set(ancestors.map(it => it.properties?.indexVariable));
+        function collectIndices(node: any) {
+            if (!isIteratorType(node.__type)) return;
+            used.add(node.properties?.indexVariable);
+            childrenOf(node).forEach(collectIndices);
+        }
+        collectIndices(el);
+        let index = 'i';
+        while (used.has(index)) {
+            const next = String.fromCharCode(index.charCodeAt(0) + 1);
+            index = next > 'z' ? 'i'.repeat(index.length + 1) : next.repeat(index.length);
+        }
+        const indexInput = h('input', { type: 'text', value: index, 'aria-label': 'Index Variable' }) as HTMLInputElement;
+        // Prefer the first property after any enclosing iterator indices.
+        const lastAncestor = ancestors.at(-1)?.properties?.indexVariable;
+        const ancestorPart = prefixes.findIndex(prefix => prefix.endsWith(`[${lastAncestor}]`));
+        target.selectedIndex = Math.min(Math.max(1, ancestorPart + 1), prefixes.length - 1);
+        outbound.selectedIndex = Math.min(Math.max(1, ancestorPart + 1), outboundPrefixes.length - 1);
+        const field = (label: string, input: HTMLElement) => h('label.field', label, input);
+        const fields = h('div', field('Iterate On', target), field('Index Variable', indexInput),
+            outboundPrefixes.length ? field('Outbound Prefix', outbound) : null);
+        const error = h('p.text-danger', { role: 'alert' });
+        choice.addEventListener('change', () => { fields.hidden = choice.value !== 'new'; error.textContent = ''; });
+        modal({
+            title: onWithout ? 'Select Iterator' : 'Assign To Iterator',
+            body: h('div', field('Iterator', choice), fields, error),
+            buttons: [
+                { label: 'Cancel' },
+                ...(onWithout ? [{ label: 'Add Without Iterator', onClick: () => { if (isCurrent()) onWithout(); } }] : []),
+                { label: 'Use Iterator', primary: true, onClick: () => {
+                    if (!isCurrent() || !canEditElements()) return;
+                    const currentPath = sourcePath ? pathOf(el, elementsRef.current) : null;
+                    const currentParentPath = parent ? pathOf(parent, elementsRef.current) : null;
+                    const currentAncestors = currentPath ? iteratorAncestors(currentPath)
+                        : currentParentPath ? [...iteratorAncestors(currentParentPath), parent] : [];
+                    if ((sourcePath && !currentPath) || (parent && !currentParentPath)
+                        || currentAncestors.length !== ancestors.length
+                        || currentAncestors.some((it: any, i: number) => it !== ancestors[i])) {
+                        error.textContent = 'The iterator context changed. Close this dialog and try again.';
+                        return false;
+                    }
+                    if (choice.value !== 'new') { onChoose(targets[Number(choice.value)], false); return; }
+                    if (!/^[A-Za-z_$][\w$]*$/.test(indexInput.value) || used.has(indexInput.value)) {
+                        error.textContent = 'Enter a unique JavaScript index variable.';
+                        return false;
+                    }
+                    const type = isFilter ? 'com.mirth.connect.model.IteratorRule' : 'com.mirth.connect.model.IteratorStep';
+                    const def = typeDef(type);
+                    if (!def?.create) { error.textContent = 'Iterator is not available.'; return false; }
+                    const iterator = def.create();
+                    iterator.__type = type;
+                    iterator.__children = [];
+                    const prefixes = target.value ? [target.value] : [];
+                    if (outbound.value) prefixes.push(outbound.value);
+                    else if (target.value === 'msg' || target.value.startsWith('msg[') || target.value.startsWith('msg.')) {
+                        prefixes.push(`tmp${target.value.slice(3)}`);
+                    }
+                    Object.assign(iterator.properties, {
+                        target: target.value, indexVariable: indexInput.value,
+                        prefixSubstitutions: prefixes.length ? { string: [...new Set(prefixes)] } : ''
+                    });
+                    iterator.name = target.value ? `For Each ${target.value}` : 'Iterator';
+                    onChoose(iterator, true);
+                } }
+            ]
+        });
     }
 
     function assignToIterator() {
         const el = elementAtPath(elementsRef.current, selectedPathRef.current);
         if (!el) { toast(`Select a ${kind.noun.toLowerCase()} first`, 'warn'); return; }
         const targets = iteratorTargets(selectedPathRef.current);
-        if (!targets.length) { toast(`No Iterator available — add an Iterator ${kind.noun.toLowerCase()} first`, 'warn'); return; }
         if (targets.length === 1) { moveIntoIterator(el, targets[0]); return; }
-        // Multiple iterators: let the user pick one.
-        const list = h('div.step-list');
-        const m = modal({ title: 'Assign To Iterator', body: list, buttons: [{ label: 'Cancel' }] });
-        targets.forEach((it: any, i: any) => {
-            const row = h('div.step-item', h('div', { class: 'flex-1' }, it.name || `Iterator ${i + 1}`));
-            row.addEventListener('click', () => { m.close(); moveIntoIterator(el, it); });
-            list.appendChild(row);
+        const path = pathOf(el, elementsRef.current);
+        const parent = path.length > 1 ? elementAtPath(elementsRef.current, path.slice(0, -1)) : null;
+        chooseIterator(el, parent, (iterator, created) => {
+            if (created) {
+                const sourcePath = pathOf(el, elementsRef.current);
+                if (!sourcePath) return;
+                listAtPath(elementsRef.current, sourcePath).splice(sourcePath.at(-1), 0, iterator);
+            }
+            moveIntoIterator(el, iterator);
         });
     }
 
@@ -1821,11 +1947,16 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         if (!el || !selPath || selPath.length < 2) {
             toast(`This ${kind.noun.toLowerCase()} is not inside an Iterator`, 'warn'); return;
         }
+        if (!canEditElements()) return;
         const iterator = elementAtPath(elements, selPath.slice(0, -1));
+        rewriteElementIteratorVariables(el, iteratorAncestors(selPath), false);
         listAtPath(elements, selPath).splice(selPath[selPath.length - 1], 1);
         const grandList = listAtPath(elements, selPath.slice(0, -1));
         grandList.splice(grandList.indexOf(iterator) + 1, 0, el);
-        setSelected(pathOf(el, elements));
+        const newPath = pathOf(el, elements);
+        rewriteElementIteratorVariables(el, iteratorAncestors(newPath), true);
+        setSelected(newPath);
+        bumpElementContext();
         commitRef.current();
     }
 
@@ -1838,10 +1969,32 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         el.name = baseName || label;
         el.enabled = true;
         setup(el);
-        elementsRef.current.push(el);
-        setSelected([elementsRef.current.length - 1]);
-        commitRef.current();
-        toast(`Added ${label} "${el.name}"`);
+        const selected = elementAtPath(elementsRef.current, selectedPathRef.current);
+        const parent = selected && isIteratorType(selected.__type) ? selected
+            : selectedPathRef.current && selectedPathRef.current.length > 1
+                ? elementAtPath(elementsRef.current, selectedPathRef.current.slice(0, -1)) : null;
+        const insert = (iterator: any, created = false) => {
+            if (!canEditElements()) return;
+            if (parent && !pathOf(parent, elementsRef.current)) return;
+            if (iterator && !created && (!pathOf(iterator, elementsRef.current) || !isIteratorType(iterator.__type))) return;
+            const list = parent ? childrenOf(parent) : elementsRef.current;
+            if (created) {
+                list.push(iterator);
+                const path = pathOf(iterator, elementsRef.current);
+                rewriteElementIteratorVariables(iterator, iteratorAncestors(path), true);
+            }
+            (iterator ? childrenOf(iterator) : list).push(el);
+            const path = pathOf(el, elementsRef.current);
+            if (path.length > 1) {
+                normalizeIteratorTarget(el);
+                rewriteElementIteratorVariables(el, iteratorAncestors(path), true);
+            }
+            setSelected(path);
+            commitRef.current();
+            toast(`Added ${label} "${el.name}"`);
+        };
+        if (parent || iteratorExpressionParts(getIteratorInfo(el).target).length < 2) insert(parent);
+        else chooseIterator(el, null, insert, () => insert(null));
     }
     const addTreeStepRef = useRef(addTreeStep);
     addTreeStepRef.current = addTreeStep;
@@ -1872,9 +2025,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const items: any[] = [{ label: `Add New ${n}`, icon: 'plus', ...gate, onClick: addElement }];
         if (onStep) {
             items.push({ label: `Delete ${n}`, icon: 'trash', danger: true, ...gate, onClick: deleteElement });
-            if (!isIteratorType(el.__type) && iteratorTargets(selectedPathRef.current).length) {
-                items.push({ label: 'Assign To Iterator', ...gate, onClick: assignToIterator });
-            }
+            items.push({ label: 'Assign To Iterator', ...gate, onClick: assignToIterator });
             if (selectedPathRef.current!.length! > 1) {
                 items.push({ label: 'Remove From Iterator', ...gate, onClick: removeFromIterator });
             }
@@ -1903,7 +2054,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const onStep = !!el;
         return {
             onStep,
-            assign: !!(onStep && !isIteratorType(el.__type)),
+            assign: onStep,
             remove: !!(onStep && selectedPathRef.current && selectedPathRef.current.length > 1),
             dirty: channelDirty()
         };
@@ -2047,6 +2198,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                                 className: 'step-editor-fill py-3 px-3.5',
                                 node: <StepEditorPanel kind={kind} isFilter={isFilter}
                                     element={selectedElement}
+                                    contextRevision={elementContextRevision}
                                     headerIndex={selectedPath ? selectedPath[selectedPath.length - 1] + 1 : 0}
                                     settlingRef={settlingRef}
                                     onChange={() => commitRef.current()}
