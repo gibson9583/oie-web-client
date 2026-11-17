@@ -61,6 +61,7 @@ function expectTarget(request: Request, metaDataId: number) {
     const url = new URL(request.url());
     expect(url.pathname).toBe(`/api/channels/${CID}/messages/${MESSAGE_ID}`);
     expect(url.searchParams.getAll('metaDataId')).toEqual([String(metaDataId)]);
+    expect([...url.searchParams.keys()]).toEqual(['metaDataId']);
 }
 
 for (const surface of ['rail', 'menu'] as const) {
@@ -77,6 +78,7 @@ for (const surface of ['rail', 'menu'] as const) {
                 expect(prompt).toContain(NAMES[metaDataId]);
                 expect(prompt).toMatch(/destination/i);
             } else expect(prompt).toContain('all its destinations');
+            expect(prompt).toContain('WARNING: Removing a Source message will remove all of its destinations.');
             expect(prompt).toContain('The channel must be stopped for an unfinished message to be removed.');
             await expect.poll(state.searches).toBe(2);
             expect(await page.locator('.toast-msg').count()).toBe(0);
@@ -84,16 +86,34 @@ for (const surface of ['rail', 'menu'] as const) {
     }
 }
 
-test('a destination-only result keeps the real connector scope beneath its placeholder parent', async ({ page }) => {
-    const state = await setup(page, { includeSource: false });
-    await openRemoval(page, 'menu');
-    await confirmation(page).getByRole('button', { name: 'Remove', exact: true }).click();
-    await expect.poll(() => state.deletes.length).toBe(1);
-    expectTarget(state.deletes[0], 7);
-    await expect.poll(state.searches).toBe(2);
-});
+for (const surface of ['rail', 'menu'] as const) {
+    test(`${surface} keeps a destination-only parent inactive while its child remains removable`, async ({ page }) => {
+        const state = await setup(page, { includeSource: false });
+        const parent = page.getByRole('cell', { name: MESSAGE_ID, exact: true });
+        if (surface === 'rail') {
+            await parent.click();
+            await expect(page.getByRole('button', { name: 'Remove Message', exact: true })).toHaveCount(0);
+        } else {
+            await parent.click({ button: 'right' });
+            const menu = page.getByRole('menu');
+            await expect(menu).toBeVisible();
+            await expect(menu.getByRole('menuitem', { name: 'Remove Message', exact: true })).toHaveCount(0);
+            await page.keyboard.press('Escape');
+        }
+        await expect(confirmation(page)).toHaveCount(0);
+        expect(state.deletes).toHaveLength(0);
+        expect(state.searches()).toBe(1);
 
-test('cancel leaves the message untouched and disabling confirmation preserves destination scope', async ({ page }) => {
+        await openRemoval(page, surface);
+        await expect(confirmation(page)).toContainText('Archive');
+        await confirmation(page).getByRole('button', { name: 'Remove', exact: true }).click();
+        await expect.poll(() => state.deletes.length).toBe(1);
+        expectTarget(state.deletes[0], 7);
+        await expect.poll(state.searches).toBe(2);
+    });
+}
+
+test('cancel leaves the message untouched and the reprocess preference cannot bypass removal confirmation', async ({ page }) => {
     const state = await setup(page);
     await openRemoval(page, 'rail');
     await confirmation(page).getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -106,6 +126,9 @@ test('cancel leaves the message untouched and disabling confirmation preserves d
         prefs.setPrefs({ confirmReprocessRemove: false });
     });
     await openRemoval(page, 'rail');
+    await expect(confirmation(page)).toBeVisible();
+    expect(state.deletes).toHaveLength(0);
+    await confirmation(page).getByRole('button', { name: 'Remove', exact: true }).click();
     await expect.poll(() => state.deletes.length).toBe(1);
     expectTarget(state.deletes[0], 7);
     await expect(confirmation(page)).toHaveCount(0);
@@ -120,7 +143,7 @@ test('a failed destination removal retains its scope when retried', async ({ pag
     await confirmation(page).getByRole('button', { name: 'Remove', exact: true }).click();
     const error = page.getByRole('dialog', { name: 'Error', exact: true });
     await expect(error).toContainText('Remove failed:');
-    expect(state.searches()).toBe(1);
+    await expect.poll(state.searches).toBe(2);
     expectTarget(state.deletes[0], 7);
     await error.getByRole('button', { name: 'Close', exact: true }).last().click();
 
@@ -128,7 +151,7 @@ test('a failed destination removal retains its scope when retried', async ({ pag
     await confirmation(page).getByRole('button', { name: 'Remove', exact: true }).click();
     await expect.poll(() => state.deletes.length).toBe(2);
     expectTarget(state.deletes[1], 7);
-    await expect.poll(state.searches).toBe(2);
+    await expect.poll(state.searches).toBe(3);
 });
 
 test('confirmation stays bound to its destination when the selected row changes', async ({ page }) => {
@@ -167,6 +190,7 @@ test('a pending removal response cannot refresh results after session expiry', a
         await confirmation(page).getByRole('button', { name: 'Remove', exact: true }).click();
         await expect.poll(() => state.deletes.length).toBe(1);
         expectTarget(state.deletes[0], 7);
+        await expect(page.getByRole('status').filter({ hasText: 'Removing message...' })).toBeVisible();
         await page.evaluate(async () => {
             const session = await import(String('/core/engine-fetch.js'));
             session.discardEngineResponses();
@@ -178,6 +202,7 @@ test('a pending removal response cannot refresh results after session expiry', a
         // checking that neither a fresh search nor a stale toast was emitted.
         await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         expect(state.searches()).toBe(1);
+        await expect(page.getByRole('status').filter({ hasText: 'Removing message...' })).toHaveCount(0);
         await expect(page.locator('.toast-msg')).toHaveCount(0);
         await expect(page.getByRole('dialog')).toHaveCount(0);
     } finally {
