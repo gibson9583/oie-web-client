@@ -146,6 +146,10 @@ function connectorMessagesOf(message: any) {
     return out;
 }
 
+function connectorMessageOf(message: any, metaDataId: any) {
+    return connectorMessagesOf(message).find(cm => Number(cm.metaDataId) === Number(metaDataId)) ?? null;
+}
+
 function sourceOf(message: any) {
     const cms = connectorMessagesOf(message);
     // No fallback to cms[0]: when a filter (e.g. status=SENT) returns only
@@ -2131,6 +2135,7 @@ export function MessagesView({ params, query }: any) {
     // Latest selection mirror: async detail loads guard against a stale row, and
     // task-pane buttons resolve their target at execution time.
     const selectedRef = useRef<any>(null);
+    const [removingMessages, setRemovingMessages] = useState(0);
     const phiEnabledRef = useRef(false);
     const metaDataReadyRef = useRef(!channelId);
     const metaDataLoadGenRef = useRef(0);
@@ -2894,7 +2899,9 @@ export function MessagesView({ params, query }: any) {
             },
             ...(pluginItems.length ? ['-', ...pluginItems] : []),
             '-',
-            { label: 'Remove Message', icon: 'trash', danger: true, task: 'doRemoveMessage', group: 'message', onClick: () => removeMessageTask(m) },
+            ...(connectorMessageOf(m, metaDataId) ? [
+                { label: 'Remove Message', icon: 'trash', danger: true, task: 'doRemoveMessage', group: 'message', onClick: () => removeMessageTask({ m, metaDataId }) }
+            ] : []),
             { label: 'Remove Results', icon: 'trash', danger: true, task: 'doRemoveFilteredMessages', group: 'message', onClick: () => removeResultsTask() },
             { label: 'Remove All Messages', icon: 'trash', danger: true, task: 'doRemoveAllMessages', group: 'message', onClick: () => removeAllTask() }
         ]);
@@ -2923,17 +2930,41 @@ export function MessagesView({ params, query }: any) {
         });
     }
 
-    async function removeMessageTask(row = requireSelection()) {
-        if (!row) return;
-        if (getPref('confirmReprocessRemove') !== false &&
-            !await confirmDialog('Remove message', `Permanently remove message ${row.messageId} from ${describeTargets('channel', [{ id: channelId, name: channelName }])}? This cannot be undone.`, { danger: true, okLabel: 'Remove' })) return;
+    async function removeMessageTask(selection = selectedRef.current) {
+        if (!selection) { toast('Select a message first', 'warn'); return; }
+        // Capture the row and connector before confirmation; later selection
+        // changes must not broaden a destination removal to the whole message.
+        const { messageId } = selection.m;
+        const metaDataId = Number(selection.metaDataId);
+        const connector = connectorMessageOf(selection.m, metaDataId);
+        // Swing's synthetic parent is inactive when no source connector is in
+        // the result. It cannot be removed, even if its message ID is visible.
+        if (!connector) return;
+        const target = metaDataId > 0
+            ? `destination "${connector?.connectorName || metaDataId}" (ID ${metaDataId}) from message ${messageId}`
+            : `message ${messageId} and all its destinations`;
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
+        // Swing always confirms a single removal; the preference controls the
+        // extra warnings for operations over the whole filtered result set.
+        if (!await confirmDialog('Remove message', `Permanently remove ${target} from ${describeTargets('channel', [{ id: channelId, name: channelName }])}? The channel must be stopped for an unfinished message to be removed. WARNING: Removing a Source message will remove all of its destinations. This cannot be undone.`, { danger: true, okLabel: 'Remove' })) return;
+        let submitted = false;
         try {
-            await api.messages.remove(channelId, row.messageId);
-            toast('Message removed');
-            searchRef.current(false);
+            assertSession();
+            submitted = true;
+            setRemovingMessages(count => count + 1);
+            await api.messages.remove(channelId, messageId, metaDataId);
+            assertSession();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(`Remove failed: ${e.message}`, 'error');
+        } finally {
+            if (submitted) setRemovingMessages(count => count - 1);
         }
+        try { assertSession(); } catch { return; }
+        // Swing refreshes when its worker completes, including after a failed
+        // request. A changed session or departed view must not refresh here.
+        if (submitted) searchRef.current(false);
     }
 
     async function removeAllTask() {
@@ -3207,6 +3238,7 @@ export function MessagesView({ params, query }: any) {
             : `${statusSel.size} selected`;
     const totalStr = pager.total == null ? '?' : fmtNumber(pager.total);
     const hasSel = !!selected;
+    const canRemoveSelected = hasSel && !!connectorMessageOf(selected.m, selected.metaDataId);
 
     /* Defined once and mounted inline or in the popover — two homes, not two copies. */
     /* WHICH channel, as opposed to what to search for — so it belongs beside the
@@ -3347,7 +3379,8 @@ export function MessagesView({ params, query }: any) {
                         <TaskButton label="Export Results" icon="export" task="doExportMessages" onClick={exportResultsTask} />
                         <TaskButton label="Remove All Messages" icon="trash" danger task="doRemoveAllMessages" onClick={removeAllTask} />
                         <TaskButton label="Remove Results" icon="trash" danger task="doRemoveFilteredMessages" onClick={removeResultsTask} />
-                        {hasSel && <TaskButton label="Remove Message" icon="trash" danger task="doRemoveMessage" onClick={() => removeMessageTask()} />}
+                        {canRemoveSelected && <TaskButton label="Remove Message" icon="trash" danger task="doRemoveMessage" onClick={() => removeMessageTask()} />}
+                        {removingMessages > 0 && <div role="status" className="text-text-dim">Removing message...</div>}
                         <TaskButton label="Reprocess Results" icon="transform" task="doReprocessFilteredMessages" onClick={reprocessResultsTask} />
                         {hasSel && <TaskButton label="Reprocess Message" icon="transform" task="doReprocessMessage" onClick={() => reprocessTask()} />}
                         <TaskButton label="Select for Compare" icon="compare" task="doSelectForCompare"
