@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import { test, expect } from './base.js';
 import { mockEngine } from './mock.js';
 
@@ -123,6 +124,22 @@ test('shared group library exports contain each template only once', async ({ pa
     expect(bulk.parts.libraries.list.codeTemplateLibrary[0].codeTemplates.codeTemplate).toEqual([{ '@version': '4.6.0', id: 'tpl' }]);
     expect(bulk.parts.updatedCodeTemplates.list.codeTemplate).toHaveLength(1);
     expect(bulk.parts.libraries.list.codeTemplateLibrary[0].enabledChannelIds.string).toEqual(['first', 'second']);
+});
+
+test('channel import converts a bundled legacy library before saving its template', async ({ page }) => {
+    const writes = await setup(page);
+    const legacyLibrary = readFileSync(new URL('./fixtures/code-template-library-3.4.2.xml', import.meta.url), 'utf8')
+        .replace(/<\/?list>/g, '');
+    await importFile(page, channelXml('test-channel', 'Test Channel', legacyLibrary), 'Import Channel');
+    await page.getByRole('dialog', { name: 'Import Channel' }).getByRole('button', { name: 'Yes', exact: true }).click();
+    await expect(page.getByText('Imported parity.xml', { exact: true })).toBeVisible();
+    const bulk = writes.find(write => write.path.includes('codeTemplateLibraries'))!;
+    expect(bulk.override).toBe('false');
+    expect(bulk.parts.updatedCodeTemplates.list.codeTemplate).toEqual([expect.objectContaining({
+        id: '10000000-0000-4000-8000-000000000002',
+        properties: expect.objectContaining({ type: 'FUNCTION', code: 'function testFunction() {\n    return 1 < 2 && 2 > 1;\n}' })
+    })]);
+    expect(bulk.parts.libraries.list.codeTemplateLibrary[0].enabledChannelIds.string).toEqual(['test-channel']);
 });
 
 test('bundled library overwrite asks separately before replacing existing template code', async ({ page }) => {

@@ -1,4 +1,5 @@
 import type { Page, Request } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import { test, expect } from './base.js';
 import { mockEngine } from './mock.js';
 
@@ -12,6 +13,8 @@ type BulkParts = {
 type Write = { override: string | null; parts: BulkParts };
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
+const legacyLibraryXml = readFileSync(new URL('./fixtures/code-template-library-3.4.2.xml', import.meta.url), 'utf8');
+const legacyCode = 'function testFunction() {\n    return 1 < 2 && 2 > 1;\n}';
 const list = <T>(value: T | T[] | undefined | null): T[] => value == null ? [] : Array.isArray(value) ? value : [value];
 const members = (library: Model): Model[] => list(library.codeTemplates?.codeTemplate);
 const memberIds = (library: Model) => members(library).map(template => template.id).sort();
@@ -222,6 +225,77 @@ test('loading two code template libraries displays each library and template', a
     await expect(page.getByText('2 Libraries, 2 Code Templates', { exact: true })).toBeVisible();
     expect(state.writes).toHaveLength(0);
 });
+
+for (const [format, xml, code] of [
+    ['3.4.2 list', legacyLibraryXml, legacyCode],
+    ['3.3.0 single library', legacyLibraryXml.replace(/<\/?list>/g, '').replaceAll('version="3.4.2"', 'version="3.3.0"'), legacyCode],
+    ['empty code', legacyLibraryXml.replace(/<code>[\s\S]*?<\/code>/, '<code/>'), '']
+]) {
+    test(`legacy ${format} import saves the template code and preserves existing libraries`, async ({ page }) => {
+        const state = await installEngine(page, [alpha()]);
+        await openLibraries(page);
+        await chooseImport(page, xml);
+        await confirmImport(page);
+        await expect(page.getByText('Test Function', { exact: true })).toBeVisible();
+        expect(state.writes).toHaveLength(1);
+        const write = state.writes[0];
+        expect(write.override).toBe('false');
+        expect(write.parts.removedLibraryIds.set.string).toEqual([]);
+        expect(write.parts.removedCodeTemplateIds.set.string).toEqual([]);
+        expect(write.parts.updatedCodeTemplates.list.codeTemplate).toEqual([expect.objectContaining({
+            id: '10000000-0000-4000-8000-000000000002', name: 'Test Function', revision: 0,
+            contextSet: { delegate: { contextType: 'SOURCE_FILTER_TRANSFORMER' } },
+            properties: {
+                '@class': 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties',
+                '@version': '4.6.0', type: 'FUNCTION', code
+            }
+        })]);
+        const saved = write.parts.updatedCodeTemplates.list.codeTemplate[0];
+        expect(saved).not.toHaveProperty('type');
+        expect(saved).not.toHaveProperty('code');
+        expect(memberIds(state.libraries.find(value => value.name === 'Test Library')!))
+            .toEqual([saved.id]);
+        expect(state.libraries.find(value => value.id === 'lib-a')).toEqual(alpha());
+    });
+}
+
+test('legacy individual template import uses the same conversion', async ({ page }) => {
+    const state = await installEngine(page, [alpha()]);
+    await openLibraries(page);
+    const xml = await page.evaluate(value => {
+        const doc = new DOMParser().parseFromString(value, 'text/xml');
+        return new XMLSerializer().serializeToString(doc.querySelector('codeTemplate')!);
+    }, legacyLibraryXml);
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: 'Import Code Templates', exact: true }).click();
+    await (await chooser).setFiles({ name: 'test-template.xml', mimeType: 'application/xml', buffer: Buffer.from(xml) });
+    await expect(page.getByText('Test Function', { exact: true })).toBeVisible();
+    expect(state.writes).toHaveLength(1);
+    const saved = state.writes[0].parts.updatedCodeTemplates.list.codeTemplate;
+    expect(saved).toHaveLength(1);
+    expect(saved[0].properties.code).toBe(legacyCode);
+    expect(memberIds(state.libraries[0])).toEqual(['10000000-0000-4000-8000-000000000002', 'tpl-a']);
+});
+
+for (const [kind, xml] of [
+    ['3.5.0 format', legacyLibraryXml.replaceAll('version="3.4.2"', 'version="3.5.0"')],
+    ['pre-3.3 format', legacyLibraryXml.replaceAll('version="3.4.2"', 'version="3.2.0"')],
+    ['unversioned format', legacyLibraryXml.replaceAll(' version="3.4.2"', '')],
+    ['missing type', legacyLibraryXml.replace('<type>FUNCTION</type>', '')],
+    ['missing code', legacyLibraryXml.replace(/<code>[\s\S]*?<\/code>/, '')]
+]) {
+    test(`legacy conversion leaves ${kind} entries filtered`, async ({ page }) => {
+        const state = await installEngine(page, [alpha()]);
+        await openLibraries(page);
+        await chooseImport(page, xml);
+        await confirmImport(page);
+        await expect(page.getByText('Test Library', { exact: true })).toBeVisible();
+        expect(state.writes).toHaveLength(1);
+        expect(state.writes[0].parts.updatedCodeTemplates.list.codeTemplate).toEqual([]);
+        expect(memberIds(state.libraries.find(value => value.name === 'Test Library')!)).toEqual([]);
+        expect(state.libraries.find(value => value.id === 'lib-a')).toEqual(alpha());
+    });
+}
 
 for (const existingCount of [1, 2]) {
     test(`import adds a library alongside ${existingCount} existing libraries and preserves their templates`, async ({ page }) => {
