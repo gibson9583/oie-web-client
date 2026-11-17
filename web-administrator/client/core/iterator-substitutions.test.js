@@ -283,22 +283,23 @@ for (const reference of ['*::', 'ns::', '@', '@*::', '@ns::']) {
     assert.equal(removeNumberLiterals(`msg[0].${reference}[fields['value']][1]`), `msg.${reference}[fields['value']]`);
 }
 // Expected source and boundaries come from packaged OIE 4.6.0/Rhino, not
-// from this reader. Exercise statement structure as well as primary keys:
-// rendering a keyword as a name or rejecting a valid body loses repetitions.
-const statementKeys = ['iterator-key-sources.json', 'iterator-key-comments.json', 'iterator-key-rhino-grammar.json'].flatMap(file =>
+// from this reader. Exercise token boundaries, visitor state, and statements:
+// rejecting a valid path or changing control flow can lose repeated values.
+const swingExpressions = ['iterator-key-sources.json', 'iterator-key-comments.json', 'iterator-key-rhino-grammar.json', 'iterator-member-trivia.json'].flatMap(file =>
     JSON.parse(readFileSync(new URL(`../../../test-fixtures/${file}`, import.meta.url), 'utf8')).cases);
-for (const { name, input, normalized, prefixes } of statementKeys) {
+for (const fixture of swingExpressions) {
+    const { name, input, normalized, prefixes } = fixture;
     assert.equal(removeNumberLiterals(input), normalized, name);
     assert.deepEqual(iteratorExpressionParts(input), prefixes, name);
-    assert.equal(removeNumberLiterals(normalized), normalized, `${name}: normalization is idempotent`);
-    if (input !== normalized) {
-        const element = { ...mapper(), mapping: input };
-        normalizeIteratorTarget(element);
-        rewriteElementIteratorVariables(element, [outer], true);
-        assert.equal(element.mapping, normalized.replace("msg['OBX']", "msg['OBX'][i]"), name);
-        rewriteElementIteratorVariables(element, [outer], false);
-        assert.equal(element.mapping, normalized, `${name}: detachment preserves the key`);
-    }
+    // Native toSource can emit an identifier that changes on a second parse.
+    // Assert the oracle's result instead of assuming universal idempotence.
+    assert.equal(removeNumberLiterals(normalized), fixture.renormalized ?? normalized, `${name}: second normalization`);
+    const element = { ...mapper(), mapping: input };
+    normalizeIteratorTarget(element);
+    rewriteElementIteratorVariables(element, [outer], true);
+    assert.equal(element.mapping, fixture.assigned ?? normalized.replace("msg['OBX']", "msg['OBX'][i]"), `${name}: assignment`);
+    rewriteElementIteratorVariables(element, [outer], false);
+    assert.equal(element.mapping, fixture.detached ?? normalized, `${name}: detachment`);
 }
 let evaluated = 0;
 globalThis.iteratorComputedKeyProbe = () => { evaluated++; return 'OBX.5'; };

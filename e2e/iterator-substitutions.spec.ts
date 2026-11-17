@@ -71,6 +71,27 @@ const statementKeys: { input: string; normalized: string; browser: boolean }[] =
     ['iterator-key-sources.json', 'iterator-key-comments.json', 'iterator-key-rhino-grammar.json'].flatMap(file =>
         JSON.parse(readFileSync(new URL(`../test-fixtures/${file}`, import.meta.url), 'utf8')).cases);
 
+const memberTrivia: { name: string; input: string; normalized: string; prefixes: string[]; browser: boolean }[] =
+    JSON.parse(readFileSync(new URL('../test-fixtures/iterator-member-trivia.json', import.meta.url), 'utf8')).cases;
+for (const fixture of memberTrivia.filter(fixture => fixture.browser)) {
+    test(`member trivia ${fixture.name} keeps Swing boundaries through save and detachment`, async ({ page }) => {
+        const element = { ...mapper('Member expression'), mapping: fixture.input };
+        const save = await openEditor(page, [element, iterator('Observations')]);
+        await row(page, element.name).locator('td.num').click();
+        await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+        const dialog = page.getByRole('dialog', { name: 'Assign To Iterator', exact: true });
+        await dialog.getByRole('combobox', { name: 'Iterator', exact: true }).selectOption('new');
+        expect(await dialog.getByRole('combobox', { name: 'Iterate On', exact: true }).locator('option')
+            .evaluateAll(options => options.map(option => (option as HTMLOptionElement).value))).toEqual(fixture.prefixes);
+        await useExistingIterator(page, 'Observations');
+        const assigned = fixture.normalized.replace(PREFIX, `${PREFIX}[i]`);
+        await expect(field(page, 'Mapping')).toHaveValue(assigned.replace(/[\r\n]/g, ''));
+        expect(children(await save(), 'Observations')[MAPPER][0].mapping).toBe(assigned);
+        await page.getByRole('button', { name: 'Remove From Iterator', exact: true }).click();
+        expect((await save())[MAPPER][0].mapping).toBe(fixture.normalized);
+    });
+}
+
 for (const [key, printed] of [
     ["'OBX.5'", "'OBX.5'"],
     ["'OBX.'+'5'", "'OBX.' + '5'"],
