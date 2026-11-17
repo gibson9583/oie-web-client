@@ -3,7 +3,7 @@
  * These edit stored expressions; the engine uses them literally at runtime.
  * Only the shipped expression fields participate, never arbitrary script text.
  */
-import { readComputedKey } from './rhino-key-source.js';
+import { readComputedKey, readParenthesizedExpression } from './rhino-key-source.js';
 const ITERATOR_TYPES = new Set(['com.mirth.connect.model.IteratorStep', 'com.mirth.connect.model.IteratorRule']);
 // Rhino uses Java identifier character categories, including currency symbols.
 const name = '[\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}][\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Mn}\\p{Mc}\\p{Nd}\\p{Cf}]*';
@@ -36,8 +36,18 @@ function lexicalText(expression) {
             const key = readComputedKey(expression.slice(begin), stringLiteralSource);
             if (!key)
                 return null;
-            text += ref[0] + `[${key.source}]`;
+            // Keep the original key until the member visitor renders it.
+            // Rhino's toSource output need not itself be reparsable (notably
+            // line comments used as labelled statements).
+            text += expression.slice(index, begin + key.end);
             index = begin + key.end - 1;
+        }
+        else if (ch === '.' && expression[index + 1] === '(') {
+            const predicate = readParenthesizedExpression(expression.slice(index + 1), stringLiteralSource);
+            if (!predicate)
+                return null;
+            text += expression.slice(index, index + 1 + predicate.end);
+            index += predicate.end;
         }
         else if (ch === '"' || ch === "'") {
             const quote = ch;
@@ -155,6 +165,24 @@ function bracketEnd(text) {
     return depth || quote ? -1 : index;
 }
 const quotedKey = /^(?:"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')$/;
+// ElementGet keys and XmlDotQuery predicates share the visitor's child rules.
+// Unsupported child roots are ignored, while the surrounding member chain
+// remains eligible for numeric-index removal.
+function appendChildParts(parts, key, nested) {
+    const quoted = quotedKey.test(key);
+    if (quoted || (identifierOnly.test(key) && !keywordLiterals.has(key)) || numericLiteral.test(key)) {
+        const value = quoted ? stringLiteralSource(key) : key;
+        if (value == null)
+            throw new Error('Invalid string');
+        if (nested || parts.length)
+            parts.push({ value: `[${value}]`, numeric: numericLiteral.test(key) });
+    }
+    else {
+        const member = expressionParts(key, true);
+        if (member)
+            parts.push(...member);
+    }
+}
 /* A member-expression reader, rather than a global [number] replacement: a
  * quoted key containing "[0]", a binary expression, a call or arbitrary code
  * must not have its source edited as though it were a tree path. Rhino's
@@ -214,6 +242,18 @@ function expressionParts(expression, nested = false) {
                 parts.push({ value: `.${elementRef[1]}[${key.source}]` });
             text = text.slice(key.end);
         }
+        else if (text.startsWith('.(')) {
+            const predicate = readParenthesizedExpression(text.slice(1), stringLiteralSource);
+            if (!predicate)
+                return null;
+            try {
+                appendChildParts(parts, text.slice(2, predicate.end), nested);
+            }
+            catch {
+                return null;
+            }
+            text = text.slice(1 + predicate.end);
+        }
         else if (text[0] === '.') {
             const property = propertyAccess.exec(text);
             if (!property)
@@ -235,18 +275,11 @@ function expressionParts(expression, nested = false) {
             // syntax; its parse failure returns the entire original source.
             if (/^0[bBoO][\da-f]/.test(key))
                 return null;
-            const quoted = quotedKey.test(key);
-            if (quoted || (identifierOnly.test(key) && !keywordLiterals.has(key)) || numericLiteral.test(key)) {
-                const value = quoted ? stringLiteralSource(key) : key;
-                if (value == null)
-                    return null;
-                if (nested || parts.length)
-                    parts.push({ value: `[${value}]`, numeric: numericLiteral.test(key) });
+            try {
+                appendChildParts(parts, key, nested);
             }
-            else {
-                const member = expressionParts(key, true);
-                if (member)
-                    parts.push(...member);
+            catch {
+                return null;
             }
             // The Rhino visitor ignores unsupported subexpressions in the
             // index while continuing along the member chain.
@@ -267,13 +300,12 @@ export function removeNumberLiterals(expression) {
 }
 /** Cumulative member prefixes offered by the iterator creation dialog. */
 export function iteratorExpressionParts(expression) {
-    const text = removeNumberLiterals(expression);
-    const body = text.endsWith('.toString()') ? text.slice(0, -'.toString()'.length) : text;
+    const body = expression.endsWith('.toString()') ? expression.slice(0, -'.toString()'.length) : expression;
     const parts = expressionParts(body);
     if (!parts)
         return body.trim() ? [body] : [];
     let prefix = '';
-    return parts.map(part => (prefix += part.value));
+    return parts.filter(part => !part.numeric).map(part => (prefix += part.value));
 }
 /** Swing hides a boundary immediately before an enclosing iterator's index. */
 export function iteratorWizardPrefixes(expression, ancestorIndices) {

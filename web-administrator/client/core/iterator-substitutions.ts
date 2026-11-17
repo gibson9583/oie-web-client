@@ -3,7 +3,7 @@
  * Only the shipped expression fields participate, never arbitrary script text.
  */
 
-import { readComputedKey } from './rhino-key-source.js';
+import { readComputedKey, readParenthesizedExpression } from './rhino-key-source.js';
 
 type Element = Record<string, any>;
 
@@ -39,8 +39,16 @@ function lexicalText(expression: string): string | null {
             while (/\s/.test(expression[begin] || '') && begin < expression.length) begin++;
             const key = readComputedKey(expression.slice(begin), stringLiteralSource);
             if (!key) return null;
-            text += ref[0] + `[${key.source}]`;
+            // Keep the original key until the member visitor renders it.
+            // Rhino's toSource output need not itself be reparsable (notably
+            // line comments used as labelled statements).
+            text += expression.slice(index, begin + key.end);
             index = begin + key.end - 1;
+        } else if (ch === '.' && expression[index + 1] === '(') {
+            const predicate = readParenthesizedExpression(expression.slice(index + 1), stringLiteralSource);
+            if (!predicate) return null;
+            text += expression.slice(index, index + 1 + predicate.end);
+            index += predicate.end;
         } else if (ch === '"' || ch === "'") {
             const quote = ch;
             text += ch;
@@ -128,12 +136,29 @@ function bracketEnd(text: string): number {
 
 const quotedKey = /^(?:"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')$/;
 
+type ExpressionPart = { value: string; numeric?: boolean };
+
+// ElementGet keys and XmlDotQuery predicates share the visitor's child rules.
+// Unsupported child roots are ignored, while the surrounding member chain
+// remains eligible for numeric-index removal.
+function appendChildParts(parts: ExpressionPart[], key: string, nested: boolean): void {
+    const quoted = quotedKey.test(key);
+    if (quoted || (identifierOnly.test(key) && !keywordLiterals.has(key)) || numericLiteral.test(key)) {
+        const value = quoted ? stringLiteralSource(key) : key;
+        if (value == null) throw new Error('Invalid string');
+        if (nested || parts.length) parts.push({ value: `[${value}]`, numeric: numericLiteral.test(key) });
+    } else {
+        const member = expressionParts(key, true);
+        if (member) parts.push(...member);
+    }
+}
+
 /* A member-expression reader, rather than a global [number] replacement: a
  * quoted key containing "[0]", a binary expression, a call or arbitrary code
  * must not have its source edited as though it were a tree path. Rhino's
  * ExpressionVisitor follows member chains and leaves other roots intact.
  */
-function expressionParts(expression: string, nested = false): { value: string; numeric?: boolean }[] | null {
+function expressionParts(expression: string, nested = false): ExpressionPart[] | null {
     const lexical = lexicalText(expression);
     if (lexical == null) return null;
     let text = lexical.trim();
@@ -161,7 +186,7 @@ function expressionParts(expression: string, nested = false): { value: string; n
     const propertyParent = firstProperty?.[1] === '.' && identifierOnly.test(firstProperty[2]);
     const rootName = start?.[0];
     const first = nested ? propertyParent ? `.${rootName}` : `[${rootName}]` : rootName;
-    const parts: { value: string; numeric?: boolean }[] = rootName && !keywordLiterals.has(rootName) ? [{ value: first! }] : [];
+    const parts: ExpressionPart[] = rootName && !keywordLiterals.has(rootName) ? [{ value: first! }] : [];
     while (text.trim()) {
         text = text.trimStart();
         const elementRef = elementRefAccess.exec(text);
@@ -173,6 +198,12 @@ function expressionParts(expression: string, nested = false): { value: string; n
             if (!key) return null;
             if (nested || parts.length) parts.push({ value: `.${elementRef[1]}[${key.source}]` });
             text = text.slice(key.end);
+        } else if (text.startsWith('.(')) {
+            const predicate = readParenthesizedExpression(text.slice(1), stringLiteralSource);
+            if (!predicate) return null;
+            try { appendChildParts(parts, text.slice(2, predicate.end), nested); }
+            catch { return null; }
+            text = text.slice(1 + predicate.end);
         } else if (text[0] === '.') {
             const property = propertyAccess.exec(text);
             if (!property) return null;
@@ -188,15 +219,8 @@ function expressionParts(expression: string, nested = false): { value: string; n
             // Default Rhino Parser does not accept binary/octal ES6 literal
             // syntax; its parse failure returns the entire original source.
             if (/^0[bBoO][\da-f]/.test(key)) return null;
-            const quoted = quotedKey.test(key);
-            if (quoted || (identifierOnly.test(key) && !keywordLiterals.has(key)) || numericLiteral.test(key)) {
-                const value = quoted ? stringLiteralSource(key) : key;
-                if (value == null) return null;
-                if (nested || parts.length) parts.push({ value: `[${value}]`, numeric: numericLiteral.test(key) });
-            } else {
-                const member = expressionParts(key, true);
-                if (member) parts.push(...member);
-            }
+            try { appendChildParts(parts, key, nested); }
+            catch { return null; }
             // The Rhino visitor ignores unsupported subexpressions in the
             // index while continuing along the member chain.
             text = text.slice(index);
@@ -215,12 +239,11 @@ export function removeNumberLiterals(expression: string): string {
 
 /** Cumulative member prefixes offered by the iterator creation dialog. */
 export function iteratorExpressionParts(expression: string): string[] {
-    const text = removeNumberLiterals(expression);
-    const body = text.endsWith('.toString()') ? text.slice(0, -'.toString()'.length) : text;
+    const body = expression.endsWith('.toString()') ? expression.slice(0, -'.toString()'.length) : expression;
     const parts = expressionParts(body);
     if (!parts) return body.trim() ? [body] : [];
     let prefix = '';
-    return parts.map(part => (prefix += part.value));
+    return parts.filter(part => !part.numeric).map(part => (prefix += part.value));
 }
 
 /** Swing hides a boundary immediately before an enclosing iterator's index. */

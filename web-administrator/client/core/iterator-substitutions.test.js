@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
     getIteratorInfo, iteratorExpressionParts, normalizeIteratorTarget,
     removeNumberLiterals, rewriteElementIteratorVariables,
@@ -281,10 +282,30 @@ assert.equal(removeNumberLiterals(invalidThrow), invalidThrow, 'a line break aft
 for (const reference of ['*::', 'ns::', '@', '@*::', '@ns::']) {
     assert.equal(removeNumberLiterals(`msg[0].${reference}[fields['value']][1]`), `msg.${reference}[fields['value']]`);
 }
+// Expected source and boundaries come from packaged OIE 4.6.0/Rhino, not
+// from this reader. Exercise statement structure as well as primary keys:
+// rendering a keyword as a name or rejecting a valid body loses repetitions.
+const statementKeys = ['iterator-key-sources.json', 'iterator-key-comments.json', 'iterator-key-rhino-grammar.json'].flatMap(file =>
+    JSON.parse(readFileSync(new URL(`../../../test-fixtures/${file}`, import.meta.url), 'utf8')).cases);
+for (const { name, input, normalized, prefixes } of statementKeys) {
+    assert.equal(removeNumberLiterals(input), normalized, name);
+    assert.deepEqual(iteratorExpressionParts(input), prefixes, name);
+    assert.equal(removeNumberLiterals(normalized), normalized, `${name}: normalization is idempotent`);
+    if (input !== normalized) {
+        const element = { ...mapper(), mapping: input };
+        normalizeIteratorTarget(element);
+        rewriteElementIteratorVariables(element, [outer], true);
+        assert.equal(element.mapping, normalized.replace("msg['OBX']", "msg['OBX'][i]"), name);
+        rewriteElementIteratorVariables(element, [outer], false);
+        assert.equal(element.mapping, normalized, `${name}: detachment preserves the key`);
+    }
+}
 let evaluated = 0;
 globalThis.iteratorComputedKeyProbe = () => { evaluated++; return 'OBX.5'; };
 try {
     assert.equal(removeNumberLiterals("msg[0].*::[iteratorComputedKeyProbe()][1]"), 'msg.*::[iteratorComputedKeyProbe()]');
+    removeNumberLiterals("msg[0].*::[(function(){if(iteratorComputedKeyProbe())return 'x';throw 'missing';})()][1]");
+    removeNumberLiterals("msg[0].*::[(<field>{iteratorComputedKeyProbe()}</field>).toString()][1]");
     assert.equal(evaluated, 0, 'normalization must never execute key expressions');
 } finally { delete globalThis.iteratorComputedKeyProbe; }
 assert.deepEqual(iteratorExpressionParts("msg['OBX'][0].*::['OBX.5'].toString()"), ['msg', "msg['OBX']", "msg['OBX'].*::['OBX.5']"]);

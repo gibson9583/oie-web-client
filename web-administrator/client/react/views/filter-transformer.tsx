@@ -1973,11 +1973,12 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             toast(`This ${kind.noun.toLowerCase()} is not inside an Iterator`, 'warn'); return;
         }
         if (!canEditElements()) return;
-        const iterator = elementAtPath(elements, selPath.slice(0, -1));
         rewriteElementIteratorVariables(el, iteratorAncestors(selPath), false);
         listAtPath(elements, selPath).splice(selPath[selPath.length - 1], 1);
         const grandList = listAtPath(elements, selPath.slice(0, -1));
-        grandList.splice(grandList.indexOf(iterator) + 1, 0, el);
+        // Swing reattaches at the enclosing list's child count. Following
+        // siblings must execute before the detached element.
+        grandList.push(el);
         const newPath = pathOf(el, elements);
         rewriteElementIteratorVariables(el, iteratorAncestors(newPath), true);
         setSelected(newPath);

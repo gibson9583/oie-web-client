@@ -1,0 +1,525 @@
+{
+  "provenance": {
+    "engine": "OIE 4.6.0",
+    "rhino": "1.7.13",
+    "oracle": "JavaScriptSharedUtil.removeNumberLiterals / getExpressionParts(includeNumberLiterals=false), default CompilerEnvirons",
+    "jarSha256": {
+      "rhino-1.7.13.jar": "931dda33789d8e004ff5b5478ee3d6d224305de330c48266df7c3e49d52fc606",
+      "mirth-server.jar": "ec9c4e2781e4220071b1dade761f8965f01206d468bf73ef815de55604545485"
+    }
+  },
+  "cases": [
+    {
+      "input": "msg['OBX'][0].*::[(function(){if(true)return 'OBX.5';else return 'OBX.3';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  if (true) \n    return 'OBX.5';\n  else \n    return 'OBX.3';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  if (true) \n    return 'OBX.5';\n  else \n    return 'OBX.3';\n})()]"
+      ],
+      "name": "conditional",
+      "runtime": true,
+      "browser": true
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){if(true){return 'OBX.5';}else {return 'OBX.3';}})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  if (true) {\n    return 'OBX.5';\n  } else {\n    return 'OBX.3';\n  }\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  if (true) {\n    return 'OBX.5';\n  } else {\n    return 'OBX.3';\n  }\n})()]"
+      ],
+      "name": "conditional-blocks",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){try{return 'OBX.5';}catch(e){return 'OBX.3';}})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  try {\n    return 'OBX.5';\n  }  catch (e) {\n  return 'OBX.3';\n}\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  try {\n    return 'OBX.5';\n  }  catch (e) {\n  return 'OBX.3';\n}\n})()]"
+      ],
+      "name": "catch",
+      "runtime": true,
+      "browser": true
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){try{return 'OBX.5';}catch(e if e.foo){return 'OBX.3';}catch(e){return 'OBX.2';}finally{cleanup();}})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  try {\n    return 'OBX.5';\n  }  catch (e if e.foo) {\n  return 'OBX.3';\n}\n  catch (e) {\n  return 'OBX.2';\n}\n finally   {\n    cleanup();\n  }\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  try {\n    return 'OBX.5';\n  }  catch (e if e.foo) {\n  return 'OBX.3';\n}\n  catch (e) {\n  return 'OBX.2';\n}\n finally   {\n    cleanup();\n  }\n})()]"
+      ],
+      "name": "guarded-catches-finally",
+      "runtime": true,
+      "browser": true
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){while(false){x++;}return 'OBX.5';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  while (false) {\n    x++;\n  }\n  return 'OBX.5';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  while (false) {\n    x++;\n  }\n  return 'OBX.5';\n})()]"
+      ],
+      "name": "while",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){do {x++;}while(false);return 'OBX.5';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  do {\n    x++;\n  } while (false);\n  return 'OBX.5';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  do {\n    x++;\n  } while (false);\n  return 'OBX.5';\n})()]"
+      ],
+      "name": "do-block",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){for(var x=0;x<2;x++)if(x)break;return 'OBX.5';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  for (var x = 0; x < 2; x++) \n    if (x) \n      break;\n  return 'OBX.5';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  for (var x = 0; x < 2; x++) \n    if (x) \n      break;\n  return 'OBX.5';\n})()]"
+      ],
+      "name": "for-conditional-break",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){for(var x in obj){continue;}return 'OBX.5';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  for (var x in obj) {\n    continue;\n  }\n  return 'OBX.5';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  for (var x in obj) {\n    continue;\n  }\n  return 'OBX.5';\n})()]"
+      ],
+      "name": "for-in",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){for each(var x in obj){continue;}return 'OBX.5';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  for each (var x in obj) {\n    continue;\n  }\n  return 'OBX.5';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  for each (var x in obj) {\n    continue;\n  }\n  return 'OBX.5';\n})()]"
+      ],
+      "name": "for-each",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){switch(x){case 1:return 'OBX.5';case 2:break;default:return 'OBX.3';}return 'OBX.2';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  switch (x) {\n    case 1:\n      return 'OBX.5';\n    case 2:\n      break;\n    default:\n      return 'OBX.3';\n  }\n  return 'OBX.2';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  switch (x) {\n    case 1:\n      return 'OBX.5';\n    case 2:\n      break;\n    default:\n      return 'OBX.3';\n  }\n  return 'OBX.2';\n})()]"
+      ],
+      "name": "switch",
+      "runtime": true,
+      "browser": true
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){with(obj){return field;}})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  with (obj) {\n    return field;\n  }\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  with (obj) {\n    return field;\n  }\n})()]"
+      ],
+      "name": "with-block",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){outer:while(false){break outer;}return 'OBX.5';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  outer:\n    while (false) {\n      break outer;\n    }\n  return 'OBX.5';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  outer:\n    while (false) {\n      break outer;\n    }\n  return 'OBX.5';\n})()]"
+      ],
+      "name": "label",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){debugger;return 'OBX.5';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  debugger;\n  return 'OBX.5';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  debugger;\n  return 'OBX.5';\n})()]"
+      ],
+      "name": "debugger",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[({get key(){return 'OBX.5';},set key(v){x=v;}}).key][0].toString()",
+      "normalized": "msg['OBX'].*::[({\n  get key() {\n    return 'OBX.5';\n  }\n, \n  set key(v) {\n    x = v;\n  }\n}).key].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[({\n  get key() {\n    return 'OBX.5';\n  }\n, \n  set key(v) {\n    x = v;\n  }\n}).key]"
+      ],
+      "name": "accessors",
+      "runtime": true,
+      "browser": true
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){function name(x){if(x)return x;return 'OBX.5';}return name(true);})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  function name(x) {\n    if (x) \n      return x;\n    return 'OBX.5';\n  }\n  return name(true);\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  function name(x) {\n    if (x) \n      return x;\n    return 'OBX.5';\n  }\n  return name(true);\n})()]"
+      ],
+      "name": "nested-function",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){var a=1,b=2;return 'OBX.5';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  var a = 1, b = 2;\n  return 'OBX.5';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  var a = 1, b = 2;\n  return 'OBX.5';\n})()]"
+      ],
+      "name": "declarations",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){let x='OBX.5';return x;})()][0].toString()",
+      "normalized": "msg['OBX'][0].*::[(function(){let x='OBX.5';return x;})()][0].toString()",
+      "prefixes": [
+        "msg['OBX'][0].*::[(function(){let x='OBX.5';return x;})()][0]"
+      ],
+      "name": "default-language-let",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){try{return 'OBX.5';}finally{var done=true;}})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  try {\n    return 'OBX.5';\n  } finally   {\n    var done = true;\n  }\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  try {\n    return 'OBX.5';\n  } finally   {\n    var done = true;\n  }\n})()]"
+      ],
+      "name": "finally",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){if(false)return 'OBX.3';else if(true)return 'OBX.5';else return 'OBX.2';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  if (false) \n    return 'OBX.3';\n  else if (true) \n    return 'OBX.5';\n  else \n    return 'OBX.2';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  if (false) \n    return 'OBX.3';\n  else if (true) \n    return 'OBX.5';\n  else \n    return 'OBX.2';\n})()]"
+      ],
+      "name": "else-if",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){if(true){if(false)return 'OBX.3';}else return 'OBX.2';return 'OBX.5';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  if (true) {\n    if (false) \n      return 'OBX.3';\n  } else \n    return 'OBX.2';\n  return 'OBX.5';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  if (true) {\n    if (false) \n      return 'OBX.3';\n  } else \n    return 'OBX.2';\n  return 'OBX.5';\n})()]"
+      ],
+      "name": "dangling-else",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){var i=0;do i++;while(i<1);return 'OBX.5';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  var i = 0;\n  do i++; while (i < 1);\n  return 'OBX.5';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  var i = 0;\n  do i++; while (i < 1);\n  return 'OBX.5';\n})()]"
+      ],
+      "name": "do-expression",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){for(;;){break;}return 'OBX.5';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  for (; ; ) {\n    break;\n  }\n  return 'OBX.5';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  for (; ; ) {\n    break;\n  }\n  return 'OBX.5';\n})()]"
+      ],
+      "name": "empty-for",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){for(var a=0,b=1;a<b;a++){continue;}return 'OBX.5';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  for (var a = 0, b = 1; a < b; a++) {\n    continue;\n  }\n  return 'OBX.5';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  for (var a = 0, b = 1; a < b; a++) {\n    continue;\n  }\n  return 'OBX.5';\n})()]"
+      ],
+      "name": "for-declarations",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){for(var k in {x:1})if(k)return 'OBX.5';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  for (var k in {\n  x: 1}) \n    if (k) \n      return 'OBX.5';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  for (var k in {\n  x: 1}) \n    if (k) \n      return 'OBX.5';\n})()]"
+      ],
+      "name": "for-in-conditional",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){try{throw 'OBX.5';}catch(e){return e;}})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  try {\n    throw 'OBX.5';\n  }  catch (e) {\n  return e;\n}\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  try {\n    throw 'OBX.5';\n  }  catch (e) {\n  return e;\n}\n})()]"
+      ],
+      "name": "throw-catch",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){if(/['\\\"}\\]]/.test(']'))return 'OBX.5';return 'OBX.3';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  if (/['\\\"}\\]]/.test(']')) \n    return 'OBX.5';\n  return 'OBX.3';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  if (/['\\\"}\\]]/.test(']')) \n    return 'OBX.5';\n  return 'OBX.3';\n})()]"
+      ],
+      "name": "regexp",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){return msg.*::['OBX'][0].name().toString();})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  return msg.*::['OBX'][0].name().toString();\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  return msg.*::['OBX'][0].name().toString();\n})()]"
+      ],
+      "name": "nested-e4x",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){var x='OBX.3';with({field:'OBX.5'})return field;})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  var x = 'OBX.3';\n  with ({\n  field: 'OBX.5'}) \n    return field;\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  var x = 'OBX.3';\n  with ({\n  field: 'OBX.5'}) \n    return field;\n})()]"
+      ],
+      "name": "with-expression",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){outer:for(var i=0;i<1;i++){if(i<0)continue outer;break outer;}return 'OBX.5';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  outer:\n    for (var i = 0; i < 1; i++) {\n      if (i < 0) \n        continue outer;\n      break outer;\n    }\n  return 'OBX.5';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  outer:\n    for (var i = 0; i < 1; i++) {\n      if (i < 0) \n        continue outer;\n      break outer;\n    }\n  return 'OBX.5';\n})()]"
+      ],
+      "name": "labelled-continue",
+      "runtime": true,
+      "browser": true
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){return\n'OBX.5';})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  return;\n  'OBX.5';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  return;\n  'OBX.5';\n})()]"
+      ],
+      "name": "return-newline",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){throw\n'OBX.5';})()][0].toString()",
+      "normalized": "msg['OBX'][0].*::[(function(){throw\n'OBX.5';})()][0].toString()",
+      "prefixes": [
+        "msg['OBX'][0].*::[(function(){throw\n'OBX.5';})()][0]"
+      ],
+      "name": "throw-newline",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){try{try{return 'OBX.5';}finally{var x=true;}}catch(e){return 'OBX.3';}})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  try {\n    try {\n      return 'OBX.5';\n    } finally     {\n      var x = true;\n    }\n  }  catch (e) {\n  return 'OBX.3';\n}\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  try {\n    try {\n      return 'OBX.5';\n    } finally     {\n      var x = true;\n    }\n  }  catch (e) {\n  return 'OBX.3';\n}\n})()]"
+      ],
+      "name": "nested-try",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "input": "msg['OBX'][0].*::[(function(){var obj={get key(){return 'OBX.5';}};return obj.key;})()][0].toString()",
+      "normalized": "msg['OBX'].*::[(function() {\n  var obj = {\n  get key() {\n    return 'OBX.5';\n  }\n};\n  return obj.key;\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  var obj = {\n  get key() {\n    return 'OBX.5';\n  }\n};\n  return obj.key;\n})()]"
+      ],
+      "name": "getter-in-function",
+      "runtime": true,
+      "browser": false
+    },
+    {
+      "name": "guarded-catch-taken",
+      "input": "msg['OBX'][0].*::[(function(){try{throw {kind:'missing'};}catch(e if e.kind==='missing'){return 'OBX.5';}catch(e){return 'OBX.3';}})()][0].toString()",
+      "runtime": true,
+      "browser": false,
+      "normalized": "msg['OBX'].*::[(function() {\n  try {\n    throw {\n  kind: 'missing'};\n  }  catch (e if e.kind === 'missing') {\n  return 'OBX.5';\n}\n  catch (e) {\n  return 'OBX.3';\n}\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  try {\n    throw {\n  kind: 'missing'};\n  }  catch (e if e.kind === 'missing') {\n  return 'OBX.5';\n}\n  catch (e) {\n  return 'OBX.3';\n}\n})()]"
+      ]
+    },
+    {
+      "name": "finally-return",
+      "input": "msg['OBX'][0].*::[(function(){try{return 'OBX.3';}finally{return 'OBX.5';}})()][0].toString()",
+      "runtime": true,
+      "browser": false,
+      "normalized": "msg['OBX'].*::[(function() {\n  try {\n    return 'OBX.3';\n  } finally   {\n    return 'OBX.5';\n  }\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  try {\n    return 'OBX.3';\n  } finally   {\n    return 'OBX.5';\n  }\n})()]"
+      ]
+    },
+    {
+      "name": "setter-getter-runtime",
+      "input": "msg['OBX'][0].*::[(function(){var obj={set key(v){this.value=v;},get key(){return this.value;}};obj.key='OBX.5';return obj.key;})()][0].toString()",
+      "runtime": true,
+      "browser": false,
+      "normalized": "msg['OBX'].*::[(function() {\n  var obj = {\n  set key(v) {\n    this.value = v;\n  }\n, \n  get key() {\n    return this.value;\n  }\n};\n  obj.key = 'OBX.5';\n  return obj.key;\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  var obj = {\n  set key(v) {\n    this.value = v;\n  }\n, \n  get key() {\n    return this.value;\n  }\n};\n  obj.key = 'OBX.5';\n  return obj.key;\n})()]"
+      ]
+    },
+    {
+      "name": "while-counter",
+      "input": "msg['OBX'][0].*::[(function(){var n=0;while(n<2)n++;return 'OBX.'+(3+n);})()][0].toString()",
+      "runtime": true,
+      "browser": false,
+      "normalized": "msg['OBX'].*::[(function() {\n  var n = 0;\n  while (n < 2) \n    n++;\n  return 'OBX.' + (3 + n);\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  var n = 0;\n  while (n < 2) \n    n++;\n  return 'OBX.' + (3 + n);\n})()]"
+      ]
+    },
+    {
+      "name": "do-counter",
+      "input": "msg['OBX'][0].*::[(function(){var n=0;do n++;while(n<2);return 'OBX.'+(3+n);})()][0].toString()",
+      "runtime": true,
+      "browser": false,
+      "normalized": "msg['OBX'].*::[(function() {\n  var n = 0;\n  do n++; while (n < 2);\n  return 'OBX.' + (3 + n);\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  var n = 0;\n  do n++; while (n < 2);\n  return 'OBX.' + (3 + n);\n})()]"
+      ]
+    },
+    {
+      "name": "for-counter",
+      "input": "msg['OBX'][0].*::[(function(){for(var n=0;n<2;n++){}return 'OBX.'+(3+n);})()][0].toString()",
+      "runtime": true,
+      "browser": false,
+      "normalized": "msg['OBX'].*::[(function() {\n  for (var n = 0; n < 2; n++) {\n  }\n  return 'OBX.' + (3 + n);\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  for (var n = 0; n < 2; n++) {\n  }\n  return 'OBX.' + (3 + n);\n})()]"
+      ]
+    },
+    {
+      "name": "for-each-counter",
+      "input": "msg['OBX'][0].*::[(function(){var n=0;for each(var x in [1,1])n+=x;return 'OBX.'+(3+n);})()][0].toString()",
+      "runtime": true,
+      "browser": false,
+      "normalized": "msg['OBX'].*::[(function() {\n  var n = 0;\n  for each (var x in [1, 1]) \n    n += x;\n  return 'OBX.' + (3 + n);\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  var n = 0;\n  for each (var x in [1, 1]) \n    n += x;\n  return 'OBX.' + (3 + n);\n})()]"
+      ]
+    },
+    {
+      "name": "for-in-counter",
+      "input": "msg['OBX'][0].*::[(function(){var n=0;for(var p in {a:1,b:1})n++;return 'OBX.'+(3+n);})()][0].toString()",
+      "runtime": true,
+      "browser": false,
+      "normalized": "msg['OBX'].*::[(function() {\n  var n = 0;\n  for (var p in {\n  a: 1, \n  b: 1}) \n    n++;\n  return 'OBX.' + (3 + n);\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  var n = 0;\n  for (var p in {\n  a: 1, \n  b: 1}) \n    n++;\n  return 'OBX.' + (3 + n);\n})()]"
+      ]
+    },
+    {
+      "name": "label-counter",
+      "input": "msg['OBX'][0].*::[(function(){outer:for(var n=0;n<2;n++){if(n===0)continue outer;break outer;}return 'OBX.'+(4+n);})()][0].toString()",
+      "runtime": true,
+      "browser": false,
+      "normalized": "msg['OBX'].*::[(function() {\n  outer:\n    for (var n = 0; n < 2; n++) {\n      if (n === 0) \n        continue outer;\n      break outer;\n    }\n  return 'OBX.' + (4 + n);\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  outer:\n    for (var n = 0; n < 2; n++) {\n      if (n === 0) \n        continue outer;\n      break outer;\n    }\n  return 'OBX.' + (4 + n);\n})()]"
+      ]
+    },
+    {
+      "name": "switch-break",
+      "input": "msg['OBX'][0].*::[(function(){switch(2){case 1:return 'OBX.3';case 2:break;default:return 'OBX.2';}return 'OBX.5';})()][0].toString()",
+      "runtime": true,
+      "browser": false,
+      "normalized": "msg['OBX'].*::[(function() {\n  switch (2) {\n    case 1:\n      return 'OBX.3';\n    case 2:\n      break;\n    default:\n      return 'OBX.2';\n  }\n  return 'OBX.5';\n})()].toString()",
+      "prefixes": [
+        "msg",
+        "msg['OBX']",
+        "msg['OBX'].*::[(function() {\n  switch (2) {\n    case 1:\n      return 'OBX.3';\n    case 2:\n      break;\n    default:\n      return 'OBX.2';\n  }\n  return 'OBX.5';\n})()]"
+      ]
+    }
+  ]
+}
