@@ -2936,12 +2936,11 @@ export function MessagesView({ params, query }: any) {
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
         if (getPref('confirmReprocessRemove') !== false &&
-            !await confirmDialog('Remove message', `Permanently remove ${target} from ${describeTargets('channel', [{ id: channelId, name: channelName }])}? This cannot be undone.`, { danger: true, okLabel: 'Remove' })) return;
+            !await confirmDialog('Remove message', `Permanently remove ${target} from ${describeTargets('channel', [{ id: channelId, name: channelName }])}? The channel must be stopped for an unfinished message to be removed. This cannot be undone.`, { danger: true, okLabel: 'Remove' })) return;
         try {
             assertSession();
             await api.messages.remove(channelId, messageId, metaDataId);
             assertSession();
-            toast('Message removed');
             searchRef.current(false);
         } catch (e: any) {
             try { assertSession(); } catch { return; }

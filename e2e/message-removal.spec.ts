@@ -77,7 +77,9 @@ for (const surface of ['rail', 'menu'] as const) {
                 expect(prompt).toContain(NAMES[metaDataId]);
                 expect(prompt).toMatch(/destination/i);
             } else expect(prompt).toContain('all its destinations');
+            expect(prompt).toContain('The channel must be stopped for an unfinished message to be removed.');
             await expect.poll(state.searches).toBe(2);
+            expect(await page.locator('.toast-msg').count()).toBe(0);
         });
     }
 }
