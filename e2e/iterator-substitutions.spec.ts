@@ -57,6 +57,47 @@ const row = (page: Page, name: string) => page.locator('table.dt tbody tr[data-p
 const field = (page: Page, label: string) => page.locator(`.step-editor-fill .field:has(label:text-is("${label}")) input`);
 const children = (elements: any, name: string, type = ITERATOR) => elements[type].find((el: any) => el.name === name).properties.children;
 
+async function useExistingIterator(page: Page, name: string) {
+    const dialog = page.getByRole('dialog', { name: 'Assign To Iterator', exact: true });
+    await dialog.getByRole('combobox', { name: 'Iterator', exact: true }).selectOption({ label: name });
+    await dialog.getByRole('button', { name: 'Use Iterator', exact: true }).click();
+}
+
+const treePrompt = (page: Page) => page.getByRole('dialog', { name: 'Select An Option', exact: true });
+
+async function openTreeEditor(page: Page, elements: Element[], id: string) {
+    let channel = makeChannel(id);
+    channel.sourceConnector.transformer.elements = wire(elements);
+    channel.sourceConnector.transformer.inboundTemplate = 'OBX|1|TX|||one\rOBX|2|TX|||two';
+    const writes: any[] = [];
+    await mockEngine(page, {
+        [`GET /channels/${id}`]: () => ({ channel }),
+        [`PUT /channels/${id}`]: (request: any) => { channel = request.postDataJSON().channel; writes.push(channel); return true; }
+    });
+    await page.route('**/api/datatypes/_serialize*', route => route.fulfill({ json: {
+        format: 'xml', data: '<HL7Message><OBX><OBX.5><OBX.5.1>one</OBX.5.1></OBX.5></OBX><OBX><OBX.5><OBX.5.1>two</OBX.5.1></OBX.5></OBX></HL7Message>', meta: {}
+    } }));
+    await page.goto(`/channels/${id}/transformer/0`);
+    return {
+        async showTree() {
+            await page.getByRole('tab', { name: 'Message Trees', exact: true }).click();
+            const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+            await tree.getByRole('row').filter({ has: page.getByText('OBX[1]', { exact: true }) }).locator('.twisty').click();
+        },
+        async mapFromTree() {
+            const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+            await tree.getByRole('row').filter({ has: page.getByText('OBX.5', { exact: true }) }).click({ button: 'right' });
+            await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
+        },
+        async save() {
+            const count = writes.length;
+            await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+            await expect.poll(() => writes.length).toBe(count + 1);
+            return writes.at(-1).sourceConnector.transformer.elements;
+        }
+    };
+}
+
 test('assign and detach rewrite every Mapper expression and retain unrelated fields', async ({ page }) => {
     const element = mapper();
     element.defaultValue = mapping('1');
@@ -64,6 +105,7 @@ test('assign and detach rewrite every Mapper expression and retain unrelated fie
     const save = await openEditor(page, [element, iterator('Observations')]);
     await row(page, 'Observation').locator('td.num').click();
     await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+    await useExistingIterator(page, 'Observations');
     const assigned = children(await save(), 'Observations')[MAPPER][0];
     expect(assigned).toMatchObject({ variable: 'observations', mapping: mapping('i'), defaultValue: mapping('i'), scope: 'CHANNEL' });
     expect(assigned.replacements[PAIR][0]).toEqual({ left: { '@class': 'string', $: mapping('i') }, right: { '@class': 'string', $: mapping('i') } });
@@ -86,6 +128,7 @@ test('Message Builder assignment substitutes both inbound and outbound prefixes'
     const save = await openEditor(page, [element, iterator('Observations', 'i', [], [PREFIX, "tmp['OBX']"])]);
     await row(page, element.name).locator('td.num').click();
     await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+    await useExistingIterator(page, 'Observations');
     await expect(field(page, 'Message Segment')).toHaveValue("tmp['OBX'][i]['OBX.5']");
     const assigned = children(await save(), 'Observations')[BUILDER][0];
     expect(assigned).toMatchObject({ messageSegment: "tmp['OBX'][i]['OBX.5']", mapping: mapping('i'), defaultValue: mapping('i') });
@@ -96,6 +139,7 @@ test('filter Rule Builder assignment and detachment rewrite field and comparison
     const save = await openEditor(page, [element, iterator('Observation rules', 'i', [], [PREFIX], FILTER_ITERATOR)], 'filter');
     await row(page, element.name).locator('td.num').click();
     await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+    await useExistingIterator(page, 'Observation rules');
     await expect(field(page, 'Field')).toHaveValue(mapping('i'));
     const assigned = children(await save(), 'Observation rules', FILTER_ITERATOR)[RULE][0];
     expect(assigned).toMatchObject({ field: mapping('i'), values: { string: [mapping('i'), "'literal'"] }, operator: 'NONE' });
@@ -108,6 +152,7 @@ test('moving a child between Iterators removes the old index before applying the
     const save = await openEditor(page, [iterator('First', 'i', [mapper('Observation', 'i')]), iterator('Second', 'j')]);
     await row(page, 'Observation').locator('td.num').click();
     await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+    await useExistingIterator(page, 'Second');
     await expect(field(page, 'Mapping')).toHaveValue(mapping('j'));
     const elements = await save();
     expect(children(elements, 'First')).toBe('');
@@ -138,6 +183,7 @@ test('moving a nested Iterator rewrites its target, prefixes and descendants', a
     const save = await openEditor(page, [iterator('First', 'i', [inner]), iterator('Second', 'k')]);
     await row(page, 'Values').locator('td.num').click();
     await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+    await useExistingIterator(page, 'Second');
     await expect(field(page, 'Iterate On (target)')).toHaveValue(`${PREFIX}[k]['OBX.5']`);
     const elements = await save();
     const moved = children(elements, 'Second')[ITERATOR][0];
@@ -182,6 +228,7 @@ test('a removed chooser source cannot create an orphan Iterator on acceptance', 
     await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Assign To Iterator' });
     await expect(dialog).toBeVisible();
+    await dialog.getByRole('combobox', { name: 'Iterator', exact: true }).selectOption('new');
     await page.getByRole('button', { name: 'Delete Step', exact: true, includeHidden: true }).dispatchEvent('click');
     await dialog.getByRole('button', { name: 'Use Iterator', exact: true }).click();
     await expect(dialog.getByRole('alert')).toContainText('iterator context changed');
@@ -213,6 +260,7 @@ test('message-tree mapping uses the selected Iterator parent and its repetition 
     await repetition.locator('.twisty').click();
     await tree.getByRole('row').filter({ has: page.getByText('OBX.5', { exact: true }) }).click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
+    await treePrompt(page).getByRole('button', { name: 'No', exact: true }).click();
     await expect(field(page, 'Mapping')).toHaveValue(`${PREFIX}[i]['OBX.5']['OBX.5.1'].toString()`);
     await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
     await expect.poll(() => writes.length).toBe(1);
@@ -239,10 +287,12 @@ test('message-tree mapping can create an Iterator before adding the indexed Mapp
     await tree.getByRole('row').filter({ has: page.getByText('OBX[1]', { exact: true }) }).locator('.twisty').click();
     await tree.getByRole('row').filter({ has: page.getByText('OBX.5', { exact: true }) }).click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
+    await treePrompt(page).getByRole('button', { name: 'Yes', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Select Iterator' });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('combobox', { name: 'Iterate On', exact: true })).toHaveValue(PREFIX);
     await expect(dialog.getByRole('textbox', { name: 'Index Variable', exact: true })).toHaveValue('i');
+    await expect(dialog.getByRole('textbox', { name: 'Index Variable', exact: true })).toHaveJSProperty('readOnly', true);
     await dialog.getByRole('button', { name: 'Use Iterator', exact: true }).click();
     await expect(field(page, 'Mapping')).toHaveValue(`${PREFIX}[i]['OBX.5']['OBX.5.1'].toString()`);
     await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
@@ -250,6 +300,7 @@ test('message-tree mapping can create an Iterator before adding the indexed Mapp
     const elements = writes[0].sourceConnector.transformer.elements;
     expect(elements[MAPPER]).toBeUndefined();
     expect(elements[ITERATOR]).toHaveLength(1);
+    expect(elements[ITERATOR][0].name).toBe(`For each ${PREFIX}`);
     expect(elements[ITERATOR][0].properties).toMatchObject({ target: PREFIX, indexVariable: 'i', prefixSubstitutions: { string: expect.arrayContaining([PREFIX]) } });
     expect(elements[ITERATOR][0].properties.children[MAPPER][0].mapping).toBe(`${PREFIX}[i]['OBX.5']['OBX.5.1'].toString()`);
 });
@@ -275,10 +326,11 @@ test('message-tree Iterator cancellation is a no-op and adding without one retai
         await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
     };
     await mapFromTree();
+    await treePrompt(page).getByRole('button', { name: 'Yes', exact: true }).click();
     await page.getByRole('dialog', { name: 'Select Iterator' }).getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(page.locator('table.dt tbody tr[data-path]')).toHaveCount(0);
     await mapFromTree();
-    await page.getByRole('dialog', { name: 'Select Iterator' }).getByRole('button', { name: 'Add Without Iterator', exact: true }).click();
+    await treePrompt(page).getByRole('button', { name: 'No', exact: true }).click();
     await expect(field(page, 'Mapping')).toHaveValue(`${PREFIX}[1]['OBX.5']['OBX.5.1'].toString()`);
     await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
     await expect.poll(() => writes.length).toBe(1);
@@ -286,4 +338,172 @@ test('message-tree Iterator cancellation is a no-op and adding without one retai
     expect(elements[ITERATOR]).toBeUndefined();
     expect(elements[MAPPER]).toHaveLength(1);
     expect(elements[MAPPER][0].mapping).toBe(`${PREFIX}[1]['OBX.5']['OBX.5.1'].toString()`);
+});
+
+
+test('a sole unrelated Iterator still opens assignment with a new target and fixed index', async ({ page }) => {
+    const element = mapper('Patient identifier');
+    element.mapping = "msg['PID'][0]['PID.3'].toString()";
+    const save = await openEditor(page, [element, iterator('Observations')]);
+    await row(page, element.name).locator('td.num').click();
+    await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Assign To Iterator', exact: true });
+    await expect(dialog.getByRole('combobox', { name: 'Iterator', exact: true })).toHaveValue('new');
+    await expect(dialog.getByRole('combobox', { name: 'Iterate On', exact: true })).toHaveValue("msg['PID']");
+    await expect(dialog.getByRole('textbox', { name: 'Index Variable', exact: true })).toHaveValue('i');
+    await expect(dialog.getByRole('textbox', { name: 'Index Variable', exact: true })).toHaveJSProperty('readOnly', true);
+    await dialog.getByRole('button', { name: 'Use Iterator', exact: true }).click();
+    const elements = await save();
+    expect(children(elements, 'Observations')).toBe('');
+    const created = elements[ITERATOR].find((it: any) => it.name === "For each msg['PID']");
+    expect(created.properties).toMatchObject({ target: "msg['PID']", indexVariable: 'i' });
+    expect(created.properties.children[MAPPER][0].mapping).toBe("msg['PID'][i]['PID.3'].toString()");
+});
+
+test('assignment prefers the current parent and the deepest matching Iterator', async ({ page }) => {
+    const innerPrefix = `${PREFIX}[i]['OBX.5']`;
+    const inner = iterator('Values', 'j', [], [innerPrefix]);
+    inner.properties.target = innerPrefix;
+    const element = mapper('Outside');
+    element.mapping = `${PREFIX}[0]['OBX.5'][0].toString()`;
+    await openEditor(page, [iterator('Observations', 'i', [mapper('Inside', 'i'), inner]), element, iterator('Unrelated', 'k', [], ["msg['PID']"])]);
+    await row(page, 'Inside').locator('td.num').click();
+    await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Assign To Iterator', exact: true });
+    await expect(dialog.getByRole('combobox', { name: 'Iterator', exact: true }).locator('option:checked')).toHaveText('Observations');
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await row(page, 'Outside').locator('td.num').click();
+    await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+    await expect(dialog.getByRole('combobox', { name: 'Iterator', exact: true }).locator('option:checked')).toHaveText('Values');
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+});
+
+test('XSLT assignment prefers the deepest Iterator after normalizing its wizard target', async ({ page }) => {
+    const innerPrefix = `${PREFIX}[i]['OBX.5']`;
+    const inner = iterator('Values', 'j', [], [innerPrefix]);
+    inner.properties.target = innerPrefix;
+    const sourceXml = `${PREFIX}[0]['OBX.5'].toString()`;
+    const xslt: Element = { type: 'com.mirth.connect.plugins.xsltstep.XsltStep', name: 'Transform observation', sourceXml, template: '', resultVariable: 'result' };
+    await openEditor(page, [iterator('Observations', 'i', [inner]), xslt]);
+    await row(page, xslt.name).locator('td.num').click();
+    await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Assign To Iterator', exact: true });
+    await expect(dialog.getByRole('combobox', { name: 'Iterator', exact: true }).locator('option:checked')).toHaveText('Values');
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+});
+
+test('an existing Iterator with a colliding index remains selectable and validation explains the clash', async ({ page }) => {
+    const save = await openEditor(page, [iterator('First', 'i'), iterator('Second', 'i')]);
+    await row(page, 'First').locator('td.num').click();
+    await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Assign To Iterator', exact: true });
+    await expect(dialog.getByRole('combobox', { name: 'Iterator', exact: true }).locator('option')).toHaveText(['Create New Iterator', 'Second']);
+    await useExistingIterator(page, 'Second');
+    const elements = await save();
+    expect(elements[ITERATOR]).toHaveLength(1);
+    expect(children(elements, 'Second')[ITERATOR][0]).toMatchObject({ name: 'First', properties: { indexVariable: 'i' } });
+    await page.getByRole('button', { name: 'Validate Transformer', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Error validating transformer steps', exact: true })).toContainText('Duplicate Iterator index variable i found.');
+});
+
+test('creating an Iterator around a nested step rewrites the new Iterator itself', async ({ page }) => {
+    const element = mapper('Value');
+    element.mapping = `${PREFIX}[i]['OBX.5'][0].toString()`;
+    const save = await openEditor(page, [iterator('Observations', 'i', [element], [PREFIX, "tmp['OBX']"])]);
+    await row(page, 'Value').locator('td.num').click();
+    await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Assign To Iterator', exact: true });
+    await dialog.getByRole('combobox', { name: 'Iterator', exact: true }).selectOption('new');
+    await dialog.getByRole('combobox', { name: 'Iterate On', exact: true }).selectOption(`${PREFIX}['OBX.5']`);
+    await expect(dialog.getByRole('textbox', { name: 'Index Variable', exact: true })).toHaveValue('j');
+    await dialog.getByRole('button', { name: 'Use Iterator', exact: true }).click();
+    const inner = children(await save(), 'Observations')[ITERATOR][0];
+    const target = `${PREFIX}[i]['OBX.5']`;
+    expect(inner).toMatchObject({ name: `For each ${target}`, properties: { target, indexVariable: 'j', prefixSubstitutions: { string: [target, `tmp['OBX'][i]['OBX.5']`] } } });
+    expect(inner.properties.children[MAPPER][0].mapping).toBe(`${target}[j].toString()`);
+});
+
+test('new filter Iterators use the Swing name and defaults', async ({ page }) => {
+    const element: Element = { type: RULE, name: 'Observation rule', operator: 'OR', field: mapping(), condition: 'EQUALS', values: { string: ["'one'"] } };
+    const save = await openEditor(page, [element], 'filter');
+    await row(page, element.name).locator('td.num').click();
+    await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Assign To Iterator', exact: true }).getByRole('button', { name: 'Use Iterator', exact: true }).click();
+    const created = (await save())[FILTER_ITERATOR][0];
+    expect(created).toMatchObject({ name: `Accept message if at least one of the iterations returns true for each ${PREFIX}`, properties: { intersectIterations: false, breakEarly: true } });
+    expect(created.properties.children[RULE][0]).toMatchObject({ operator: 'NONE', field: mapping('i') });
+});
+
+test('moving a non-first filter rule into an existing Iterator retains OR', async ({ page }) => {
+    const rule = (name: string, operator = 'NONE'): Element => ({ type: RULE, name, operator, field: mapping(), condition: 'EQUALS', values: { string: ["'one'"] } });
+    const save = await openEditor(page, [rule('First rule'), rule('Move this rule', 'OR'), iterator('Observation rules', 'i', [rule('Existing rule')], [PREFIX], FILTER_ITERATOR)], 'filter');
+    await row(page, 'Move this rule').locator('td.num').click();
+    await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+    await useExistingIterator(page, 'Observation rules');
+    const assigned = children(await save(), 'Observation rules', FILTER_ITERATOR)[RULE];
+    expect(assigned).toHaveLength(2);
+    expect(assigned[1]).toMatchObject({ name: 'Move this rule', operator: 'OR', field: mapping('i') });
+});
+
+test('nested tree creation hides a prefix before its enclosing index and rewrites the new Iterator', async ({ page }) => {
+    const tree = await openTreeEditor(page, [iterator('Observations')], 'iterator-tree-nested');
+    await row(page, 'Observations').locator('td.num').click();
+    await tree.showTree();
+    await tree.mapFromTree();
+    await treePrompt(page).getByRole('button', { name: 'Yes', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Select Iterator', exact: true });
+    await expect(dialog.getByRole('combobox', { name: 'Iterator', exact: true }).locator('option:checked')).toHaveText('Observations');
+    await dialog.getByRole('combobox', { name: 'Iterator', exact: true }).selectOption('new');
+    const target = `${PREFIX}[i]['OBX.5']`;
+    const targets = dialog.getByRole('combobox', { name: 'Iterate On', exact: true });
+    expect(await targets.locator('option').evaluateAll(options => options.map(option => (option as HTMLOptionElement).value))).not.toContain(PREFIX);
+    await expect(targets).toHaveValue(target);
+    await expect(dialog.getByRole('textbox', { name: 'Index Variable', exact: true })).toHaveValue('j');
+    await dialog.getByRole('button', { name: 'Use Iterator', exact: true }).click();
+    const inner = children(await tree.save(), 'Observations')[ITERATOR][0];
+    expect(inner).toMatchObject({ name: `For each ${target}`, properties: { target, indexVariable: 'j', prefixSubstitutions: { string: expect.arrayContaining([target]) } } });
+    expect(inner.properties.children[MAPPER][0].mapping).toBe(`${target}[j]['OBX.5.1'].toString()`);
+});
+
+test('top-level tree preference keeps the raw repetition before choosing an existing Iterator', async ({ page }) => {
+    const innerPrefix = `${PREFIX}[i]['OBX.5']`;
+    const inner = iterator('Values', 'j', [], [innerPrefix]);
+    inner.properties.target = innerPrefix;
+    // A top-level selected Mapper keeps the new tree element at the root.
+    const tree = await openTreeEditor(page, [mapper('Top level'), iterator('Observations', 'i', [inner])], 'iterator-tree-preferred-raw');
+    await tree.showTree();
+    await tree.mapFromTree();
+    await treePrompt(page).getByRole('button', { name: 'Yes', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Select Iterator', exact: true });
+    // Swing does not strip [1] before finding a preferred tree iterator. The
+    // outer prefix matches; the nested prefix containing [i] does not yet.
+    await expect(dialog.getByRole('combobox', { name: 'Iterator', exact: true }).locator('option:checked')).toHaveText('Observations');
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+});
+
+test('tree prompt opt-out survives cancellation and Administrator settings can re-enable it', async ({ page }) => {
+    const id = 'iterator-tree-prompt-preference';
+    const tree = await openTreeEditor(page, [], id);
+    await tree.showTree();
+    await tree.mapFromTree();
+    const prompt = treePrompt(page);
+    await prompt.getByRole('checkbox', { name: 'Do not show this dialog again (may be re-enabled in the Administrator settings)', exact: true }).check();
+    await prompt.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(page.locator('table.dt tbody tr[data-path]')).toHaveCount(0);
+    await tree.mapFromTree();
+    await expect(prompt).toHaveCount(0);
+    await expect(field(page, 'Mapping')).toHaveValue(`${PREFIX}[1]['OBX.5']['OBX.5.1'].toString()`);
+    const elements = await tree.save();
+    expect(elements[ITERATOR]).toBeUndefined();
+    await page.goto('/settings?tab=administrator');
+    const prefRow = page.getByText('Show iterator dialog in filter/transformer editors', { exact: true }).locator('..');
+    await expect(prefRow.getByRole('radio', { name: 'No', exact: true })).toBeChecked();
+    await prefRow.getByRole('radio', { name: 'Yes', exact: true }).check();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.locator('.toast-msg', { hasText: 'Preferences saved' })).toBeVisible();
+    await page.goto(`/channels/${id}/transformer/0`);
+    await tree.showTree();
+    await tree.mapFromTree();
+    await expect(prompt).toBeVisible();
+    await prompt.getByRole('button', { name: 'Cancel', exact: true }).click();
 });

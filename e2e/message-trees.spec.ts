@@ -119,7 +119,7 @@ test('message tree rows map, drag and copy their accessors', async ({ page, brow
     await expect(tree(page)).toContainText("msg['PID']['PID.5']['PID.5.1'].toString()");
     await row(page, 'PID.5.1').getByRole('button', { name: 'Actions for PID.5.1' }).press('Enter');
     await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
-    await page.getByRole('dialog', { name: 'Select Iterator' }).getByRole('button', { name: 'Add Without Iterator' }).click();
+    await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
     await expect(stepField(page, 'Mapping')).toHaveValue("msg['PID']['PID.5']['PID.5.1'].toString()");
 
     // Drag a row into a step editor field: the accessor lands at the drop point.
@@ -139,7 +139,7 @@ test('message tree rows map, drag and copy their accessors', async ({ page, brow
     await row(page, 'PID.3', 'tmp').click({ button: 'right' });
     await expect(page.getByRole('menuitem', { name: 'Map to Variable' })).toHaveCount(0);
     await page.getByRole('menuitem', { name: 'Map to Message' }).click();
-    await page.getByRole('dialog', { name: 'Select Iterator' }).getByRole('button', { name: 'Add Without Iterator' }).click();
+    await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
     await expect(stepField(page, 'Message Segment')).toHaveValue("tmp['PID']['PID.3']");
 
     await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
@@ -186,7 +186,7 @@ test('a folded field keeps its own name for Map to Variable', async ({ page }) =
     await row(page, 'PID').locator('.twisty').click();
     await row(page, 'PID.8').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
-    await page.getByRole('dialog', { name: 'Select Iterator' }).getByRole('button', { name: 'Add Without Iterator' }).click();
+    await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
     // The row's name, not its folded component's ("PID.8.1 (Value)"): the variable is the channel-map key.
     await expect(stepField(page, 'Variable')).toHaveValue('PID.8 (Administrative Sex)');
     await expect(stepField(page, 'Mapping')).toHaveValue("msg['PID']['PID.8']['PID.8.1'].toString()");
@@ -258,7 +258,7 @@ test('a strict-parser segment with one field keeps its own row and accessor', as
 
     await row(page, 'RCP').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
-    await page.getByRole('dialog', { name: 'Select Iterator' }).getByRole('button', { name: 'Add Without Iterator' }).click();
+    await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
     await expect(stepField(page, 'Mapping')).toHaveValue("msg['RCP'].toString()");
     await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
     await expect.poll(() => writes.length).toBe(1);

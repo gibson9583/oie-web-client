@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {
     getIteratorInfo, iteratorExpressionParts, normalizeIteratorTarget,
-    removeNumberLiterals, rewriteElementIteratorVariables
+    removeNumberLiterals, rewriteElementIteratorVariables,
+    iteratorWizardPrefixes, validIteratorIndex, preferredIterator, iteratorName
 } from './iterator-substitutions.js';
 import { replacementPairs, replacementsToWire } from './step-replacements.js';
 import { generateElementScript } from './step-script.js';
@@ -130,6 +131,45 @@ assert.deepEqual(replacementPairs(typed), [['null', '']]);
 assert.equal(removeNumberLiterals(nestedMapping), "msg['OBX']['OBX.5']['OBX.5.1'].toString()");
 assert.equal(removeNumberLiterals("msg['key[0]'][123].name[0x2]"), "msg['key[0]'].name");
 assert.equal(removeNumberLiterals("msg['OBX'][i+1]['x']"), "msg['OBX']['x']");
+assert.equal(removeNumberLiterals("msg['OBX'][index.foo]['x']"), "msg['OBX'].index.foo['x']");
+assert.equal(removeNumberLiterals("msg['OBX'][index['foo']]['x']"), "msg['OBX'][index]['foo']['x']");
+assert.equal(removeNumberLiterals("msg['OBX'][arr[0]]['x']"), "msg['OBX'][arr]['x']");
+for (const root of ['this', 'null', 'true']) {
+    assert.equal(removeNumberLiterals(`msg[${root}.segment]['OBX.5']`), "msg.segment['OBX.5']", 'skip a KeywordLiteral but retain its member name');
+}
+assert.equal(removeNumberLiterals("this.segment['OBX.5']"), "segment['OBX.5']");
+assert.equal(removeNumberLiterals("msg[this['segment']]['OBX.5']"), "msg['segment']['OBX.5']");
+assert.equal(removeNumberLiterals('this'), 'this', 'an empty visitor result falls back to the whole source');
+assert.equal(removeNumberLiterals("msg[(foo).bar]['OBX.5']"), "msg.bar['OBX.5']");
+assert.equal(removeNumberLiterals("msg[foo[(bar).baz]]['OBX.5']"), "msg[foo].baz['OBX.5']");
+assert.equal(removeNumberLiterals("(foo).bar['OBX.5']"), "bar['OBX.5']");
+assert.equal(removeNumberLiterals("msg[(foo)].bar"), 'msg.bar');
+for (const [key, suffix] of [["index.foo", '.index.foo'], ["index['foo']", "[index]['foo']"], ['arr[0]', '[arr]']]) {
+    const el = { ...mapper(), mapping: `msg['OBX'][${key}]['x']` };
+    rewriteElementIteratorVariables(el, [outer], true);
+    assert.equal(el.mapping, `msg['OBX'][i]${suffix}['x']`);
+}
+for (const [expression, expected] of [
+    [String.raw`msg['OB\u0058'][0]`, "msg['OBX']"],
+    [String.raw`msg["OB\u0058"][0]`, 'msg["OBX"]'],
+    ["msg['消息'][0]", String.raw`msg['\u6d88\u606f']`],
+    [String.raw`msg['a\x62'][0]`, "msg['ab']"],
+    [String.raw`msg['a\n'][0]`, String.raw`msg['a\n']`],
+    [String.raw`msg['a\z'][0]`, "msg['az']"],
+    [String.raw`msg['a\'b'][0]`, String.raw`msg['a\'b']`],
+    [String.raw`msg['a\\b'][0]`, String.raw`msg['a\\b']`],
+    [String.raw`msg['\101'][0]`, "msg['A']"],
+    ["msg['a\\\nb'][0]", "msg['ab']"],
+    [String.raw`msg["a\"b"][0]`, String.raw`msg["a\"b"]`],
+    [String.raw`msg['\0'][0]`, String.raw`msg['\x00']`],
+    [String.raw`msg['\u0001'][0]`, String.raw`msg['\x01']`],
+    [String.raw`msg['\v'][0]`, String.raw`msg['\v']`],
+    [String.raw`msg['\\u0058'][0]`, String.raw`msg['\\u0058']`],
+    [String.raw`msg['\u2028'][0]`, String.raw`msg['\u2028']`]
+]) assert.equal(removeNumberLiterals(expression), expected, 'match Rhino StringLiteral.toSource canonicalization');
+const escapedPrefix = { ...mapper(), mapping: String.raw`msg['OB\u0058'][0]['OBX.5']` };
+rewriteElementIteratorVariables(escapedPrefix, [outer], true);
+assert.equal(escapedPrefix.mapping, String.raw`msg['OB\u0058'][0]['OBX.5']`, 'direct substitution still matches the original literal prefix');
 assert.equal(removeNumberLiterals("msg['OBX'][-1]['x']"), "msg['OBX']['x']");
 assert.equal(removeNumberLiterals("msg['OBX'][0].length"), "msg['OBX'].length");
 assert.equal(removeNumberLiterals("msg..OBX[0].toString()"), "msg.OBX.toString()");
@@ -161,6 +201,39 @@ assert.equal(removeNumberLiterals(`someFunction(${mapping})`), `someFunction(${m
 assert.equal(removeNumberLiterals(`${mapping} + 'suffix'`), `${mapping} + 'suffix'`);
 assert.deepEqual(iteratorExpressionParts(mapping), ['msg', "msg['OBX']", "msg['OBX']['OBX.5']"]);
 assert.deepEqual(iteratorExpressionParts(''), []);
+// Wizard choices retain component positions for synchronized outbound choices,
+// hide boundaries immediately before ancestor indices, and prefer the next part.
+const wizardTarget = "msg['OBR'][i]['OBX'][j]['OBX.5']";
+const wizard = iteratorWizardPrefixes(wizardTarget, ['i', 'j']);
+assert.deepEqual(wizard.choices, [
+    { value: 'msg', index: 0 },
+    { value: "msg['OBR'][i]", index: 2 },
+    { value: "msg['OBR'][i]['OBX'][j]", index: 4 },
+    { value: wizardTarget, index: 5 }
+]);
+assert.deepEqual(wizard.selected, { value: wizardTarget, index: 5 });
+assert.equal(iteratorWizardPrefixes("msg['OBR'][i]", ['i']).selected.value, "msg['OBR'][i]");
+assert.equal(iteratorWizardPrefixes("msg['OBR'][i]['OBX']", ['i']).selected.value, "msg['OBR'][i]['OBX']");
+assert.equal(iteratorWizardPrefixes("msg['i']['OBX']", ['i']).choices[0].value, 'msg', 'a quoted property is not an index variable');
+assert.equal(iteratorWizardPrefixes('msg.i.OBX', ['i']).choices[0].value, 'msg.i', 'match the Swing property-name check');
+for (const property of ['@i', 'ns::i', '@ns::i', '*::i']) {
+    assert.equal(iteratorWizardPrefixes(`msg.${property}['value']`, ['i']).choices[0].index, 1, 'E4X attributes and namespaces expose their local property name');
+}
+assert.equal(iteratorWizardPrefixes('', []).selected, undefined);
+assert.equal(validIteratorIndex(['i', 'j'], ['k']), 'l');
+assert.equal(validIteratorIndex('ijklmnopqrstuvwxyz'.split(''), ['ii']), 'jj');
+assert.equal(validIteratorIndex([], []), 'i');
+const preferredInner = iterator("msg['OBX'][i]['OBX.5']", 'j');
+const preferredOuter = iterator("msg['OBX']", 'i', [preferredInner]);
+const preferredTie = iterator("msg['OBX']", 'k');
+assert.equal(preferredIterator(detached, [preferredOuter, preferredTie]), preferredInner, 'prefer deepest matching prefix');
+assert.equal(preferredIterator("msg['OBX']['other']", [preferredOuter, preferredTie]), preferredOuter, 'first match wins tied depths');
+assert.equal(preferredIterator(detached, [preferredOuter, preferredTie], preferredOuter), preferredTie, 'exclude selected subtree');
+assert.equal(preferredIterator("msg['PID']", [preferredOuter]), null);
+assert.equal(preferredIterator("msg['OBX'].toString()", [iterator("msg['OBX'].toString()")]), null, 'the wizard removes toString before finding an existing prefix');
+assert.equal(iteratorName(preferredOuter), "For each msg['OBX']");
+assert.equal(iteratorName({ ...preferredOuter, __type: 'com.mirth.connect.model.IteratorRule' }), "Accept message if at least one of the iterations returns true for each msg['OBX']");
+assert.equal(iteratorName({ ...preferredOuter, __type: 'com.mirth.connect.model.IteratorRule', properties: { ...preferredOuter.properties, intersectIterations: true } }), "Accept message if all of the iterations return true for each msg['OBX']");
 const messageBuilder = { __type: plugin('messagebuilder.MessageBuilderStep'), messageSegment: "tmp['OBX'][0]['OBX.5']", mapping };
 assert.deepEqual(getIteratorInfo(messageBuilder), { target: mapping, outbound: messageBuilder.messageSegment });
 normalizeIteratorTarget(messageBuilder);

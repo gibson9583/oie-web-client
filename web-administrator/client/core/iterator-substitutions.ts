@@ -53,19 +53,84 @@ function lexicalText(expression: string): string | null {
     return text;
 }
 
+// Rhino StringLiteral.toSource decodes JavaScript escapes, then prints the
+// original quote style with ASCII escapes. Keep this limited to literal keys;
+// no user expression is evaluated.
+function stringLiteralSource(literal: string): string | null {
+    const quote = literal[0];
+    const escapes: Record<string, string> = { b: '\b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v' };
+    let value = '';
+    for (let index = 1; index < literal.length - 1; index++) {
+        let ch = literal[index];
+        if (ch === '\\') {
+            ch = literal[++index];
+            if (Object.hasOwn(escapes, ch)) value += escapes[ch];
+            else if (ch === 'u' || ch === 'x') {
+                const size = ch === 'u' ? 4 : 2;
+                const hex = literal.slice(index + 1, index + 1 + size);
+                if (hex.length !== size || !/^[\da-f]+$/i.test(hex)) return null;
+                value += String.fromCharCode(parseInt(hex, 16));
+                index += size;
+            } else if (/[0-7]/.test(ch)) {
+                let octal = ch;
+                while (octal.length < 3 && /[0-7]/.test(literal[index + 1] || '')
+                    && parseInt(octal + literal[index + 1], 8) <= 255) octal += literal[++index];
+                value += String.fromCharCode(parseInt(octal, 8));
+            } else if (/[\n\r\u2028\u2029]/.test(ch)) {
+                if (ch === '\r' && literal[index + 1] === '\n') index++;
+            } else value += ch;
+        } else {
+            if (/[\n\r\u2028\u2029]/.test(ch)) return null;
+            value += ch;
+        }
+    }
+    let source = quote;
+    for (let index = 0; index < value.length; index++) {
+        const ch = value[index];
+        const code = value.charCodeAt(index);
+        const escape = Object.keys(escapes).find(key => escapes[key] === ch);
+        if (escape) source += '\\' + escape;
+        else if (ch === quote || ch === '\\') source += '\\' + ch;
+        else if (code >= 0x20 && code <= 0x7e) source += ch;
+        else source += code < 0x100 ? '\\x' + code.toString(16).padStart(2, '0') : '\\u' + code.toString(16).padStart(4, '0');
+    }
+    return source + quote;
+}
+
 /* A member-expression reader, rather than a global [number] replacement: a
  * quoted key containing "[0]", a binary expression, a call or arbitrary code
  * must not have its source edited as though it were a tree path. Rhino's
  * ExpressionVisitor follows member chains and leaves other roots intact.
  */
-function expressionParts(expression: string): { value: string; numeric?: boolean }[] | null {
+function expressionParts(expression: string, nested = false): { value: string; numeric?: boolean }[] | null {
     const lexical = lexicalText(expression);
     if (lexical == null) return null;
     let text = lexical.trim();
     const start = identifier.exec(text);
-    if (!start) return null;
-    const parts: { value: string; numeric?: boolean }[] = [{ value: start[0] }];
-    text = text.slice(start[0].length);
+    if (start) text = text.slice(start[0].length);
+    else if (text.startsWith('(')) {
+        // ParenthesizedExpression is a visitor boundary. Its contents are
+        // ignored, while a following member access is still visited.
+        let depth = 1, end = 1, quote = '';
+        for (; end < text.length && depth; end++) {
+            const ch = text[end];
+            if (quote) {
+                if (ch === '\\') end++;
+                else if (ch === quote) quote = '';
+            } else if (ch === '"' || ch === "'") quote = ch;
+            else if (ch === '(') depth++;
+            else if (ch === ')') depth--;
+        }
+        if (depth || quote) return null;
+        text = text.slice(end);
+    } else return null;
+    // An index expression can itself be a member chain. The Swing visitor
+    // flattens that chain, using the Name node's immediate AST parent.
+    const firstProperty = propertyAccess.exec(text.trimStart());
+    const propertyParent = firstProperty?.[1] === '.' && identifierOnly.test(firstProperty[2]);
+    const rootName = start?.[0];
+    const first = nested ? propertyParent ? `.${rootName}` : `[${rootName}]` : rootName;
+    const parts: { value: string; numeric?: boolean }[] = rootName && !keywordLiterals.has(rootName) ? [{ value: first! }] : [];
     while (text.trim()) {
         text = text.trimStart();
         if (text[0] === '.') {
@@ -73,7 +138,8 @@ function expressionParts(expression: string): { value: string; numeric?: boolean
             if (!property) return null;
             // Rhino's XmlPropRef.toSource drops the descendant-access dot;
             // JavaScriptSharedUtil prefixes the resulting property with '.'.
-            parts.push({ value: '.' + property[2] });
+            if (nested || parts.length) parts.push({ value: '.' + property[2] });
+            else if (property[1] === '.' && identifierOnly.test(property[2])) parts.push({ value: property[2] });
             text = text.slice(property[0].length);
         } else if (text[0] === '[') {
             let index = 1;
@@ -93,16 +159,21 @@ function expressionParts(expression: string): { value: string; numeric?: boolean
             // Default Rhino Parser does not accept binary/octal ES6 literal
             // syntax; its parse failure returns the entire original source.
             if (/^0[bBoO][\da-f]/.test(key)) return null;
-            const quoted = /^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/.test(key);
+            const quoted = /^(?:"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')$/.test(key);
             if (quoted || (identifierOnly.test(key) && !keywordLiterals.has(key)) || numericLiteral.test(key)) {
-                parts.push({ value: `[${key}]`, numeric: numericLiteral.test(key) });
+                const value = quoted ? stringLiteralSource(key) : key;
+                if (value == null) return null;
+                if (nested || parts.length) parts.push({ value: `[${value}]`, numeric: numericLiteral.test(key) });
+            } else {
+                const member = expressionParts(key, true);
+                if (member) parts.push(...member);
             }
             // The Rhino visitor ignores unsupported subexpressions in the
             // index while continuing along the member chain.
             text = text.slice(index);
         } else return null;
     }
-    return parts;
+    return nested || parts.length ? parts : null;
 }
 
 export function removeNumberLiterals(expression: string): string {
@@ -121,6 +192,63 @@ export function iteratorExpressionParts(expression: string): string[] {
     if (!parts) return body.trim() ? [body] : [];
     let prefix = '';
     return parts.map(part => (prefix += part.value));
+}
+
+/** Swing hides a boundary immediately before an enclosing iterator's index. */
+export function iteratorWizardPrefixes(expression: string, ancestorIndices: string[]) {
+    const prefixes = iteratorExpressionParts(expression);
+    const isAncestorIndex = (index: number) => {
+        const component = prefixes[index]?.slice(prefixes[index - 1]?.length || 0);
+        // XmlPropRef exposes the local name for both @i and ns::i. Quoted
+        // element keys retain their quotes and must not match a variable.
+        const property = component?.startsWith('.') ? component.slice(1).replace(/^@/, '').split('::').at(-1) : component;
+        return ancestorIndices.some(variable => component === `[${variable}]` || property === variable);
+    };
+    const choices = prefixes.map((value, index) => ({ value, index }))
+        .filter(({ index }) => !isAncestorIndex(index + 1));
+    let minIndex = 0;
+    for (let index = prefixes.length - 1; index >= 0; index--) {
+        if (isAncestorIndex(index)) { minIndex = index + 1; break; }
+    }
+    const preferred = (values: typeof choices) => values.find(choice => choice.index > 0) || values[0];
+    return { choices, selected: preferred(choices.filter(choice => choice.index >= minIndex)) || preferred(choices) };
+}
+
+export function validIteratorIndex(ancestorIndices: string[], descendantIndices: string[]): string {
+    const used = new Set([...ancestorIndices, ...descendantIndices]);
+    let index = 'i';
+    while (used.has(index)) {
+        const next = String.fromCharCode(index.charCodeAt(0) + 1);
+        index = next > 'z' ? 'i'.repeat(index.length + 1) : next.repeat(index.length);
+    }
+    return index;
+}
+
+/** The first matching iterator at the greatest matched ancestor depth wins. */
+export function preferredIterator(expression: string, iterators: Element[], selected?: Element): Element | null {
+    if (expression.endsWith('.toString()')) expression = expression.slice(0, -'.toString()'.length);
+    let preferred: Element | null = null;
+    let maxDepth = -1;
+    const visit = (nodes: Element[], target: string, depth: number) => {
+        for (const iterator of nodes) {
+            if (iterator === selected || !ITERATOR_TYPES.has(elementType(iterator))) continue;
+            for (const prefix of strings(iterator.properties?.prefixSubstitutions)) {
+                if (target.startsWith(prefix)) {
+                    if (depth > maxDepth) { preferred = iterator; maxDepth = depth; }
+                    visit(children(iterator), prefix + `[${iterator.properties?.indexVariable}]` + target.slice(prefix.length), depth + 1);
+                }
+            }
+        }
+    };
+    visit(iterators, expression, 0);
+    return preferred;
+}
+
+export function iteratorName(element: Element): string {
+    const target = element.properties?.target || '';
+    return elementType(element) === 'com.mirth.connect.model.IteratorRule'
+        ? `Accept message if ${element.properties?.intersectIterations ? 'all of the iterations return' : 'at least one of the iterations returns'} true for each ${target}`
+        : `For each ${target}`;
 }
 
 function rewriteExpression(expression: any, ancestors: Element[], replace: boolean): any {
