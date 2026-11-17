@@ -3,13 +3,13 @@
  * These edit stored expressions; the engine uses them literally at runtime.
  * Only the shipped expression fields participate, never arbitrary script text.
  */
+import { readComputedKey } from './rhino-key-source.js';
 const ITERATOR_TYPES = new Set(['com.mirth.connect.model.IteratorStep', 'com.mirth.connect.model.IteratorRule']);
 // Rhino uses Java identifier character categories, including currency symbols.
 const name = '[\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}][\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Mn}\\p{Mc}\\p{Nd}\\p{Cf}]*';
 const identifier = new RegExp('^' + name, 'u');
 const identifierOnly = new RegExp('^' + name + '$', 'u');
 const propertyAccess = new RegExp('^(\\.{1,2})(@?(?:(?:' + name + '|\\*)::)?(?:' + name + '|\\*))', 'u');
-const nameChain = new RegExp('^' + name + '(?:\\.' + name + ')*$', 'u');
 const elementRefAccess = new RegExp('^\\.{1,2}(@|@?(?:' + name + '|\\*)::)(?=\\s*\\[)', 'u');
 const keywordLiterals = new Set(['true', 'false', 'null', 'this']);
 const numericLiteral = /^(?:0[xX][\da-fA-F]+|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)$/;
@@ -26,7 +26,20 @@ function lexicalText(expression) {
     let text = '';
     for (let index = 0; index < expression.length; index++) {
         const ch = expression[index];
-        if (ch === '"' || ch === "'") {
+        const ref = ch === '.' ? elementRefAccess.exec(expression.slice(index)) : null;
+        if (ref) {
+            // Leave key lexing to the expression reader: comment/quote-looking
+            // characters in a regexp literal are not comments or string keys.
+            let begin = index + ref[0].length;
+            while (/\s/.test(expression[begin] || '') && begin < expression.length)
+                begin++;
+            const key = readComputedKey(expression.slice(begin), stringLiteralSource);
+            if (!key)
+                return null;
+            text += ref[0] + `[${key.source}]`;
+            index = begin + key.end - 1;
+        }
+        else if (ch === '"' || ch === "'") {
             const quote = ch;
             text += ch;
             while (++index < expression.length) {
@@ -191,20 +204,15 @@ function expressionParts(expression, nested = false) {
         text = text.trimStart();
         const elementRef = elementRefAccess.exec(text);
         if (elementRef) {
-            // XmlElemRef (ns::[expr], @[expr]) is one part. Rhino prints its
-            // index expression; only literal keys print identically here.
+            // XmlElemRef (ns::[expr], @[expr]) is one part. Its complete key
+            // expression is printed; indices inside the key are not removed.
             text = text.slice(elementRef[0].length).trimStart();
-            const end = bracketEnd(text);
-            if (end < 0)
-                return null;
-            const key = text.slice(1, end - 1).trim();
-            const value = quotedKey.test(key) ? stringLiteralSource(key)
-                : nameChain.test(key) || numericLiteral.test(key) ? key : null;
-            if (value == null)
+            const key = readComputedKey(text, stringLiteralSource);
+            if (!key)
                 return null;
             if (nested || parts.length)
-                parts.push({ value: `.${elementRef[1]}[${value}]` });
-            text = text.slice(end);
+                parts.push({ value: `.${elementRef[1]}[${key.source}]` });
+            text = text.slice(key.end);
         }
         else if (text[0] === '.') {
             const property = propertyAccess.exec(text);

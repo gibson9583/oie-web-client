@@ -236,7 +236,57 @@ for (const [expression, expected] of [
     ["msg.*::['a::b'][0]", "msg.*::['a::b']"],
     [String.raw`msg.*::["aé"][0]`, String.raw`msg.*::["a\xe9"]`]
 ]) assert.equal(removeNumberLiterals(expression), expected);
-assert.equal(removeNumberLiterals("msg.*::['a'+'b'][0]"), "msg.*::['a'+'b'][0]", 'Rhino reprints computed keys; keep the whole expression');
+assert.equal(removeNumberLiterals("msg.*::['a'+'b'][0]"), "msg.*::['a' + 'b']", 'Rhino prints the complete computed key, then removes surrounding numeric indices');
+// Actual JavaScriptSharedUtil/XmlElemRef.toSource results. A numeric index
+// inside a key must survive even when the outer repetition indices disappear.
+for (const [key, printed] of [
+    ["'OBX.'+'5'", "'OBX.' + '5'"],
+    ["fields['value']", "fields['value']"],
+    ['fieldNames[0]', 'fieldNames[0]'],
+    ['(field)', '(field)'],
+    ['field . name', 'field.name'],
+    ['getField()', 'getField()'],
+    ["String('OBX.5')", "String('OBX.5')"],
+    ["true?'OBX.5':'OBX.3'", "true ? 'OBX.5' : 'OBX.3'"],
+    ["'x'+(i+1)", "'x' + (i + 1)"],
+    ['-1', '-1'], ['+value', '+value'], ['!flag', '!flag'], ['~mask', '~mask'],
+    ['typeof value', 'typeof value'], ['void 0', 'void 0'], ['delete value.key', 'delete value.key'],
+    ['i++', 'i++'], ['--i', '--i'], ['a=b', 'a = b'], ['a+=b', 'a += b'],
+    ['a,b', 'a , b'], ['a&&b||c', 'a && b || c'],
+    ["new String('OBX.5')", "new String('OBX.5')"], ['new Foo', 'new Foo()'],
+    ['[1,,2]', '[1, , 2]'], ["['a','b'][0]", "['a', 'b'][0]"],
+    ["['OBX.5',][0]", "['OBX.5'][0]"], ['[,,][0]', '[, ,][0]'],
+    ["({a:1,b:'x'})", "({\n  a: 1, \n  b: 'x'})"],
+    ['/a[b]/gi.source', '/a[b]/gi.source'], [String.raw`/[\]]/.source`, String.raw`/[\]]/.source`],
+    [String.raw`(/['"/]/).source`, String.raw`(/['"/]/).source`],
+    [String.raw`\u0066ields['value']`, "fields['value']"],
+    ["getField(/*note*/'x', /*more*/0)", "getField('x', 0)"],
+    ['this.name', 'this.name'], ['foo(a,b)[i]', 'foo(a, b)[i]'],
+    ["msg.*::['field'][0].toString()", "msg.*::['field'][0].toString()"],
+    ['function(a){return a;}', 'function(a) {\n  return a;\n}'],
+    ['function(){}', 'function() {\n}'],
+    ["(function(){return\n'OBX.5';})()", "(function() {\n  return;\n  'OBX.5';\n})()"],
+    ['/=/.source', '/=/.source'],
+    ["'消息'+field", String.raw`'\u6d88\u606f' + field`]
+]) {
+    const expression = `msg['OBX'][0].*::[${key}][0].toString()`;
+    assert.equal(removeNumberLiterals(expression), `msg['OBX'].*::[${printed}].toString()`, key);
+}
+for (const key of ['0b10', "getField(", "'unterminated", 'fields.', 'a +']) {
+    const expression = `msg['OBX'][0].*::[${key}][0].toString()`;
+    assert.equal(removeNumberLiterals(expression), expression, 'parse failures preserve the whole source');
+}
+const invalidThrow = "msg['OBX'][0].*::[(function(){throw\n'OBX.5';})()][0].toString()";
+assert.equal(removeNumberLiterals(invalidThrow), invalidThrow, 'a line break after throw is a Rhino parse failure');
+for (const reference of ['*::', 'ns::', '@', '@*::', '@ns::']) {
+    assert.equal(removeNumberLiterals(`msg[0].${reference}[fields['value']][1]`), `msg.${reference}[fields['value']]`);
+}
+let evaluated = 0;
+globalThis.iteratorComputedKeyProbe = () => { evaluated++; return 'OBX.5'; };
+try {
+    assert.equal(removeNumberLiterals("msg[0].*::[iteratorComputedKeyProbe()][1]"), 'msg.*::[iteratorComputedKeyProbe()]');
+    assert.equal(evaluated, 0, 'normalization must never execute key expressions');
+} finally { delete globalThis.iteratorComputedKeyProbe; }
 assert.deepEqual(iteratorExpressionParts("msg['OBX'][0].*::['OBX.5'].toString()"), ['msg', "msg['OBX']", "msg['OBX'].*::['OBX.5']"]);
 assert.deepEqual(iteratorWizardPrefixes("msg.*::['OBR'].*::[i].*::['OBX']", ['i']).choices.map(choice => choice.value),
     ['msg', "msg.*::['OBR'].*::[i]", "msg.*::['OBR'].*::[i].*::['OBX']"], 'an XmlElemRef index exposes its expression as the property name');

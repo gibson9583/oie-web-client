@@ -65,6 +65,33 @@ async function useExistingIterator(page: Page, name: string) {
 
 const treePrompt = (page: Page) => page.getByRole('dialog', { name: 'Select An Option', exact: true });
 
+for (const [key, printed] of [
+    ["'OBX.5'", "'OBX.5'"],
+    ["'OBX.'+'5'", "'OBX.' + '5'"],
+    ['fieldNames[0]', 'fieldNames[0]'],
+    ['getField()', 'getField()']
+]) {
+    test(`E4X key ${key} keeps Swing chooser boundaries and saved repetition context`, async ({ page }) => {
+        const element = mapper('Computed field');
+        element.mapping = `${PREFIX}[0].*::[${key}][0].toString()`;
+        const save = await openEditor(page, [element, iterator('Observations')]);
+        await row(page, element.name).locator('td.num').click();
+        await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+        const dialog = page.getByRole('dialog', { name: 'Assign To Iterator', exact: true });
+        await dialog.getByRole('combobox', { name: 'Iterator', exact: true }).selectOption('new');
+        const targets = dialog.getByRole('combobox', { name: 'Iterate On', exact: true });
+        expect(await targets.locator('option').evaluateAll(options => options.map(option => (option as HTMLOptionElement).value)))
+            .toEqual(['msg', PREFIX, `${PREFIX}.*::[${printed}]`]);
+        await dialog.getByRole('combobox', { name: 'Iterator', exact: true }).selectOption({ label: 'Observations' });
+        await dialog.getByRole('button', { name: 'Use Iterator', exact: true }).click();
+        const assigned = `${PREFIX}[i].*::[${printed}].toString()`;
+        await expect(field(page, 'Mapping')).toHaveValue(assigned);
+        expect(children(await save(), 'Observations')[MAPPER][0].mapping).toBe(assigned);
+        await page.getByRole('button', { name: 'Remove From Iterator', exact: true }).click();
+        expect((await save())[MAPPER][0].mapping).toBe(`${PREFIX}.*::[${printed}].toString()`);
+    });
+}
+
 async function openTreeEditor(page: Page, elements: Element[], id: string) {
     let channel = makeChannel(id);
     channel.sourceConnector.transformer.elements = wire(elements);
