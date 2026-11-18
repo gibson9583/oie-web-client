@@ -5,7 +5,7 @@
  * Each element is in the engine wire shape: the plugin's create() fields plus the
  * @version + sequenceNumber the engine stamps. The test loads a channel whose
  * SOURCE connector holds one element of the type, opens the filter/transformer
- * editor, selects the element (mounting its editor), edits the Name, Saves, and
+ * editor, selects the element (mounting its editor), edits a field, saves, and
  * asserts the serialized `transformer.elements` / `filter.elements` round-trip.
  *
  * After save the element passes through elementsToArray → arrayToElements, which
@@ -14,7 +14,6 @@
  * builds is the element array-wrapped under its class.
  *
  * Factories return fresh objects so one test can't mutate another's expectation.
- * Iterator step/rule (nested children) is intentionally deferred.
  */
 
 import { makeChannel } from './connector-fixtures.js';

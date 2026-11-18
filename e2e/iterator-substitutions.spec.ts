@@ -38,19 +38,21 @@ function iterator(name: string, index = 'i', children: Element[] = [], prefixes 
 
 async function openEditor(page: Page, elements: Element[], kind = 'transformer', id = 'iterator-parity') {
     let channel = makeChannel(id);
-    channel.sourceConnector[kind].elements = wire(elements);
+    const target = (model: typeof channel) => kind === 'response'
+        ? model.destinationConnectors.connector[0].responseTransformer : model.sourceConnector[kind];
+    target(channel).elements = wire(elements);
     const writes: any[] = [];
     await mockEngine(page, {
         [`GET /channels/${id}`]: () => ({ channel }),
         [`PUT /channels/${id}`]: (request: any) => { channel = request.postDataJSON().channel; writes.push(channel); return true; }
     });
-    await page.goto(`/channels/${id}/${kind}/0`);
+    await page.goto(`/channels/${id}/${kind}/${kind === 'response' ? 1 : 0}`);
     await expect(page.locator('table.dt tbody tr[data-path]').first()).toBeVisible();
     return async () => {
         const count = writes.length;
         await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
         await expect.poll(() => writes.length).toBe(count + 1);
-        return writes.at(-1).sourceConnector[kind].elements;
+        return target(writes.at(-1)).elements;
     };
 }
 
@@ -295,7 +297,7 @@ test('Message Builder assignment substitutes both inbound and outbound prefixes'
 test('filter Rule Builder assignment and detachment rewrite field and comparison values', async ({ page }) => {
     const element: Element = { type: RULE, name: 'Observation rule', operator: 'NONE', field: mapping(), condition: 'EQUALS', values: { string: [mapping('1'), "'literal'"] } };
     const save = await openEditor(page, [element, iterator('Observation rules', 'i', [], [PREFIX], FILTER_ITERATOR)], 'filter');
-    await row(page, element.name).locator('td.num').click();
+    await page.locator('tr[data-path="0"] td.num').click();
     await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
     await useExistingIterator(page, 'Observation rules');
     await expect(field(page, 'Field')).toHaveValue(mapping('i'));
@@ -449,7 +451,7 @@ test('cancelling Iterator selection preserves the original child and expressions
     await page.getByRole('dialog', { name: 'Assign To Iterator' }).getByRole('button', { name: 'Cancel' }).click();
     await expect(field(page, 'Mapping')).toHaveValue(mapping('i'));
     // Make an independent edit so the no-op assignment can be verified on wire.
-    await row(page, 'Observation').locator('input.grid-name').fill('Renamed');
+    await field(page, 'Variable').fill('Renamed');
     const elements = await save();
     expect(children(elements, 'Original')[MAPPER][0]).toMatchObject({ name: 'Renamed', mapping: mapping('i') });
     expect(children(elements, 'Second')).toBe('');
@@ -487,7 +489,7 @@ test('an open Iterator chooser rechecks save permission before changing membersh
     await dialog.getByRole('button', { name: 'Use Iterator', exact: true }).click();
     await expect(row(page, 'Original')).toHaveAttribute('data-path', '0');
     await permission(true);
-    await row(page, 'Original').locator('input.grid-name').fill('Renamed');
+    await field(page, 'Variable').fill('Renamed');
     const elements = await save();
     expect(elements[MAPPER][0]).toMatchObject({ name: 'Renamed', mapping: mapping() });
     expect(children(elements, 'Destination')).toBe('');
@@ -508,6 +510,86 @@ test('a removed chooser source cannot create an orphan Iterator on acceptance', 
     expect(elements[MAPPER]).toBeUndefined();
     expect(elements[ITERATOR].map((element: any) => element.name)).toEqual(['First', 'Second']);
     expect(elements[ITERATOR].every((element: any) => element.properties.children === '')).toBe(true);
+});
+
+for (const kind of ['transformer', 'filter', 'response']) {
+    test(`a populated ${kind} Iterator keeps its children through type changes and cancelled deletion`, async ({ page }) => {
+        const isFilter = kind === 'filter';
+        const type = isFilter ? FILTER_ITERATOR : ITERATOR;
+        const noun = isFilter ? 'Rule' : 'Step';
+        const child = isFilter ? { type: RULE, name: 'Child', condition: 'EXISTS', field: mapping('i') } : mapper('Child', 'i');
+        const save = await openEditor(page, [iterator('Parent', 'i', [child], [PREFIX], type), { ...child, name: 'Sibling' }], kind);
+        const parent = row(page, 'Parent');
+        const typeSelect = parent.locator('td').last().getByRole('combobox');
+        await typeSelect.selectOption(child.type);
+        const warning = page.getByRole('dialog', { name: `Change ${noun} Type` });
+        await expect(warning).toContainText('Please remove all children');
+        await warning.getByRole('button', { name: 'OK' }).click();
+        await expect(typeSelect).toHaveValue(type);
+        await expect(row(page, 'Child')).toHaveAttribute('data-path', '0.0');
+        await parent.locator('td.num').click();
+        const remove = page.getByRole('button', { name: 'Delete ' + noun, exact: true });
+        await remove.click();
+        const dialog = page.getByRole('dialog', { name: 'Delete ' + noun, exact: true });
+        await dialog.getByRole('button', { name: 'Cancel' }).click();
+        await expect(row(page, 'Child')).toHaveAttribute('data-path', '0.0');
+        await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toBeHidden();
+        await page.locator('tr[data-path="1"]').getByRole('checkbox').uncheck();
+        const retained = (await save())[type][0].properties.children[child.type];
+        expect(retained).toHaveLength(1);
+        expect(retained[0]).toMatchObject({ name: 'Child', [isFilter ? 'field' : 'mapping']: mapping('i'), enabled: true });
+        await page.reload();
+        await expect(row(page, 'Child')).toHaveAttribute('data-path', '0.0');
+        await parent.locator('td.num').click();
+        await remove.click();
+        await dialog.getByRole('button', { name: 'OK', exact: true }).click();
+        await expect(page.locator('tr[data-path="0"]')).toHaveClass(/selected/);
+        const sibling = isFilter ? `Accept message if "${child.field}" exists` : 'Sibling';
+        expect((await save())[child.type].map((el: Element) => el.name)).toEqual([sibling]);
+    });
+
+    test(`changing a configured empty ${kind} Iterator requires confirmation and uses the new type's defaults`, async ({ page }) => {
+        const isFilter = kind === 'filter';
+        const type = isFilter ? FILTER_ITERATOR : ITERATOR;
+        const next = isFilter ? 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule' : 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep';
+        const source = { ...iterator('Configured', 'j', [], [PREFIX], type), enabled: false };
+        const save = await openEditor(page, [source], kind);
+        const entry = page.locator('tr[data-path="0"]');
+        const types = entry.locator('td').last().getByRole('combobox');
+        const dialog = page.getByRole('dialog', { name: `Change ${isFilter ? 'Rule' : 'Step'} Type` });
+        await types.selectOption(next);
+        await expect(dialog).toContainText('lose all of the current data');
+        await dialog.getByRole('button', { name: 'No', exact: true }).click();
+        await expect(types).toHaveValue(type);
+        await expect(page.getByRole('textbox', { name: 'Index Variable', exact: true })).toHaveValue('j');
+        await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toBeHidden();
+        await types.selectOption(next);
+        await dialog.getByRole('button', { name: 'Yes', exact: true }).click();
+        await expect(entry.getByRole('checkbox')).toBeChecked();
+        expect((await save())[next][0]).toMatchObject({ script: '', name: '', enabled: true });
+        await types.selectOption(type);
+        await expect(dialog).toHaveCount(0);
+        await expect(entry.locator('input.grid-name')).toHaveValue(isFilter
+            ? 'Accept message if at least one of the iterations returns true for each ...' : 'For each ...');
+    });
+}
+
+test('a disabled Iterator preserves its descendants’ individual enabled states', async ({ page }) => {
+    const inner = iterator('Inner', 'j', [mapper('Enabled'), { ...mapper('Disabled'), enabled: false }]);
+    const outer = { ...iterator('Outer', 'i', [inner]), enabled: false };
+    const save = await openEditor(page, [outer]);
+    const toggle = (name: string) => row(page, name).getByRole('checkbox');
+    await expect(toggle('Inner')).toBeDisabled();
+    await expect(toggle('Enabled')).toBeChecked();
+    await expect(toggle('Enabled')).toBeDisabled();
+    await expect(toggle('Disabled')).not.toBeChecked();
+    await toggle('Outer').check();
+    await expect(toggle('Enabled')).toBeEnabled();
+    await toggle('Inner').uncheck();
+    await expect(toggle('Enabled')).toBeDisabled();
+    const saved = children(await save(), 'Outer')[ITERATOR][0];
+    expect(saved.enabled).toBe(false);
+    expect(saved.properties.children[MAPPER].map((child: any) => child.enabled)).toEqual([true, false]);
 });
 
 test('message-tree mapping and dragging into the existing field use the selected Iterator context', async ({ page }) => {
@@ -651,19 +733,65 @@ test('filter trees stay readable when channel editing is denied', async ({ page 
 });
 
 test('Iterator names follow the target and multiple manually entered prefixes retain their spelling', async ({ page }) => {
-    const save = await openEditor(page, [iterator('Observations')]);
-    const prefixes = page.getByRole('textbox', { name: 'Prefix Substitutions' });
-    await prefixes.evaluate((input: HTMLTextAreaElement) => {
-        input.focus();
-        input.setSelectionRange(input.value.length, input.value.length);
-    });
-    await prefixes.press('Enter');
-    await expect(prefixes).toHaveValue(PREFIX + '\n');
-    await prefixes.fill(PREFIX + "\n  tmp['OBX'] \n\n");
+    await page.route('**/vendor/monaco/**', route => route.abort());
+    const multiline = "msg.*::[(function() {\n  return 'OBX';\n})()]";
+    const repeated = { ...mapper('Row values'), mapping: multiline + '[0].value.toString()' };
+    const save = await openEditor(page, [iterator('Observations', 'i', [], [multiline]), repeated]);
+    const prefix = (i: number) => page.getByRole('textbox', { name: 'Prefix ' + i, exact: true });
+    const add = page.getByRole('button', { name: 'New prefix' });
+    await expect(prefix(1)).toHaveValue(multiline);
+    await add.click();
+    await prefix(2).fill("  tmp['OBX'] ");
+    await add.click();
+    await prefix(3).fill('  ');
     await page.getByRole('textbox', { name: 'Iterate On (target)', exact: true }).fill('msg.OBX');
     await expect(row(page, 'For each msg.OBX').locator('input.grid-name')).toHaveJSProperty('readOnly', true);
-    expect((await save())[ITERATOR][0].properties.prefixSubstitutions.string).toEqual([PREFIX, "  tmp['OBX'] "]);
+    expect((await save())[ITERATOR][0].properties.prefixSubstitutions.string).toEqual([multiline, "  tmp['OBX'] "]);
+    await page.reload();
+    await expect(prefix(1)).toHaveValue(multiline);
+    await expect(prefix(2)).toHaveValue("  tmp['OBX'] ");
+    await expect(prefix(3)).toHaveCount(0);
+    await row(page, 'Row values').locator('td.num').click();
+    await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+    await useExistingIterator(page, 'For each msg.OBX');
+    const assigned = children(await save(), 'For each msg.OBX')[MAPPER][0];
+    expect(assigned.mapping).toBe(multiline + '[i].value.toString()');
+    await page.reload();
+    await row(page, 'Row values').locator('td.num').click();
+    await page.getByRole('tab', { name: 'Generated Script', exact: true }).click();
+    const preview = page.getByRole('tabpanel', { name: 'Generated Script' }).locator('textarea.ce-area');
+    await expect.poll(() => preview.inputValue()).toContain(assigned.mapping);
 });
+
+for (const kind of ['filter', 'transformer']) {
+    test(`a multiline ${kind} comparison stays one value when another row changes`, async ({ page }) => {
+        const multiline = "(function(){\nreturn 'one';\n})()";
+        const comparisonField = "msg['value'].toString()";
+        const type = kind === 'filter' ? RULE : 'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep';
+        const save = await openEditor(page, [{ type, name: 'Compare', condition: 'EQUALS', field: comparisonField,
+            values: { string: multiline } }], kind);
+        const value = (i: number) => page.getByRole('textbox', { name: 'Value ' + i, exact: true });
+        await expect(value(1)).toHaveValue(multiline);
+        await page.getByRole('button', { name: 'New value' }).click();
+        await value(2).fill("'two'");
+        await page.getByRole('button', { name: 'New value' }).click();
+        await value(3).fill("'unused'");
+        await page.getByRole('button', { name: 'Delete value' }).click();
+        const setCondition = (value: string, label: string) => kind === 'filter'
+            ? page.locator('.step-editor-fill .field:has(label:text-is("Condition")) select').selectOption(value)
+            : page.getByRole('radio', { name: label, exact: true }).check();
+        await setCondition('EXISTS', 'Exists');
+        await expect(value(2)).toBeDisabled();
+        await setCondition('EQUALS', 'Equals');
+        await expect(page.getByRole('button', { name: 'Delete value' })).toBeDisabled();
+        const saved = (await save())[type][0];
+        expect(saved.values.string).toEqual([multiline, "'two'"]);
+        expect(saved.name).toBe(`${kind === 'filter' ? 'Accept message' : 'Filter destination(s)'} if "${comparisonField}" equals ${multiline} or 'two'`);
+        await page.reload();
+        await expect(value(1)).toHaveValue(multiline);
+        await expect(value(2)).toHaveValue("'two'");
+    });
+}
 
 test('message-tree Iterator cancellation is a no-op and adding without one retains the selected repetition', async ({ page }) => {
     const id = 'iterator-tree-without';
@@ -805,7 +933,7 @@ test('creating an Iterator around a nested step rewrites the new Iterator itself
 test('new filter Iterators use the Swing name and defaults', async ({ page }) => {
     const element: Element = { type: RULE, name: 'Observation rule', operator: 'OR', field: mapping(), condition: 'EQUALS', values: { string: ["'one'"] } };
     const save = await openEditor(page, [element], 'filter');
-    await row(page, element.name).locator('td.num').click();
+    await page.locator('tr[data-path="0"] td.num').click();
     await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
     await page.getByRole('dialog', { name: 'Assign To Iterator', exact: true }).getByRole('button', { name: 'Use Iterator', exact: true }).click();
     const created = (await save())[FILTER_ITERATOR][0];
@@ -827,7 +955,7 @@ test('moving a non-first filter rule into an existing Iterator retains OR', asyn
     await useExistingIterator(page, 'Observation rules');
     const assigned = children(await save(), 'Observation rules', FILTER_ITERATOR)[RULE];
     expect(assigned).toHaveLength(2);
-    expect(assigned[1]).toMatchObject({ name: 'Move this rule', operator: 'OR', field: mapping('i') });
+    expect(assigned[1]).toMatchObject({ name: `Accept message if "${mapping('i')}" equals 'one'`, operator: 'OR', field: mapping('i') });
 });
 
 for (const nested of [false, true]) {

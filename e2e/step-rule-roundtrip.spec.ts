@@ -7,9 +7,8 @@ import { CASES, channelWithSourceElement } from './step-rule-fixtures.js';
  * other serialization-heavy half of the channel the connector round-trip tests
  * don't cover. For each step/rule type: load a channel whose source connector
  * holds an element of that type, open the filter/transformer editor, select the
- * element so ITS editor mounts and reads the element, edit the Name to dirty the
- * channel, Save, and assert the serialized elements deep-equal the expected wire
- * shape (the element array-wrapped under its @class, with the edited name).
+ * element so its editor mounts, edit a field, save, and check the entire element
+ * in the serialized channel, including the class key and collection shape.
  *
  * A correct editor renders the loaded element without mutating its other fields,
  * so any dropped/renamed/normalized field fails here before it can break a deploy.
@@ -56,20 +55,32 @@ for (const c of CASES) {
         await firstRow.locator('td.num').click();
         await expect(page.locator('.step-editor-fill .panel').first()).toBeVisible();
 
-        // Dirty via the inline Name, then Save the channel.
-        await firstRow.locator('input.grid-name').fill(EDITED);
+        const expected = { ...loadedElement, sequenceNumber: '0' };
+        const name = firstRow.locator('input.grid-name');
+        if (c.class === 'com.mirth.connect.model.IteratorStep' || c.class === 'com.mirth.connect.model.IteratorRule') {
+            await expect(name).toHaveJSProperty('readOnly', true);
+            await page.getByRole('textbox', { name: 'Index Variable', exact: true }).fill('j');
+            expected.properties = { ...loadedElement.properties, indexVariable: 'j', children: '' };
+        } else if (c.label === 'Mapper Step') {
+            await expect(name).toHaveJSProperty('readOnly', true);
+            await page.locator('.step-editor-fill .field:has(label:text-is("Variable")) input').fill('patientName');
+            expected.name = expected.variable = 'patientName';
+        } else if (c.label === 'Rule Builder Rule' || c.label === 'Destination Set Filter Step') {
+            await expect(name).toHaveJSProperty('readOnly', true);
+            await page.locator('.step-editor-fill .field:has(label:text-is("Field")) input').fill('msg.PID');
+            expected.field = 'msg.PID';
+            expected.name = c.kind === 'filter' ? 'Accept message if "msg.PID" exists' : 'Filter destination(s) if "msg.PID" exists';
+        } else {
+            await name.fill(EDITED);
+            expected.name = EDITED;
+        }
+        await expect(name).toHaveValue(expected.name);
         await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
         await expect.poll(() => putBody, { timeout: 8000 }).not.toBeNull();
 
         const sent = JSON.parse(putBody).channel;
         const target = c.kind === 'filter' ? sent.sourceConnector.filter : sent.sourceConnector.transformer;
-        // The tree editor always serializes iterator children as an elements
-        // collection, including an empty collection when XML parsed it as null.
-        if (c.class === 'com.mirth.connect.model.IteratorStep' || c.class === 'com.mirth.connect.model.IteratorRule') {
-            loadedElement.properties.children = '';
-        }
-        const expected = { [c.class]: [{ ...loadedElement, name: EDITED, sequenceNumber: '0' }] };
-        expect(target.elements).toEqual(expected);
+        expect(target.elements).toEqual({ [c.class]: [expected] });
     });
 }
 

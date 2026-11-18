@@ -190,6 +190,8 @@ export interface AttachmentViewer {
 }
 export interface StepRuleType {
     label: string;
+    /** Set false when the editor derives the grid name from its properties. */
+    nameEditable?: boolean;
     create(): OieObject;
     component: PluginComponent<{ element: OieObject; onChange(): void; platform: Platform }>;
     [key: string]: any;

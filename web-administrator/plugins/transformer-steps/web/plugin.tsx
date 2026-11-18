@@ -35,7 +35,7 @@ import { replacementPairs, replacementsToWire } from '/core/step-replacements.js
 import type { Replacement } from '/core/step-replacements.js';
 import { iteratorName } from '/core/iterator-substitutions.js';
 import { isJavaBlank } from '/core/rhino-key-source.js';
-const React = platform.React;
+const React: typeof import('react') = platform.React;
 
 const SCOPES = [
     { value: 'CHANNEL', label: 'Channel Map' },
@@ -78,11 +78,13 @@ const isBlank = (value: unknown) => isJavaBlank(value == null ? null : String(va
  * List<Integer> round-trips as { int: [...] }.
  */
 
-function stringListToLines(value: any) {
+type WireStrings = '' | { string: string[] };
+
+function stringListValues(value: unknown): string[] {
     if (!value || typeof value !== 'object') return [];
-    const list = value.string;
-    if (list === null || list === undefined) return [];
-    return (Array.isArray(list) ? list : [list]).map(v => String(v ?? ''));
+    const list = Array.isArray(value) ? value : 'string' in value ? value.string : null;
+    if (list == null) return [];
+    return (Array.isArray(list) ? list : [list]).map(item => String(item ?? ''));
 }
 
 /* DestinationSetFilter metaDataIds <-> the set of checked destination ids.
@@ -101,10 +103,6 @@ function idSetToMetaData(set: any, destinations: any) {
     // Preserve any checked ids that aren't in the current destination list.
     for (const id of set) if (!ordered.includes(id)) ordered.push(id);
     return ordered.length ? { int: ordered } : '';
-}
-
-function stringsToWire(values: string[]) {
-    return values.length ? { string: values } : '';
 }
 
 /* ---- JSX form helpers --------------------------------------------------------
@@ -133,6 +131,51 @@ function Select({ options, value, onChange }: any) {
             })}
         </select>
     );
+}
+
+// One Swing table cell is one expression. A computed XML key or a comparison
+// can contain newlines of its own, including when the iterator wizard prints it.
+function ExpressionTable({ label, value, condition, keep = Boolean, onChange }: {
+    label: string; value: unknown; condition?: string;
+    keep?: (text: string) => boolean; onChange: (value: WireStrings) => void;
+}) {
+    const [rows, setRows] = React.useState(() => stringListValues(value));
+    const [selected, setSelected] = React.useState(-1);
+    const disabled = condition !== undefined && !CONDITION_USES_VALUES.has(condition);
+    React.useEffect(() => { setSelected(-1); }, [condition]);
+    const change = (next: string[]) => {
+        setRows(next);
+        const saved = next.filter(keep);
+        onChange(saved.length ? { string: saved } : '');
+    };
+    const add = () => {
+        setSelected(rows.length);
+        change([...rows, '']);
+    };
+    const remove = () => {
+        change(rows.filter((_, i) => i !== selected));
+        setSelected(Math.min(selected, rows.length - 2));
+    };
+    return <>
+        <div className="flex gap-2 mb-1.5">
+            <button type="button" className="btn btn-sm" disabled={disabled}
+                aria-label={`New ${label.toLowerCase()}`} onClick={add}>New</button>
+            <button type="button" className="btn btn-sm btn-danger" disabled={disabled || selected < 0}
+                aria-label={`Delete ${label.toLowerCase()}`} onClick={remove}>Delete</button>
+        </div>
+        <div className="dt-wrap border border-line rounded max-h-[162px]">
+            <table className="dt">
+                <thead><tr><th>{label}</th></tr></thead>
+                <tbody>{rows.map((text, i) => (
+                    <tr key={i} className={i === selected ? 'selected' : undefined}>
+                        <td><textarea rows={1} spellCheck={false} disabled={disabled}
+                            aria-label={`${label} ${i + 1}`} value={text} onFocus={() => setSelected(i)}
+                            onChange={e => change(rows.map((entry, index) => index === i ? e.target.value : entry))} /></td>
+                    </tr>
+                ))}</tbody>
+            </table>
+        </div>
+    </>;
 }
 
 /* A small force-update hook: the editors mutate the shared `element` object in
@@ -230,7 +273,6 @@ function makeIteratorEditor(isRule: boolean) {
             element.properties = emptyIteratorProperties(isRule);
         }
         const props = element.properties;
-        const [prefixText, setPrefixText] = React.useState(() => stringListToLines(props.prefixSubstitutions).join('\n'));
         const updateName = () => {
             element.name = iteratorName(element, isBlank(props.target) ? '...' : props.target);
             onChange();
@@ -278,20 +320,10 @@ function makeIteratorEditor(isRule: boolean) {
                     <div className="span-2">
                         <Field
                             label="Prefix Substitutions"
-                            hint="One prefix per line — when dragging values into children, the index variable (e.g. [i]) is injected after these prefixes"
+                            hint="Dragging a field into a child inserts the index variable after a matching prefix."
                         >
-                            <textarea
-                                rows={3}
-                                aria-label="Prefix Substitutions"
-                                placeholder="msg['OBX']"
-                                value={prefixText}
-                                onChange={e => {
-                                    const text = e.target.value;
-                                    setPrefixText(text);
-                                    props.prefixSubstitutions = stringsToWire(text.split('\n').filter(prefix => !isJavaBlank(prefix)));
-                                    onChange();
-                                }}
-                            />
+                            <ExpressionTable label="Prefix" value={props.prefixSubstitutions} keep={prefix => !isJavaBlank(prefix)}
+                                onChange={value => { props.prefixSubstitutions = value; onChange(); }} />
                         </Field>
                     </div>
                 </div>
@@ -308,9 +340,10 @@ function makeIteratorEditor(isRule: boolean) {
 
     return {
         label: 'Iterator',
+        nameEditable: false,
         create: () => ({
             __type: type,
-            name: '', enabled: true,
+            name: iteratorName({ __type: type }, '...'), enabled: true,
             ...(isRule ? { operator: 'AND' } : null),
             properties: emptyIteratorProperties(isRule)
         }),
@@ -385,7 +418,7 @@ function MapperEditor({ element, onChange }: any) {
                 <input
                     type="text"
                     value={element.variable ?? ''}
-                    onChange={(e: any) => { element.variable = e.target.value; onChange(); force(); }}
+                    onChange={e => { element.variable = e.target.value; element.name = e.target.value; onChange(); force(); }}
                 />
             </Field>
             <Field label="Add to">
@@ -493,12 +526,38 @@ function XsltEditor({ element, onChange }: any) {
    compatible. metaDataIds is stored as the List<Integer> of CHECKED ids and
    values as a List<String>, in the same wire shape the model loaded with — a
    loaded element the user only renames round-trips untouched. */
+const conditionVerbs: Record<string, string> = {
+    EXISTS: 'exists', NOT_EXIST: 'does not exist', EQUALS: 'equals', NOT_EQUAL: 'does not equal',
+    CONTAINS: 'contains', NOT_CONTAIN: 'does not contain'
+};
+
+function comparisonName(element: any, subject: string) {
+    const condition = element.condition || 'EXISTS';
+    let predicate = conditionVerbs[condition];
+    if (CONDITION_USES_VALUES.has(condition)) {
+        const values = stringListValues(element.values).filter(value => !isJavaBlank(value));
+        if (values.length) predicate += ' ' + values.join(' or ');
+        else if (condition === 'EQUALS') predicate = 'is blank';
+        else if (condition === 'NOT_EQUAL') predicate = 'is not blank';
+        else predicate += ' ""';
+    }
+    return `${subject} if "${element.field ?? ''}" ${predicate}`;
+}
+
+// Both Swing panels set the loaded element's name and update it as the user edits.
+function useComparisonEditor(element: any, subject: string, onChange: () => void) {
+    const refresh = useRerender();
+    React.useLayoutEffect(() => {
+        const name = comparisonName(element, subject);
+        if (element.name !== name) { element.name = name; onChange(); }
+    }, [element, subject, onChange]);
+    return () => { element.name = comparisonName(element, subject); onChange(); refresh(); };
+}
+
 let dsfUid = 0;
 
 function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
-    const force = useRerender();
-    const [selValue, setSelValue] = React.useState(-1);
-    const [values, setValueRows] = React.useState(() => stringListToLines(element.values));
+    const updateComparison = useComparisonEditor(element, 'Filter destination(s)', onChange);
     // Per-INSTANCE radio-group name: keying on the element class collides when
     // two Destination Set Filter steps are on screen at once (same class), and
     // colliding names let one step's Condition radios uncheck the other's.
@@ -510,10 +569,9 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
     const checked = checkedIdSet(element.metaDataIds);
 
     const listDisabled = behavior === 'REMOVE_ALL';   // REMOVE_ALL takes no ids
-    const valuesEnabled = CONDITION_USES_VALUES.has(condition);
 
     // ---- destination checkbox list ----
-    const setChecked = (next: any) => { element.metaDataIds = idSetToMetaData(next, dests); onChange(); force(); };
+    const setChecked = (next: any) => { element.metaDataIds = idSetToMetaData(next, dests); updateComparison(); };
     const toggleId = (id: any, on: any) => {
         const next = new Set(checked);
         if (on) next.add(String(id)); else next.delete(String(id));
@@ -522,29 +580,13 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
     const selectAll = () => setChecked(new Set(dests.map(d => String(d.metaDataId))));
     const deselectAll = () => setChecked(new Set());
 
-    // ---- values table ----
-    const setValues = (rows: string[]) => {
-        setValueRows(rows);
-        element.values = stringsToWire(rows.filter(Boolean));
-        onChange();
-    };
-    const newValue = () => { setValues([...values, '']); setSelValue(values.length); };
-    const editValue = (i: any, v: any) => { const next = values.slice(); next[i] = v; setValues(next); };
-    const deleteSelected = () => {
-        if (selValue < 0 || selValue >= values.length) return;
-        const next = values.slice();
-        next.splice(selValue, 1);
-        setValues(next);
-        setSelValue(next.length ? Math.min(selValue, next.length - 1) : -1);
-    };
-
     return (
         <div className="form-grid">
             <Field label="Behavior">
                 <Select
                     options={BEHAVIORS}
                     value={behavior}
-                    onChange={(e: any) => { element.behavior = e.target.value; onChange(); force(); }}
+                    onChange={(e: any) => { element.behavior = e.target.value; updateComparison(); }}
                 />
             </Field>
             <Field label="Field">
@@ -552,7 +594,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
                     type="text"
                     placeholder="msg['PID']['PID.3']['PID.3.1'].toString()"
                     value={element.field ?? ''}
-                    onChange={(e: any) => { element.field = e.target.value; onChange(); force(); }}
+                    onChange={e => { element.field = e.target.value; updateComparison(); }}
                 />
             </Field>
 
@@ -609,7 +651,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
                                     type="radio"
                                     name={`dsf-condition-${uid}`}
                                     checked={condition === opt.value}
-                                    onChange={() => { element.condition = opt.value; onChange(); force(); }}
+                                    onChange={() => { element.condition = opt.value; updateComparison(); }}
                                 />
                                 {opt.label}
                             </label>
@@ -620,44 +662,8 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
 
             <div className="span-2 mt-2">
                 <Field label="Values">
-                    <div className="flex gap-2 mb-1.5">
-                        <button type="button" className="btn btn-sm" disabled={!valuesEnabled} onClick={newValue}>New</button>
-                        <button
-                            type="button"
-                            className="btn btn-sm btn-danger"
-                            disabled={!valuesEnabled || selValue < 0 || selValue >= values.length}
-                            onClick={deleteSelected}
-                        >Delete</button>
-                    </div>
-                    <div
-                        className="dt-wrap border border-line rounded max-h-[162px]"
-                        style={!valuesEnabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
-                    >
-                        <table className="dt">
-                            <thead><tr><th>Value</th></tr></thead>
-                            <tbody>
-                                {values.length ? values.map((v: any, i: any) => (
-                                    <tr
-                                        key={i}
-                                        className={selValue === i ? 'selected' : undefined}
-                                        onClick={() => setSelValue(i)}
-                                    >
-                                        <td>
-                                            <input
-                                                type="text"
-                                                value={v}
-                                                disabled={!valuesEnabled}
-                                                onFocus={() => setSelValue(i)}
-                                                onChange={(e: any) => editValue(i, e.target.value)}
-                                            />
-                                        </td>
-                                    </tr>
-                                )) : (
-                                    <tr><td><span className="text-text-faint">No values — use New</span></td></tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                    <ExpressionTable label="Value" value={element.values} condition={condition}
+                        onChange={value => { element.values = value; updateComparison(); }} />
                 </Field>
             </div>
         </div>
@@ -665,8 +671,8 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
 }
 
 function RuleBuilderEditor({ element, onChange }: any) {
-    const force = useRerender();
-    const [valueText, setValueText] = React.useState(() => stringListToLines(element.values).join('\n'));
+    const updateComparison = useComparisonEditor(element, 'Accept message', onChange);
+    const condition = element.condition || 'EXISTS';
     return (
         <div className="form-grid">
             <Field label="Field">
@@ -674,30 +680,20 @@ function RuleBuilderEditor({ element, onChange }: any) {
                     type="text"
                     placeholder="msg['MSH']['MSH.9']['MSH.9.1'].toString()"
                     value={element.field ?? ''}
-                    onChange={(e: any) => { element.field = e.target.value; onChange(); force(); }}
+                    onChange={e => { element.field = e.target.value; updateComparison(); }}
                 />
             </Field>
             <Field label="Condition">
                 <Select
                     options={CONDITIONS}
-                    value={element.condition || 'EXISTS'}
-                    onChange={(e: any) => { element.condition = e.target.value; onChange(); force(); }}
+                    value={condition}
+                    onChange={(e: any) => { element.condition = e.target.value; updateComparison(); }}
                 />
             </Field>
             <div className="span-2">
                 <Field label="Values">
-                    <textarea
-                        rows={4}
-                        placeholder="One value per line"
-                        title="Only used by Equals / Not Equal / Contains / Not Contain"
-                        value={valueText}
-                        onChange={e => {
-                            const text = e.target.value;
-                            setValueText(text);
-                            element.values = stringsToWire(text.split('\n').filter(Boolean));
-                            onChange();
-                        }}
-                    />
+                    <ExpressionTable label="Value" value={element.values} condition={condition}
+                        onChange={value => { element.values = value; updateComparison(); }} />
                 </Field>
             </div>
         </div>
@@ -715,13 +711,14 @@ export function register(platform: Platform) {
         create: () => ({
             __type: 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep',
             name: '', enabled: true,
-            script: '// Write your JavaScript here\n'
+            script: ''
         }),
         component: ScriptEditor
     });
 
     platform.registerStepType('com.mirth.connect.plugins.mapper.MapperStep', {
         label: 'Mapper',
+        nameEditable: false,
         create: () => ({
             __type: 'com.mirth.connect.plugins.mapper.MapperStep',
             name: '', enabled: true,
@@ -761,6 +758,7 @@ export function register(platform: Platform) {
 
     platform.registerStepType('com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep', {
         label: 'Destination Set Filter',
+        nameEditable: false,
         // Only available on the source transformer (DestinationSetFilterPlugin
         // .onlySourceConnector()); destinations/response transformers exclude it.
         onlySource: true,
@@ -793,13 +791,14 @@ export function register(platform: Platform) {
         create: () => ({
             __type: 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule',
             name: '', enabled: true, operator: 'AND',
-            script: '// Return true to accept the message, false to filter it\nreturn true;'
+            script: ''
         }),
         component: ScriptEditor
     });
 
     platform.registerRuleType('com.mirth.connect.plugins.rulebuilder.RuleBuilderRule', {
         label: 'Rule Builder',
+        nameEditable: false,
         create: () => ({
             __type: 'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule',
             name: '', enabled: true, operator: 'AND',

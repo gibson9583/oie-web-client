@@ -45,9 +45,10 @@ function hl7Xml(er7: string) {
     return `<HL7Message>${segments.join('')}</HL7Message>`;
 }
 
-async function openTrees(page: Page, { serialize = hl7Xml, dataType = 'HL7V2', template = INBOUND } = {}) {
+async function openTrees(page: Page, { serialize = hl7Xml, dataType = 'HL7V2', template = INBOUND,
+    outboundDataType = 'HL7V2', outboundTemplate = OUTBOUND } = {}) {
     let channel = makeChannel('mtree');
-    Object.assign(channel.sourceConnector.transformer, { inboundDataType: dataType, inboundTemplate: template, outboundTemplate: OUTBOUND });
+    Object.assign(channel.sourceConnector.transformer, { inboundDataType: dataType, inboundTemplate: template, outboundDataType, outboundTemplate });
     const writes: any[] = [];
     await mockEngine(page, {
         'GET /channels/mtree': () => ({ channel }),
@@ -171,6 +172,28 @@ test('message tree rows drop their accessor into a script editor', async ({ page
     });
     // Inserted once, at the drop point.
     await expect.poll(async () => (await script()).split("msg['PID']['PID.8']['PID.8.1'].toString()").length).toBe(2);
+});
+
+test('an outbound XML drop keeps the Message Builder assignment target writable', async ({ page }) => {
+    const xml = '<message><PID><PID.3>42</PID.3></PID></message>';
+    const writes = await openTrees(page, { dataType: 'XML', template: xml, outboundDataType: 'XML', outboundTemplate: xml, serialize: text => text });
+    await page.getByRole('radio', { name: 'Outbound' }).click();
+    await row(page, 'PID', 'tmp').locator('.twisty').click();
+    const source = row(page, 'PID.3', 'tmp');
+    await source.click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Map to Message' }).click();
+    await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
+    const segment = stepField(page, 'Message Segment');
+    await segment.fill('');
+    await source.dragTo(segment);
+    await expect(segment).toHaveValue("tmp['PID']['PID.3']");
+    await expect(tree(page, 'tmp').locator('.mt-foot code')).toHaveText("tmp['PID']['PID.3']");
+    await stepField(page, 'Mapping').fill("'updated'");
+    await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+    await expect.poll(() => writes.length).toBe(1);
+    expect(writes[0].sourceConnector.transformer.elements[BUILDER][0]).toMatchObject({
+        messageSegment: "tmp['PID']['PID.3']", mapping: "'updated'"
+    });
 });
 
 test('strict HL7 component names get no joined value', async ({ page }) => {
@@ -433,10 +456,13 @@ test('dropping an accessor into the expanded generated script leaves the read-on
     await openTrees(page);
     await page.getByRole('button', { name: 'Add New Step' }).first().click();
     await page.getByRole('dialog', { name: 'Add Step' }).getByText('JavaScript', { exact: true }).click();
+    const script = page.locator('.step-editor-fill textarea.ce-area');
+    await expect(script).toHaveValue('');
+    await script.fill('// Existing script');
     await page.getByRole('tab', { name: 'Generated Script', exact: true }).click();
     const generated = page.getByRole('tabpanel', { name: 'Generated Script', exact: true });
     const preview = generated.locator('textarea.ce-area');
-    await expect(preview).toHaveValue('// Write your JavaScript here\n');
+    await expect(preview).toHaveValue('// Existing script');
     await generated.locator('.ce-pop-btn').click({ force: true });
     const overlay = page.locator('.ce-popout-overlay');
     await overlay.getByRole('tab', { name: 'Message Trees' }).click();
@@ -445,5 +471,5 @@ test('dropping an accessor into the expanded generated script leaves the read-on
     await row(page, 'PID.8').dispatchEvent('dragstart', { dataTransfer });
     const expanded = overlay.locator('textarea.ce-area');
     await expanded.dispatchEvent('drop', { dataTransfer });
-    await expect(expanded).toHaveValue('// Write your JavaScript here\n');
+    await expect(expanded).toHaveValue('// Existing script');
 });

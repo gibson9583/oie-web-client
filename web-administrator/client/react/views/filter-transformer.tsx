@@ -125,12 +125,15 @@ function pathOf(target: any, list: any, parent: any[] = []): any {
 const pathEquals = (a: any, b: any) => !!a && !!b && a.length === b.length && a.every((v: any, i: any) => v === b[i]);
 const isAncestorPath = (anc: any, p: any) => anc.length < p.length && anc.every((v: any, i: any) => v === p[i]);
 
-// Flatten the tree to display rows in order, carrying each row's path/depth.
-function flattenRows(list: any, parentPath: any, depth: any, out: any) {
-    list.forEach((el: any, i: any) => {
+type EditorElement = Record<string, any>;
+type ElementRow = { el: EditorElement; path: number[]; ancestorsEnabled: boolean };
+const elementEnabled = (el: EditorElement) => el.enabled !== false && el.enabled !== 'false';
+
+function flattenRows(list: EditorElement[], parentPath: number[] = [], ancestorsEnabled = true, out: ElementRow[] = []) {
+    list.forEach((el, i) => {
         const path = [...parentPath, i];
-        out.push({ el, path, depth });
-        if (isIteratorType(el.__type)) flattenRows(childrenOf(el), path, depth + 1, out);
+        out.push({ el, path, ancestorsEnabled });
+        if (isIteratorType(el.__type)) flattenRows(childrenOf(el), path, ancestorsEnabled && elementEnabled(el), out);
     });
     return out;
 }
@@ -338,12 +341,12 @@ function xmlAttributePart(attribute: Attr, implicitNamespace: boolean): string {
     return `['@${escapeKey(attribute.name)}']`;
 }
 
-function xmlElementNode(element: Element, accessor: string, descriptions: Record<string, string> | null, implicitNamespace = false) {
+function xmlElementNode(element: Element, accessor: string, suffix: string, descriptions: Record<string, string> | null, implicitNamespace = false) {
     const children: any[] = [];
     for (const attr of element.attributes) {
         children.push({
             label: `@${attr.name}`, name: `@${attr.name}`, desc: '', value: attr.value,
-            accessor: `${accessor}${xmlAttributePart(attr, implicitNamespace)}.toString()`, children: []
+            accessor: accessor + xmlAttributePart(attr, implicitNamespace) + suffix, children: []
         });
     }
     const childElements = [...element.children];
@@ -358,7 +361,7 @@ function xmlElementNode(element: Element, accessor: string, descriptions: Record
         const wildcardBranch = implicitNamespace || child.hasAttribute('xmlns');
         const part = child.prefix || wildcardBranch ? `.*::['${escapeKey(child.localName)}']` : `['${escapeKey(child.tagName)}']`;
         const repeated = (counts.get(child.tagName) ?? 0) > 1;
-        const node = xmlElementNode(child, accessor + part + (repeated ? `[${index}]` : ''), descriptions, wildcardBranch);
+        const node = xmlElementNode(child, accessor + part + (repeated ? `[${index}]` : ''), suffix, descriptions, wildcardBranch);
         if (repeated) node.index = index;
         children.push(node);
     }
@@ -367,7 +370,7 @@ function xmlElementNode(element: Element, accessor: string, descriptions: Record
     // the accessor stays the raw node name (matches the Swing tree).
     const desc = descriptions && Object.hasOwn(descriptions, element.tagName) ? descriptions[element.tagName] : '';
     const label = desc ? `${element.tagName} (${desc})` : element.tagName;
-    return { label, name: element.tagName, desc, value: text, accessor: `${accessor}.toString()`, children } as any;
+    return { label, name: element.tagName, desc, value: text, accessor: accessor + suffix, children } as any;
 }
 
 function xmlTree(text: any, varName: any, meta?: any) {
@@ -375,7 +378,7 @@ function xmlTree(text: any, varName: any, meta?: any) {
     if (doc.getElementsByTagName('parsererror').length) throw new Error('not XML');
     // The E4X root element is the msg/tmp variable itself.
     const descriptions = (meta && meta.descriptions) || null;
-    const root = xmlElementNode(doc.documentElement, varName, descriptions);
+    const root = xmlElementNode(doc.documentElement, varName, varName === 'msg' ? '.toString()' : '', descriptions);
     // Label the root with the message type/version/description (e.g.
     // "OML-O21 (2.5.1) (Laboratory Order)") while keeping its accessor.
     if (meta && meta.root) root.label = meta.root;
@@ -446,14 +449,31 @@ function elementNameOf(isFilter: any, el: any) {
     return el.name || (def ? def.label : oie.elementTypeLabel(el.__type));
 }
 
+// Swing compares the previous plugin panel's properties with its defaults.
+// Panel getters exclude grid state and XStream metadata. XML imports can
+// represent unchecked booleans and empty collections differently from JSON.
+function matchesSetting(value: any, initial: any): boolean {
+    if (Array.isArray(initial)) {
+        return Array.isArray(value) && value.length === initial.length && initial.every((entry, i) => matchesSetting(value[i], entry));
+    }
+    if (initial && typeof initial === 'object') {
+        return Object.keys(value ?? {}).every(key => key === '@version' || Object.hasOwn(initial, key))
+            && Object.entries(initial).every(([key, expected]) => matchesSetting(value?.[key], expected));
+    }
+    if (typeof initial === 'boolean') return (String(value) === 'true') === initial;
+    return (value ?? '') === initial;
+}
+
+const gridProperties = new Set(['__type', '@version', 'name', 'enabled', 'operator', 'sequenceNumber']);
+
 /* One grid row. Module-scope with a stable key (the path string) so re-renders
    from per-keystroke commits never remount the inline inputs (focus survives).
    Clicks on the inline controls stay off the row handler so editing never
    changes the selection (Swing parity: select via the other cells). */
-function GridRow({ el, path, depth, isFilter, selected, typeOptions, onSelect, onCommit, onChangeType }: any) {
+function GridRow({ el, path, ancestorsEnabled, isFilter, selected, typeOptions, onSelect, onCommit, onChangeType }: any) {
     const idx = path[path.length - 1];
     const def = typeDefFor(isFilter, el.__type);
-    const nameEditable = !isIteratorType(el.__type);
+    const nameEditable = def?.nameEditable ?? !isIteratorType(el.__type);
     const stop = (e: any) => e.stopPropagation();
     const options = typeOptions.some((o: any) => o.value === el.__type)
         ? typeOptions
@@ -462,7 +482,7 @@ function GridRow({ el, path, depth, isFilter, selected, typeOptions, onSelect, o
         <tr className={'cursor-pointer' + (selected ? ' selected' : '')} data-path={path.join('.')}
             onClick={() => onSelect(path)}>
             <td className="text-center">
-                <input type="checkbox" checked={el.enabled !== false} onClick={stop}
+                <input type="checkbox" checked={elementEnabled(el)} disabled={!ancestorsEnabled} onClick={stop}
                     onChange={(e: any) => { el.enabled = e.target.checked; onCommit(); }} />
             </td>
             <td className="num">{String(idx + 1)}</td>
@@ -481,7 +501,7 @@ function GridRow({ el, path, depth, isFilter, selected, typeOptions, onSelect, o
             <td>
                 <input className="grid-name" type="text" value={el.name || ''}
                     placeholder={def ? def.label : oie.elementTypeLabel(el.__type)}
-                    style={{ marginLeft: `${depth * 18}px` }}
+                    style={{ marginLeft: `${(path.length - 1) * 18}px` }}
                     readOnly={!nameEditable} tabIndex={nameEditable ? undefined : -1}
                     onClick={nameEditable ? stop : undefined} onMouseDown={nameEditable ? stop : undefined}
                     onDoubleClick={nameEditable ? stop : undefined}
@@ -532,8 +552,8 @@ function ElementsGrid({ kind, isFilter, elements, selectedPath, typeOptions, can
                 </tr>
             </thead>
             <tbody>
-                {flattenRows(elements, [], 0, []).map(({ el, path, depth }: any) => (
-                    <GridRow key={path.join('.')} el={el} path={path} depth={depth}
+                {flattenRows(elements).map(({ el, path, ancestorsEnabled }) => (
+                    <GridRow key={path.join('.')} el={el} path={path} ancestorsEnabled={ancestorsEnabled}
                         isFilter={isFilter} selected={pathEquals(path, selectedPath)}
                         typeOptions={typeOptions}
                         onSelect={onSelect} onCommit={onCommit} onChangeType={onChangeType} />
@@ -1442,10 +1462,10 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // repaints the grid and regenerates the script preview.
     function commit() {
         persist();
+        bump();
         if (settlingRef.current) return;            // plugin initialization, not a user edit
         store.setState('editingChannelDirty', true);
         onTasksChange();
-        bump();
     }
     const commitRef = useRef(commit);
     commitRef.current = commit;
@@ -1630,38 +1650,70 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         }
     }
 
-    // Convert a step/rule to another type in place, preserving its name, enabled
-    // state and (for filters) boolean operator — like the Swing grid's Type column.
-    function changeElementType(path: any, newType: any) {
-        const list = listAtPath(elementsRef.current, path);
-        if (!list) return;
-        const idx = path[path.length - 1];
-        const old = list[idx];
+    function changeElementType(path: number[], newType: string) {
+        if (!canEditElements()) return;
+        const old = elementAtPath(elementsRef.current, path);
         if (!old || old.__type === newType) return;
-        const registry = isFilter ? platform.ruleTypes() : platform.stepTypes();
-        const def = registry.get(newType);
-        const created = def && def.create ? def.create() : { __type: newType, name: '', enabled: true };
-        created.__type = newType;
-        created.name = old.name ?? '';
-        created.enabled = old.enabled !== false;
-        if (isFilter && old.operator !== undefined) created.operator = old.operator;
-        if (isIteratorType(newType)) created.__children = [];
-        list[idx] = created;
-        setSelected(path);
-        commitRef.current();
+        if (isIteratorType(old.__type) && childrenOf(old).length) {
+            modal({
+                title: `Change ${kind.noun} Type`,
+                body: h('p', 'Please remove all children before changing an Iterator to a different type.'),
+                buttons: [{ label: 'OK', primary: true }]
+            });
+            return;
+        }
+        const nextType = typeDef(newType);
+        if (!nextType) return;
+        const isCurrent = channelSessionActive();
+        const original = JSON.stringify(old);
+        const replace = () => {
+            const current = pathOf(old, elementsRef.current);
+            if (!current || !isCurrent() || !canEditElements() || JSON.stringify(old) !== original) return;
+            const fresh = nextType.create?.() ?? { name: '', enabled: true };
+            fresh.__type = newType;
+            if (isIteratorType(newType)) fresh.__children = [];
+            listAtPath(elementsRef.current, current)[current[current.length - 1]] = fresh;
+            setSelected(current);
+            commitRef.current();
+        };
+        const defaults = typeDef(old.__type)?.create?.();
+        const [current] = serializeList([old]);
+        const keys = new Set([...Object.keys(current), ...Object.keys(defaults ?? {})]);
+        if (defaults && [...keys].every(key => gridProperties.has(key) || (Object.hasOwn(defaults, key) && matchesSetting(current[key], defaults[key])))) {
+            replace();
+        } else {
+            modal({
+                title: `Change ${kind.noun} Type`,
+                body: h('p', `Are you sure you would like to change this ${kind.title.toLowerCase()} ${kind.noun.toLowerCase()} and lose all of the current data?`),
+                buttons: [{ label: 'No' }, { label: 'Yes', primary: true, onClick: replace }]
+            });
+        }
     }
 
     function deleteElement() {
-        const elements = elementsRef.current;
-        const selPath = selectedPathRef.current;
-        if (!elementAtPath(elements, selPath)) { toast(`Select a ${kind.noun.toLowerCase()} first`, 'warn'); return; }
-        const list = listAtPath(elements, selPath);
-        const idx = selPath![selPath!.length! - 1];
-        const parent = selPath!.slice!(0, -1);
-        list.splice(idx, 1);
-        setSelected(list.length ? [...parent, Math.min(idx, list.length - 1)]
-            : (parent.length ? parent : (elements.length ? [0] : null)));
-        commitRef.current();
+        if (!canEditElements()) return;
+        const element = elementAtPath(elementsRef.current, selectedPathRef.current);
+        if (!element) { toast(`Select a ${kind.noun.toLowerCase()} first`, 'warn'); return; }
+        const isCurrent = channelSessionActive();
+        const remove = () => {
+            if (!isCurrent() || !canEditElements()) return;
+            const elements = elementsRef.current;
+            const rows = flattenRows(elements);
+            const index = rows.findIndex(row => row.el === element);
+            if (index < 0) return;
+            const path = rows[index].path;
+            listAtPath(elements, path).splice(path[path.length - 1], 1);
+            const remaining = flattenRows(elements);
+            setSelected(remaining[Math.min(index, remaining.length - 1)]?.path ?? null);
+            commitRef.current();
+        };
+        if (isIteratorType(element.__type) && childrenOf(element).length) {
+            modal({
+                title: `Delete ${kind.noun}`,
+                body: h('p', `All child ${kind.noun.toLowerCase()}s will be removed along with the Iterator. Are you sure you wish to continue?`),
+                buttons: [{ label: 'Cancel' }, { label: 'OK', primary: true, onClick: remove }]
+            });
+        } else remove();
     }
 
     function move(delta: -1 | 1) {
