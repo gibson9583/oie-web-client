@@ -320,6 +320,45 @@ assert.equal(namespaced.mapping, "msg.*::['OBX'][i].*::['OBX.5'].toString()", 'n
 rewriteElementIteratorVariables(namespaced, [namespacedIterator], false);
 assert.equal(namespaced.mapping, "msg.*::['OBX'].*::['OBX.5'].toString()");
 assert.equal(iteratorWizardPrefixes('', []).selected, undefined);
+assert.equal(iteratorWizardPrefixes("msg['OBX'].children()", []).root, "msg['OBX'].children()");
+assert.deepEqual(iteratorWizardPrefixes("tmp['OBX'].toString()", [], 'outbound').choices,
+    [{ value: "tmp['OBX'].toString()", index: 0 }], 'only the primary wizard field strips the suffix');
+
+// FunctionCall is opaque to the visitor, but the next access is a new
+// PropertyGet or ElementGet. Literal child keys keep their own node kind.
+for (const [key, visited] of [
+    ['getKey().value', '.value'], ["getKey()['value']", "['value']"],
+    ["'a'.length", "['a'].length"], ['[1].length', '.length'], ['getKey()', '']
+]) {
+    assert.equal(removeNumberLiterals(`msg['OBX'][0][${key}][0]`), "msg['OBX']" + visited);
+}
+for (const [source, normalized] of [
+    ["String(msg['OBX'][0].value).length.toString()", "String(msg['OBX'][0].value).length.toString()"],
+    ["msg['OBX'][1].value.toString().length", "msg['OBX'].value.toString().length"],
+    ["msg['OBX'][1].value['toString'] /*keep*/ ().slice(1).length", "msg['OBX'].value['toString'] /*keep*/ ().slice(1).length"],
+    ["msg['OBX'][0].(value == 'one').value.toString().length", "msg['OBX'].(value == 'one').value.toString().length"],
+    ["msg['OBX'][0]..value.toString().length", "msg['OBX']..value.toString().length"],
+    ["msg['OBX'][0][keys.value].toString().length", "msg['OBX'][keys.value].toString().length"],
+    ["msg['OBX'][1].value.toString().length; record();", "msg['OBX'].value.toString().length; record();"],
+    ['handlers[0]().value', 'handlers[0]().value'],
+    ['labels[1].toString().length', 'labels[1].toString().length'],
+    ['new String(12).length', 'new String(12).length'],
+    ["({x: {f: String}}).x.f('a').length", "({x: {f: String}}).x.f('a').length"]
+]) {
+    assert.equal(removeNumberLiterals(source), normalized, 'preserve the receiver of a call result');
+    assert.equal(removeNumberLiterals(normalized), normalized);
+}
+assert.deepEqual(iteratorExpressionParts("msg['OBX'][1].value.toString().length"), ["msg['OBX'].value.toString().length"]);
+for (const statement of ['<![CDATA[text]]>', '<?target?>', '/value/u', '1++', '++(a + b)',
+    'var [a,b]', 'var {a:b}', 'for (var a,b in [1]) {}', '<x>{/*empty*/}</x>']) {
+    const draft = `msg['OBX'][0].value[0]; ${statement};`;
+    assert.equal(removeNumberLiterals(draft), draft, 'a rejected trailing statement preserves the entire draft');
+}
+for (const statement of ['<x><![CDATA[text]]></x>', '<?target?><x/>', '/value/y', '(counter)++',
+    'var [a,b] = [1,2]', 'for (var [a,b] in [[1,2]]) {}', 'for (var a,b; a; b) {}',
+    '<x>{}</x>', '<x>{/*comment*/ 1}</x>', 'var o = { get x(a){return a;}, set x(){}, f(){return 1;} }']) {
+    assert.equal(removeNumberLiterals(`msg['OBX'][0].value[0]; ${statement};`), "msg['OBX'].value");
+}
 assert.equal(validIteratorIndex(['i', 'j'], ['k']), 'l');
 assert.equal(validIteratorIndex('ijklmnopqrstuvwxyz'.split(''), ['ii']), 'jj');
 assert.equal(validIteratorIndex([], []), 'i');
@@ -341,6 +380,12 @@ assert.equal(messageBuilder.mapping, detached);
 assert.equal(messageBuilder.messageSegment, "tmp['OBX']['OBX.5']");
 const builderWithoutMapping = { ...messageBuilder, mapping: '' };
 assert.deepEqual(getIteratorInfo(builderWithoutMapping), { target: messageBuilder.messageSegment, outbound: null });
+assert.deepEqual(getIteratorInfo({ ...messageBuilder, mapping: '\u00a0' }),
+    { target: '\u00a0', outbound: messageBuilder.messageSegment }, 'Swing treats a non-breaking space as a supplied mapping');
+const builderWithSpace = { ...messageBuilder, mapping, messageSegment: '\u00a0' };
+normalizeIteratorTarget(builderWithSpace);
+assert.equal(builderWithSpace.messageSegment, '\u00a0');
+assert.equal(builderWithSpace.mapping, detached);
 const xslt = { __type: plugin('xsltstep.XsltStep'), sourceXml: mapping };
 normalizeIteratorTarget(xslt);
 assert.equal(xslt.sourceXml, mapping, 'Swing XSLT inherits the no-op iterator-info setter');

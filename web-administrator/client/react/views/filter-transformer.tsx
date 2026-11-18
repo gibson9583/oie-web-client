@@ -49,7 +49,7 @@ import { createCodeEditor } from '@oie/web-ui';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import { generateElementScript } from '../../core/step-script.js';
-import { rewriteElementIteratorVariables, normalizeIteratorTarget, getIteratorInfo, iteratorExpressionParts,
+import { rewriteIteratorExpression, rewriteElementIteratorVariables, normalizeIteratorTarget, getIteratorInfo, iteratorExpressionParts,
     iteratorWizardPrefixes, validIteratorIndex, preferredIterator, iteratorName, removeNumberLiterals } from '../../core/iterator-substitutions.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { normalizeLineEndings } from '../../core/content-highlight.js';
@@ -214,10 +214,8 @@ function collectStepVariables(elements: any) {
 /* ---- accessor drag-and-drop ---------------------------------------------------
    Tree nodes and reference rows are dragged and dropped directly into a script
    editor or template field. The accessor is carried in a custom data flavor
-   (plus text/plain, which the popped-out code view's own drop handlers rely
-   on) so we can drop it at the exact cursor position the user releases over —
-   Monaco via getTargetAtClientPoint, plain fields via caret. `dragRef` is the
-   per-editor-instance live token (a ref, since the drag outlives renders). */
+   and text/plain. For an in-editor drop, resolve the text when the user
+   releases it so the selected step and accelerator key are current. */
 
 const ACCESSOR_FLAVOR = 'application/x-oie-accessor';
 
@@ -263,7 +261,7 @@ function makeAccessorDrop(dragRef: any) {
         if (!hasAccessorDrag(dragRef, e)) return;
         const editor = resolveEditorAt(e.target);
         if (!editor) return;
-        const token = dragRef.current ||
+        const token = dragRef.current?.(e) ||
             (e.dataTransfer && (e.dataTransfer.getData(ACCESSOR_FLAVOR) || e.dataTransfer.getData('text/plain')));
         dragRef.current = null;
         if (!token) return;
@@ -300,11 +298,12 @@ function makeAccessorDrop(dragRef: any) {
 }
 
 // Shared dragstart props for accessor sources (reference rows, tree nodes).
-function accessorDragProps(dragRef: any, token: any) {
+function accessorDragProps(dragRef: any, getText: (event: DragEvent) => string) {
     return {
         draggable: true,
         onDragStart: (e: any) => {
-            dragRef.current = token;
+            dragRef.current = getText;
+            const token = getText(e);
             e.dataTransfer.effectAllowed = 'copy';
             e.dataTransfer.setData('text/plain', token);
             e.dataTransfer.setData(ACCESSOR_FLAVOR, token);
@@ -656,7 +655,7 @@ function GeneratedScriptPane({ kind, element, rev }: any) {
 function ReferenceRow({ dragRef, name, subtitle, dropText, title }: any) {
     return (
         <div className="step-item cursor-grab" title={title || undefined}
-            {...accessorDragProps(dragRef, dropText)}>
+            {...accessorDragProps(dragRef, () => dropText)}>
             <div className="flex-1 min-w-0">
                 <div className="truncate">{name || '(unnamed)'}</div>
                 {subtitle ? <div className="step-type">{subtitle}</div> : null}
@@ -1009,7 +1008,7 @@ function copyAccessor(text: string) {
     navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard'), () => toast('Clipboard unavailable', 'warn'));
 }
 
-function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef, onAddStep }: any) {
+function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef, treeAccessor, onAddStep }: any) {
     const [parse, setParse] = useState<any>({ status: 'idle' });   // idle | parsing | ready | failed | empty
     const [collapsed, setCollapsed] = useState<Set<string>>(NO_KEYS);
     const [filterCollapsed, setFilterCollapsed] = useState<any>({ q: '', keys: NO_KEYS });
@@ -1020,6 +1019,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
     const props = target[`${side}Properties`] || {};
     const dtLabel = (dataTypeDef(dataType) || { label: dataType }).label;
     const regionLabel = `${side === 'inbound' ? 'Inbound' : 'Outbound'} message tree (${varName})`;
+    const dragProps = (text: string) => accessorDragProps(dragRef, event => treeAccessor(text, event));
 
     useEffect(() => {
         if (template == null || String(template).trim() === '') { setParse({ status: 'empty' }); return undefined; }
@@ -1156,7 +1156,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
         <section className="mt-section" style={{ display: hidden ? 'none' : undefined }} aria-label={regionLabel}>
             <div className="mt-root">
                 <span className="mt-root-label" title={`Drag into a script editor: ${root.accessor}`}
-                    {...accessorDragProps(dragRef, root.accessor)} onContextMenu={rootMenu}>
+                    {...dragProps(root.accessor)} onContextMenu={rootMenu}>
                     {root.label !== varName ? root.label : dtLabel}
                 </span>
                 <button type="button" className="icon-btn" title="Expand All" aria-label="Expand all"
@@ -1176,7 +1176,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
                     onSelect={(row: any) => setSelected(row)}
                     onRowContextMenu={(row: any, e: any) => { e.preventDefault(); rowMenu(row, e.clientX, e.clientY); }}
                     rowDraggable={() => true}
-                    onRowDragStart={(row: any, e: any) => accessorDragProps(dragRef, row.source.accessor).onDragStart(e)}
+                    onRowDragStart={(row: any, e: any) => dragProps(row.source.accessor).onDragStart(e)}
                     onRowDragEnd={() => { dragRef.current = null; }}
                     matches={matches}
                     collapsedKeys={openKeys}
@@ -1198,7 +1198,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
     );
 }
 
-function TreesTab({ target, dragRef, onAddStep }: any) {
+function TreesTab({ target, dragRef, treeAccessor, onAddStep }: any) {
     const [side, setSide] = useState('inbound');
     const [query, setQuery] = useState('');
     const [hideEmpty, setHideEmpty] = useState(false);
@@ -1216,9 +1216,9 @@ function TreesTab({ target, dragRef, onAddStep }: any) {
                     onClick={() => setHideEmpty(v => !v)}><Icon name={hideEmpty ? 'eyeOff' : 'eye'} size={14} /></button>
             </div>
             <TreeSection side="inbound" varName="msg" hidden={side !== 'inbound'} query={query} hideEmpty={hideEmpty}
-                target={target} dragRef={dragRef} onAddStep={onAddStep} />
+                target={target} dragRef={dragRef} treeAccessor={treeAccessor} onAddStep={onAddStep} />
             <TreeSection side="outbound" varName="tmp" hidden={side !== 'outbound'} query={query} hideEmpty={hideEmpty}
-                target={target} dragRef={dragRef} onAddStep={onAddStep} />
+                target={target} dragRef={dragRef} treeAccessor={treeAccessor} onAddStep={onAddStep} />
         </div>
     );
 }
@@ -1254,7 +1254,7 @@ function SidePanel({ ctx }: any) {
         body = <ReferenceTab key="ref" dragRef={ctx.dragRef} channelId={ctx.channelId}
             context={scriptContext(ctx.connectorType)} getElements={ctx.getElements} />;
     } else if (label === 'Message Trees') {
-        body = <TreesTab key="trees" target={ctx.target} dragRef={ctx.dragRef} onAddStep={ctx.onAddStep} />;
+        body = <TreesTab key="trees" target={ctx.target} dragRef={ctx.dragRef} treeAccessor={ctx.treeAccessor} onAddStep={ctx.onAddStep} />;
     } else if (label === 'Message Templates') {
         body = <TemplatesTab key="templates" target={ctx.target} version={ctx.version}
             connectorType={ctx.connectorType} channel={ctx.channel} commit={ctx.commit} />;
@@ -1347,7 +1347,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // True only while a step plugin's flushSync mount runs (see StepEditorPanel).
     const settlingRef = useRef(false);
     // Live accessor-drag token (reference rows / tree nodes → editors).
-    const dragRef = useRef<any>(null);
+    const dragRef = useRef<((event: DragEvent) => string) | null>(null);
     const rootRef = useRef<any>(null);
     const guardImplRef = useRef<any>(null);
 
@@ -1603,18 +1603,32 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         commitRef.current();
     }
 
-    function move(delta: any) {
+    function move(delta: -1 | 1) {
         const elements = elementsRef.current;
-        const selPath = selectedPathRef.current;
-        if (!elementAtPath(elements, selPath)) { toast(`Select a ${kind.noun.toLowerCase()} first`, 'warn'); return; }
-        const list = listAtPath(elements, selPath);
-        const idx = selPath![selPath!.length! - 1];
-        const next = idx + delta;
-        if (next < 0 || next >= list.length) return;
-        const [el] = list.splice(idx, 1);
-        list.splice(next, 0, el);
-        setSelected([...selPath!.slice!(0, -1), next]);
-        commitRef.current();
+        const path = selectedPathRef.current;
+        const el = elementAtPath(elements, path);
+        if (!path || !el) { toast(`Select a ${kind.noun.toLowerCase()} first`, 'warn'); return; }
+        if (!canEditElements()) return;
+        const parent = elementAtPath(elements, path.slice(0, -1));
+        const next = path[path.length - 1] + delta;
+        if (next >= 0 && next < listAtPath(elements, path).length) {
+            relocateElement(path, parent, { index: next });
+        } else if (parent) {
+            const isCurrent = channelSessionActive();
+            modal({
+                title: `Move ${kind.noun} ${delta < 0 ? 'Up' : 'Down'}`,
+                body: h('p', `This will move the ${kind.noun.toLowerCase()} out of its parent Iterator. Are you sure you wish to continue?`),
+                buttons: [{ label: 'Cancel' }, { label: 'OK', primary: true, onClick: () => {
+                    if (!isCurrent() || !canEditElements()) return;
+                    const current = pathOf(el, elementsRef.current);
+                    if (!current || elementAtPath(elementsRef.current, current.slice(0, -1)) !== parent) return;
+                    const boundary = delta < 0 ? 0 : childrenOf(parent).length - 1;
+                    if (current.at(-1) !== boundary) return;
+                    const grandparent = elementAtPath(elementsRef.current, current.slice(0, -2));
+                    relocateElement(current, grandparent, { index: current.at(-2) + (delta > 0 ? 1 : 0) });
+                } }]
+            });
+        }
     }
 
     async function importElements() {
@@ -1807,21 +1821,20 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             && !store.getState('editorSave') && platform.checkTask('channelEdit', 'doSaveChannel');
     }
 
-    function moveIntoIterator(el: any, iterator: any) {
-        if (!canEditElements()) return;
-        // Dialogs capture identities. Selection and array positions may change
-        // before acceptance; resolve both objects again before any mutation.
+    function relocateElement(path: number[], parent: any, { index, assignment }: { index?: number; assignment?: 'new' | 'existing' } = {}) {
         const elements = elementsRef.current;
-        const sourcePath = pathOf(el, elements);
-        const targetPath = pathOf(iterator, elements);
-        if (!sourcePath || !targetPath || !isIteratorType(iterator.__type)
-            || !iteratorTargets(sourcePath).includes(iterator)) return;
-        rewriteElementIteratorVariables(el, iteratorAncestors(sourcePath), false);
-        normalizeIteratorTarget(el);
-        listAtPath(elements, sourcePath).splice(sourcePath.at(-1), 1);
-        childrenOf(iterator).push(el);
+        const el = elementAtPath(elements, path);
+        const previous = iteratorAncestors(path);
+        rewriteElementIteratorVariables(el, previous, false);
+        listAtPath(elements, path).splice(path[path.length - 1], 1);
+        const destination = parent ? childrenOf(parent) : elements;
+        destination.splice(index ?? destination.length, 0, el);
         const newPath = pathOf(el, elements);
-        rewriteElementIteratorVariables(el, iteratorAncestors(newPath), true);
+        const current = iteratorAncestors(newPath);
+        // Swing removes the old index from the normalized wizard fields only
+        // when choosing an existing iterator. Other fields use plugin hooks.
+        if (assignment) normalizeIteratorTarget(el, assignment === 'existing' ? previous : [], current);
+        rewriteElementIteratorVariables(el, current, true);
         setSelected(newPath);
         bumpElementContext();
         commitRef.current();
@@ -1842,10 +1855,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const info = getIteratorInfo(preview);
         // Assign normalizes the wizard input independently of the plugin's
         // setter (XSLT deliberately has no primary-target setter).
-        const wizardTarget = sourcePath ? removeNumberLiterals(info.target) : info.target;
+        const wizardInput = (expression: string) => sourcePath ? removeNumberLiterals(expression) : expression;
+        const wizardTarget = wizardInput(info.target);
         const ancestorIndices = ancestors.map(it => it.properties?.indexVariable);
         const targetPrefixes = iteratorWizardPrefixes(wizardTarget, ancestorIndices);
-        const outboundPrefixes = iteratorWizardPrefixes(info.outbound || '', ancestorIndices);
+        const outboundPrefixes = iteratorWizardPrefixes(wizardInput(info.outbound || ''), ancestorIndices, 'outbound');
         const targets = sourcePath ? iteratorTargets(sourcePath)
             : allIteratorPaths(elements).map(path => elementAtPath(elements, path));
         const choice = h('select', { 'aria-label': 'Iterator' },
@@ -1916,12 +1930,12 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                     iterator.__children = [];
                     const prefixes = target.value ? [target.value] : [];
                     if (outbound.value) prefixes.push(outbound.value);
-                    else if (target.value === 'msg' || target.value.startsWith('msg[') || target.value.startsWith('msg.')) {
+                    else if (targetPrefixes.root === 'msg') {
                         prefixes.push(`tmp${target.value.slice(3)}`);
                     }
                     Object.assign(iterator.properties, {
                         target: target.value, indexVariable: index,
-                        prefixSubstitutions: prefixes.length ? { string: [...new Set(prefixes)] } : '',
+                        prefixSubstitutions: prefixes.length ? { string: prefixes } : '',
                         ...(isFilter ? { intersectIterations: false, breakEarly: true } : {})
                     });
                     iterator.name = iteratorName(iterator);
@@ -1938,14 +1952,14 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const parent = path.length > 1 ? elementAtPath(elementsRef.current, path.slice(0, -1)) : null;
         const assign = (iterator: any, created: boolean) => {
             if (!canEditElements()) return;
+            const sourcePath = pathOf(el, elementsRef.current);
+            if (!sourcePath || (!created && !iteratorTargets(sourcePath).includes(iterator))) return;
             if (created) {
-                const sourcePath = pathOf(el, elementsRef.current);
-                if (!sourcePath) return;
                 listAtPath(elementsRef.current, sourcePath).splice(sourcePath.at(-1), 0, iterator);
                 rewriteElementIteratorVariables(iterator, iteratorAncestors(pathOf(iterator, elementsRef.current)), true);
                 iterator.name = iteratorName(iterator);
             }
-            moveIntoIterator(el, iterator);
+            relocateElement(created ? pathOf(el, elementsRef.current) : sourcePath, iterator, { assignment: created ? 'new' : 'existing' });
         };
         const preview = structuredClone(el);
         rewriteElementIteratorVariables(preview, iteratorAncestors(path), false);
@@ -1973,17 +1987,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             toast(`This ${kind.noun.toLowerCase()} is not inside an Iterator`, 'warn'); return;
         }
         if (!canEditElements()) return;
-        rewriteElementIteratorVariables(el, iteratorAncestors(selPath), false);
-        listAtPath(elements, selPath).splice(selPath[selPath.length - 1], 1);
-        const grandList = listAtPath(elements, selPath.slice(0, -1));
-        // Swing reattaches at the enclosing list's child count. Following
-        // siblings must execute before the detached element.
-        grandList.push(el);
-        const newPath = pathOf(el, elements);
-        rewriteElementIteratorVariables(el, iteratorAncestors(newPath), true);
-        setSelected(newPath);
-        bumpElementContext();
-        commitRef.current();
+        relocateElement(selPath, elementAtPath(elements, selPath.slice(0, -2)));
     }
 
     // Steps created from a message-tree node (Map to Variable / Map to Message).
@@ -2010,20 +2014,18 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 && currentAncestors.length === ancestors.length && currentAncestors.every((it, i) => it === ancestors[i])
                 && JSON.stringify(currentAncestors.map(it => it.properties)) === ancestorState;
         };
-        // Swing applies the selected parent before both the question and wizard.
+        // The chooser shows the selected parent's indices. Keep the tree
+        // accessor itself intact until we know which iterator will own it.
+        const preview = structuredClone(el);
         if (parent) {
-            normalizeIteratorTarget(el);
-            rewriteElementIteratorVariables(el, ancestors, true);
+            normalizeIteratorTarget(preview);
+            rewriteElementIteratorVariables(preview, ancestors, true);
         }
         const insert = (iterator: any, created = false) => {
             if (!contextCurrent()) return;
             if (iterator && !created && (!pathOf(iterator, elementsRef.current) || !isIteratorType(iterator.__type))) return;
             const list = parent ? childrenOf(parent) : elementsRef.current;
             if (created) {
-                // The new iterator substitutes the tree expression before it is
-                // itself rewritten against its enclosing iterators.
-                normalizeIteratorTarget(el);
-                rewriteElementIteratorVariables(el, [iterator], true);
                 list.push(iterator);
                 const path = pathOf(iterator, elementsRef.current);
                 iterator.name = iteratorName(iterator);
@@ -2039,7 +2041,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             commitRef.current();
             toast(`Added ${label} "${el.name}"`);
         };
-        if (!iteratorExpressionParts(getIteratorInfo(el).target).length || getPref('filterTransformerShowIteratorDialog') === false) insert(parent);
+        if (!iteratorExpressionParts(getIteratorInfo(preview).target).length || getPref('filterTransformerShowIteratorDialog') === false) insert(parent);
         else {
             const checkbox = h('input', { type: 'checkbox' }) as HTMLInputElement;
             modal({
@@ -2050,7 +2052,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 buttons: [
                     { label: 'Cancel' },
                     { label: 'No', onClick: () => insert(parent) },
-                    { label: 'Yes', primary: true, onClick: () => { if (contextCurrent()) chooseIterator(el, parent, insert); } }
+                    { label: 'Yes', primary: true, onClick: () => { if (contextCurrent()) chooseIterator(preview, parent, insert); } }
                 ]
             });
         }
@@ -2162,6 +2164,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             channelId: params.channelId,
             target, version, connectorType, channel,
             dragRef,
+            treeAccessor: (text: string, event: DragEvent) => {
+                const accelerator = /Mac/.test(navigator.platform) ? event.metaKey : event.ctrlKey;
+                const expression = accelerator ? text.replace(/\.toString\(\)$/, '') : text;
+                return rewriteIteratorExpression(expression, iteratorAncestors(selectedPathRef.current || []), true);
+            },
             getElements: () => elementsRef.current,
             commit: () => commitRef.current(),
             onAddStep: (typeId: any, label: any, baseName: any, setup: any) => addTreeStepRef.current(typeId, label, baseName, setup),
@@ -2189,9 +2196,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
        When a code view opens for an editor that lives inside THIS editor (a step
        script or the generated-script preview), move the real side panel into the
        overlay — the full-fidelity reference, in place of the generic variables
-       list — and move it back when the view closes. Tree/reference drags keep
-       working there because every dragstart also sets text/plain, which the
-       overlay's own capture-phase drop handlers understand. */
+       list — and move it back when the view closes. */
     useEffect(() => {
         if (missingConnector) return undefined;
         const onCodeView = (e: any) => {
@@ -2199,6 +2204,8 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             const rootEl = rootRef.current;
             const host = sideHostRef.current;
             if (d.open && d.origin && rootEl && rootEl.contains(d.origin) && !sidePlaceholderRef.current && host) {
+                const getDropText = d.getDropText;
+                d.getDropText = (event: DragEvent) => dragRef.current?.(event) || getDropText(event);
                 const flat = d.body.querySelector('.ce-popout-vars');
                 if (flat) flat.remove();
                 sidePlaceholderRef.current = document.createComment('ft-side-panel');

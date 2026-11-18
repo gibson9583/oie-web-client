@@ -31,6 +31,8 @@ class RhinoSourceReader {
     text;
     literalSource;
     position = 0;
+    previousEnd = 0;
+    rootPath = [];
     linePosition = 0;
     line = 1;
     xmlLiteralDepth = 0;
@@ -56,6 +58,7 @@ class RhinoSourceReader {
         return end;
     }
     next(ignoreComments = true) {
+        this.previousEnd = this.token.end;
         this.readToken();
         let skippedComment;
         while (ignoreComments && this.token.comment) {
@@ -169,16 +172,21 @@ class RhinoSourceReader {
             throw new Error(`Expected ${value}`);
         this.next(ignoreComments);
     }
-    expression(min = 1, allowIn = true) {
+    expression(min = 1, allowIn = true, path) {
+        return this.expressionNode(min, allowIn, path).source;
+    }
+    expressionNode(min = 1, allowIn = true, path) {
         this.skipComments();
-        let source = this.unary();
+        let node = this.unary(path);
         for (;;) {
             const op = this.token.value;
             if (op === '?' && min <= 3) {
+                if (path)
+                    path.length = 0;
                 this.next();
                 const yes = this.expression(2);
                 this.take(':');
-                source += ` ? ${yes} : ${this.expression(2, allowIn)}`;
+                node = { source: `${node.source} ? ${yes} : ${this.expression(2, allowIn)}` };
             }
             else {
                 const priority = Object.hasOwn(precedence, op) ? precedence[op] : undefined;
@@ -186,30 +194,40 @@ class RhinoSourceReader {
                     break;
                 if (priority == null || priority < min)
                     break;
+                if (path)
+                    path.length = 0;
                 this.next();
-                source += ` ${op} ${this.expression(priority === 2 ? priority : priority + 1, allowIn)}`;
+                node = { source: `${node.source} ${op} ${this.expression(priority === 2 ? priority : priority + 1, allowIn)}` };
             }
         }
-        return source;
+        return node;
     }
-    unary() {
+    updateTarget(node) {
+        if (!node.reference)
+            throw new Error('Invalid increment or decrement target');
+        return node.source;
+    }
+    unary(path) {
         const op = this.token.value;
-        if (['+', '-', '!', '~', '++', '--', 'typeof', 'void', 'delete'].includes(op)) {
+        if (op === '++' || op === '--') {
             this.next();
-            return op + (/^[a-z]/.test(op) ? ' ' : '') + this.unary();
+            return { source: op + this.updateTarget(this.memberExpression(true)) };
         }
-        if (op === 'new') {
+        if (['+', '-', '!', '~', 'typeof', 'void', 'delete'].includes(op)) {
             this.next();
-            const target = this.member(this.primary(), false);
-            const args = this.token.value === '(' ? this.arguments() : '()';
-            return this.member(`new ${target}${args}`, true);
+            return { source: op + (/^[a-z]/.test(op) ? ' ' : '') + this.unary().source };
         }
-        let source = this.member(this.primary(), true);
+        if (op === '<')
+            return this.memberTail({ source: this.xmlLiteral() }, true, path);
+        const node = this.memberExpression(true, path);
         if (!this.token.lineBreakBefore && ['++', '--'].includes(this.token.value)) {
-            source += this.token.value;
+            if (path)
+                path.length = 0;
+            const source = this.updateTarget(node) + this.token.value;
             this.next();
+            return { source };
         }
-        return source;
+        return node;
     }
     arguments() {
         this.take('(');
@@ -226,58 +244,132 @@ class RhinoSourceReader {
         this.take(')');
         return `(${args.join(', ')})`;
     }
-    member(source, calls) {
+    memberExpression(calls, path) {
+        let node;
+        if (this.at('new')) {
+            this.next();
+            const target = this.memberExpression(false);
+            const args = this.at('(') ? this.arguments() : '()';
+            const initializer = this.at('{') ? ' ' + this.primary().source : '';
+            node = { source: `new ${target.source}${args}${initializer}` };
+            if (path === this.rootPath)
+                path = undefined;
+        }
+        else {
+            node = this.primary(path);
+        }
+        return this.memberTail(node, calls, path);
+    }
+    memberTail(node, calls, path) {
+        let receiver = path?.[0];
+        const messageRoot = receiver?.kind === 'name' && (receiver.source === 'msg' || receiver.source === 'tmp');
+        let memberStart = 0, receiverSize = 0;
+        let preserveTail = false;
         for (;;) {
             this.skipComments();
-            if (this.token.value === '(' && calls)
-                source += this.arguments();
-            else if (this.token.value === '[') {
-                this.next();
-                source += `[${this.expression()}]`;
-                this.take(']');
+            if (path === this.rootPath && !preserveTail && ['[', '.(', '.', '..'].includes(this.token.value)) {
+                memberStart = this.previousEnd;
+                receiverSize = path?.length ?? 0;
             }
-            else if (this.at('.(')) {
-                const predicate = this.group('.(');
-                source += `.(${predicate.source})`;
-                this.next();
+            if (this.at('(') && calls) {
+                node = { source: node.source + this.arguments(), reference: true };
+                if (path === this.rootPath && ['.', '..', '.(', '[', '('].includes(this.token.value)) {
+                    // A property of a call result cannot stand on its own. Keep the
+                    // call and its remaining accesses together. Only ordinary message
+                    // selectors before the call can have their repetitions normalized.
+                    node = this.memberTail(node, calls);
+                    path.length = messageRoot ? receiverSize : 0;
+                    if (path.length)
+                        path.push({ kind: 'callTail', source: this.text.slice(memberStart) });
+                    return node;
+                }
+                // Inside a computed key Swing visits the subsequent property.
+                if (path)
+                    path.length = 0;
             }
-            else if (['.', '..', '::'].includes(this.token.value)) {
+            else if (this.at('[') || this.at('.(')) {
+                const open = this.token.value;
+                const close = open === '[' ? ']' : ')';
+                this.next();
+                const first = this.token;
+                const child = path && [];
+                const key = this.expression(1, true, child);
+                // Queries and computed keys can change the receiver itself.
+                // A later call must keep these selectors as written.
+                if (open !== '[' || key !== first.value || !(first.literal || (first.word && !first.keyword)))
+                    preserveTail = true;
+                node = { source: node.source + open + key + close, reference: open === '[' };
+                this.take(close);
+                if (path && child)
+                    path.push(...child);
+            }
+            else if (this.at('.') || this.at('..')) {
                 const separator = this.token.value;
                 this.next(false);
-                source += separator;
-                let computed = separator === '::';
-                if (this.token.value === '@') {
-                    source += '@';
-                    this.next(false);
-                    computed = true;
+                const property = this.propertyRef(separator);
+                if (separator === '..' || property.kind === 'xml')
+                    preserveTail = true;
+                if (property.kind === 'name') {
+                    property.kind = 'property';
+                    if (receiver?.kind === 'name')
+                        receiver.kind = 'property';
                 }
-                if (this.token.value === '[' && !computed)
-                    throw new Error('Invalid member');
-                if (this.token.value !== '[') {
-                    if ((!this.token.word && this.token.value !== '*') || (computed && this.token.keyword))
-                        throw new Error('Invalid member');
-                    source += this.token.value;
-                    this.next();
-                    if (!computed)
-                        this.token.skippedComment = undefined;
-                }
+                path?.push(property);
+                node = { source: node.source + separator + property.source, reference: property.kind === 'property' };
             }
             else
                 break;
+            receiver = undefined;
         }
-        return source;
+        return node;
     }
-    primary() {
+    propertyRef(separator = '') {
+        const attribute = this.at('@');
+        if (attribute)
+            this.next(false);
+        let prefix = attribute ? '@' : '';
+        if (!attribute || !this.at('[')) {
+            const name = this.token;
+            if ((!name.word && name.value !== '*') || (name.keyword && (!separator || attribute)))
+                throw new Error('Expected property name');
+            this.next();
+            if (!this.at('::')) {
+                this.token.skippedComment = undefined;
+                return { kind: attribute || separator === '..' ? 'xml' : 'name', source: prefix + name.value, propertyName: name.value };
+            }
+            prefix += name.value + '::';
+            this.next(false);
+            if (!this.at('[')) {
+                const local = this.token;
+                if ((!local.word && local.value !== '*') || local.keyword)
+                    throw new Error('Expected namespace member');
+                this.next();
+                return { kind: 'xml', source: prefix + local.value, propertyName: local.value };
+            }
+        }
+        this.take('[');
+        const key = this.expression();
+        this.take(']');
+        return { kind: 'xml', source: `${prefix}[${key}]`, propertyName: key };
+    }
+    objectKey() {
+        const key = this.token;
+        if (!key.literal && !key.word)
+            throw new Error('Expected object key');
+        this.next();
+        // Rhino uses the scanner's digits for object keys, omitting the
+        // hexadecimal or legacy octal prefix retained on numeric expressions.
+        return key.literal ? key.value.replace(/^0x|^0(?=\d)/, '') : key.value;
+    }
+    primary(path) {
         const token = this.token;
-        if (token.value === '<')
-            return this.xmlLiteral();
         if (token.value === '(') {
             this.next();
-            let expression = this.expression();
+            let inner = this.expressionNode();
             if (this.at('for'))
-                expression += this.comprehension(false);
+                inner = { source: inner.source + this.comprehension(false) };
             this.take(')');
-            return `(${expression})`;
+            return { source: `(${inner.source})`, reference: inner.reference };
         }
         if (token.value === '[') {
             this.next();
@@ -289,36 +381,29 @@ class RhinoSourceReader {
                 if (values.length === 1 && !trailingHole && this.at('for')) {
                     const source = `[${values[0]}${this.comprehension(true)}]`;
                     this.take(']');
-                    return source;
+                    return { source };
                 }
                 if (this.token.value !== ',')
                     break;
                 this.next();
             }
             this.take(']');
-            return `[${values.join(', ')}${trailingHole ? ',' : ''}]`;
+            return { source: `[${values.join(', ')}${trailingHole ? ',' : ''}]` };
         }
         if (token.value === '{') {
             this.next();
             const properties = [];
             while (this.token.value !== '}') {
-                const key = this.token;
-                if (!key.literal && !key.word)
-                    throw new Error('Invalid object key');
-                this.next();
-                if (!key.literal && ['get', 'set'].includes(key.value) && this.token.value !== ':') {
-                    const property = this.token;
-                    if (!property.literal && !property.word)
-                        throw new Error('Invalid accessor key');
-                    this.next();
+                const key = this.objectKey();
+                const accessor = ['get', 'set'].includes(key) && !this.at(':') && !this.at('(');
+                if (accessor || this.at('(')) {
+                    const property = accessor ? key + ' ' + this.objectKey() : key;
                     const parameters = this.parameters();
-                    if (parameters.length !== (key.value === 'get' ? 0 : 1))
-                        throw new Error('Invalid accessor parameters');
-                    properties.push(`${key.value} ${property.value}(${parameters.join(', ')}) ${statementSource(this.functionBody(), 1).trimStart()}`);
+                    properties.push(`${property}(${parameters.join(', ')}) ${statementSource(this.functionBody(), 1).trimStart()}`);
                 }
                 else {
                     this.take(':');
-                    properties.push(`${key.value}: ${this.expression(2)}`);
+                    properties.push(`${key}: ${this.expression(2)}`);
                 }
                 this.skipComments();
                 if (this.token.value !== ',')
@@ -326,7 +411,7 @@ class RhinoSourceReader {
                 this.next();
             }
             this.take('}');
-            return properties.length ? `{\n  ${properties.join(', \n  ')}}` : '{}';
+            return { source: properties.length ? `{\n  ${properties.join(', \n  ')}}` : '{}' };
         }
         if (token.value === '/' || token.value === '/=') {
             // A slash in operand position starts a RegExpLiteral. Brackets and
@@ -348,45 +433,35 @@ class RhinoSourceReader {
                     inClass = false;
                 else if (ch === '/' && !inClass)
                     break;
-                else if (/[\n\r]/.test(ch))
+                if (/[\n\r\u2028\u2029]/.test(this.text[index]))
                     throw new Error('Invalid regexp');
             }
             if (index >= this.text.length)
                 throw new Error('Unterminated regexp');
-            while (/[a-z]/i.test(this.text[index + 1] || '') || formatCharacter(this.text[index + 1]))
+            while (/[gimy]/.test(this.text[index + 1] || '') || formatCharacter(this.text[index + 1]))
                 index++;
+            if (/[a-z]/i.test(this.text[index + 1] || ''))
+                throw new Error('Invalid regexp flag');
             const source = withoutFormatCharacters(this.text.slice(begin, index + 1));
             this.position = index + 1;
             this.next();
-            return source;
+            return { source };
         }
         if (token.value === 'function') {
             const fn = this.functionSource();
-            return `${fn.head} ${statementSource(fn.body).trimEnd()}`;
+            return { source: `${fn.head} ${statementSource(fn.body).trimEnd()}` };
         }
-        if (token.value === '@') {
-            this.next(false);
-            if (this.token.value === '[') {
-                this.next();
-                const source = `@[${this.expression()}]`;
-                this.take(']');
-                return source;
-            }
-            if ((!this.token.word || this.token.keyword) && this.token.value !== '*')
-                throw new Error('Invalid attribute name');
-            const source = '@' + this.token.value;
-            this.next();
-            this.token.skippedComment = undefined;
-            return source;
+        if (token.value === '@' || (token.word && !token.keyword)) {
+            const ref = this.propertyRef();
+            path?.push(ref);
+            return { source: ref.source, reference: ref.kind === 'name' };
         }
         if (!token.literal && (!token.word || (token.keyword && !['true', 'false', 'null', 'this'].includes(token.value))))
             throw new Error('Expected expression');
+        if (/^['"]/.test(token.value))
+            path?.push({ kind: 'string', source: token.value });
         this.next();
-        // Rhino's Name/property reader probes for a namespace separator with
-        // comment skipping, before the general member-chain lookahead.
-        if (token.word && !token.keyword)
-            this.token.skippedComment = undefined;
-        return token.value;
+        return { source: token.value };
     }
     identifier() {
         const value = this.token.value;
@@ -416,12 +491,9 @@ class RhinoSourceReader {
             this.next();
             const properties = [];
             while (!this.at('}')) {
-                const key = this.token;
-                if (!key.literal && !key.word)
-                    throw new Error('Invalid binding key');
-                this.next();
+                const key = this.objectKey();
                 this.take(':');
-                properties.push(`${key.value}: ${this.binding()}`);
+                properties.push(`${key}: ${this.binding()}`);
                 if (!this.at(','))
                     break;
                 this.next();
@@ -454,104 +526,35 @@ class RhinoSourceReader {
         }
         return source;
     }
-    group(open) {
-        this.take(open);
-        let source = this.expression();
-        if (open === '(' && this.at('for'))
-            source += this.comprehension(false);
-        if (!this.at(open === '[' ? ']' : ')'))
-            throw new Error('Unterminated expression group');
-        return { source, end: this.token.end };
-    }
-    // Follow the same token boundaries as Rhino's outer ExpressionVisitor.
-    // Whitespace separates tokens, but '..', '::' and '.(' stay indivisible.
-    // Its recording parser skips comments during member lookahead, but not
-    // when consuming the name immediately after '.', '@' or '::'.
-    memberChain(nested) {
-        if (!nested && this.token.skippedComment)
-            throw new Error('Leading comment precedes expression');
-        const root = this.token.value;
-        let rootName;
-        if (root === '(') {
-            this.group('(');
-            this.next();
-        }
-        else if (this.token.word && (!this.token.keyword || ['true', 'false', 'null', 'this'].includes(root))) {
-            rootName = ['true', 'false', 'null', 'this'].includes(root) ? undefined : root;
-            this.next();
-            this.token.skippedComment = undefined;
-        }
-        else
-            throw new Error('Unsupported member root');
-        const members = [];
-        while (['[', '.', '..', '.('].includes(this.token.value)) {
-            if (this.at('[')) {
-                const begin = this.token.end;
-                const key = this.group('[');
-                members.push({ kind: 'child', expression: this.text.slice(begin, key.end - 1), source: key.source });
-                this.next();
-                continue;
-            }
-            if (this.at('.(')) {
-                const begin = this.token.end;
-                const predicate = this.group('.(');
-                members.push({ kind: 'child', expression: this.text.slice(begin, predicate.end - 1), source: predicate.source });
-                this.next();
-                continue;
-            }
-            const dot = this.token;
-            this.next(false);
-            let prefix = '';
-            if (this.at('@')) {
-                prefix = '@';
-                this.next(false);
-            }
-            if (prefix && this.at('[')) {
-                const key = this.group('[');
-                members.push({ kind: 'element', source: `@[${key.source}]` });
-                this.next();
-                continue;
-            }
-            const property = this.token;
-            if ((!property.word && property.value !== '*') || (prefix && property.keyword)) {
-                throw new Error('Expected member name');
-            }
-            this.next();
-            let source = prefix + property.value;
-            let qualified = false;
-            if (this.at('::')) {
-                qualified = true;
-                source += '::';
-                this.next(false);
-                if (this.at('[')) {
-                    const key = this.group('[');
-                    members.push({ kind: 'element', source: `${source}[${key.source}]` });
-                    this.next();
+    expressionParts() {
+        if (!this.token.value || this.token.skippedComment)
+            return [];
+        this.statement(this.rootPath);
+        // Swing visits only the first expression, after parsing the entire program.
+        while (this.token.value)
+            this.statement();
+        const parts = [];
+        for (const { kind, source, propertyName = source } of this.rootPath) {
+            let value;
+            if (!parts.length) {
+                if (kind !== 'name' && kind !== 'property')
                     continue;
-                }
-                const local = this.token;
-                if ((!local.word && local.value !== '*') || local.keyword) {
-                    throw new Error('Expected namespace member');
-                }
-                source += local.value;
-                this.next();
+                value = source;
             }
-            members.push({ kind: 'property', source, ordinary: dot.value === '.' && !prefix && !qualified && property.value !== '*' });
-            if (!qualified)
-                this.token.skippedComment = undefined;
+            else if (kind === 'callTail')
+                value = source;
+            else {
+                value = kind === 'property' || kind === 'xml' ? '.' + source : `[${source}]`;
+            }
+            parts.push({ value, propertyName });
         }
-        // The native helper parses a program and visits its first expression.
-        // A semicolon ends that expression; later statements still must parse.
-        if (nested) {
-            if (this.token.value)
-                throw new Error('Unsupported child expression');
+        if (this.rootPath.some(leaf => leaf.kind === 'callTail')) {
+            // A method result is one wizard target. Inferring a matching tmp
+            // prefix from just its receiver would also rewrite unrelated fields.
+            const value = parts.map(part => part.value).join('');
+            return [{ value, propertyName: value }];
         }
-        else {
-            this.semicolon();
-            while (this.token.value)
-                this.statement();
-        }
-        return { root: rootName, members };
+        return parts;
     }
     // XML text is not JavaScript trivia: quotes, brackets, comments and CDATA
     // stay literal. Only {...} substitutions re-enter the expression grammar.
@@ -605,8 +608,6 @@ class RhinoSourceReader {
                 if (end < 0)
                     throw new Error('Unterminated XML markup');
                 index = this.advanceCharacters(index, end + terminator.length);
-                if (!depth)
-                    return finish();
                 continue;
             }
             if (tail.startsWith('<!')) {
@@ -631,14 +632,12 @@ class RhinoSourceReader {
                 if (index === text.length)
                     throw new Error('Unterminated XML declaration');
                 index++;
-                if (!depth)
-                    return finish();
                 continue;
             }
             if (ch === '{') {
                 source += withoutFormatCharacters(text.slice(chunk, index)) + '{';
                 this.position = index + 1;
-                this.next();
+                this.next(false);
                 if (!this.at('}'))
                     source += this.expression();
                 if (!this.at('}'))
@@ -652,6 +651,8 @@ class RhinoSourceReader {
                 if (inTag)
                     throw new Error('Invalid XML tag');
                 closing = tail.startsWith('</');
+                if (closing && !depth)
+                    throw new Error('Unexpected XML closing tag');
                 if (!closing)
                     depth++;
                 inTag = true;
@@ -746,26 +747,31 @@ class RhinoSourceReader {
         this.next();
         const declarations = [];
         do {
+            const destructuring = this.at('[') || this.at('{');
             let variable = this.binding();
             if (this.token.value === '=') {
                 this.next();
                 variable += ` = ${this.expression(2, allowIn)}`;
             }
+            else if (destructuring && allowIn)
+                throw new Error('Missing initializer in destructuring declaration');
             declarations.push(variable);
             if (this.token.value !== ',')
                 break;
             this.next();
         } while (true);
+        if (!allowIn && this.at('in') && declarations.length > 1)
+            throw new Error('Multiple variables in for-in declaration');
         return `${kind} ${declarations.join(', ')}`;
     }
     // Statements form a separate grammar from expressions. Keep their shape
     // until rendering: a block, loop or catch clause cannot acquire a stray
     // semicolon or lose its body through expression formatting.
-    statement() {
+    statement(path) {
         if (this.token.comment)
             return { kind: 'comment', comment: this.comment() };
         const line = this.token.line;
-        const statement = this.statementCore();
+        const statement = this.statementCore(path);
         // Following comments remain sibling nodes after function declarations.
         if (statement.kind !== 'function' && this.token.comment && this.token.line === line)
             statement.inlineComment = this.comment();
@@ -810,7 +816,7 @@ class RhinoSourceReader {
             this.consecutiveLabel = false;
         }
     }
-    statementCore() {
+    statementCore(path) {
         const start = this.token.value;
         const consecutiveLabel = this.consecutiveLabel;
         this.consecutiveLabel = false;
@@ -856,7 +862,7 @@ class RhinoSourceReader {
                 this.next();
             this.take('(');
             const initializer = this.token.value === ';' ? ''
-                : ['var', 'const'].includes(this.token.value) ? this.declaration(false) : this.expression(1, false);
+                : this.at('var') ? this.declaration(false) : this.expression(1, false);
             let head = `for${each ? ' each' : ''} (${initializer}`;
             if (this.token.value === 'in') {
                 this.next();
@@ -987,8 +993,10 @@ class RhinoSourceReader {
             return { kind: 'simple', source: ';' };
         }
         const label = this.token.word && !this.token.keyword ? this.token.value : undefined;
-        const expression = this.expression();
+        const expression = this.expression(1, true, path);
         if (this.token.value === ':' && expression === label) {
+            if (path)
+                path.length = 0;
             this.next(false);
             return this.labelledStatement(expression, consecutiveLabel);
         }
@@ -1067,12 +1075,17 @@ function statementSource(statement, depth = 0) {
             + (statement.finalizer ? ' finally ' + statementSource(statement.finalizer, depth) : statement.catches.length ? '' : '\n');
     }
 }
-/** Parse the member chain visited by Swing, retaining raw ordinary child keys. */
-export function readMemberChain(text, literalSource, nested = false) {
+// StringUtils.isBlank follows Java whitespace, excluding non-breaking spaces and the byte-order mark.
+export function isJavaBlank(text) {
+    return text == null || /^[\u0009-\u000d\u001c-\u0020\u1680\u2000-\u2006\u2008-\u200a\u2028\u2029\u205f\u3000]*$/.test(text);
+}
+/** getExpressionParts falls back to the complete source when the visitor has no parts. */
+export function readExpressionParts(text, literalSource) {
     try {
-        return new RhinoSourceReader(text, literalSource).memberChain(nested);
+        const parts = new RhinoSourceReader(text, literalSource).expressionParts();
+        if (parts.length)
+            return parts;
     }
-    catch {
-        return null;
-    }
+    catch { /* Rhino also preserves the original expression on a parse error. */ }
+    return isJavaBlank(text) ? [] : [{ value: text, propertyName: text }];
 }

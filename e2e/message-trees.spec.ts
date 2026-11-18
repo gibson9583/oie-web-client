@@ -319,3 +319,32 @@ for (const theme of ['light', 'dark']) {
         expect(checks.filter(c => c.ratio < 4.5)).toEqual([]);
     });
 }
+
+for (const fallback of [false, true]) {
+    test(`tree drops in the expanded ${fallback ? 'textarea' : 'Monaco editor'} use the modifier held at release`, async ({ page }) => {
+        if (fallback) await page.route('**/vendor/monaco/**', route => route.abort());
+        const writes = await openTrees(page);
+        await page.getByRole('button', { name: 'Add New Step' }).first().click();
+        await page.getByRole('dialog', { name: 'Add Step' }).getByText('JavaScript', { exact: true }).click();
+        const editor = page.locator('.step-editor-fill');
+        const input = fallback ? 'textarea.ce-area' : '.ce-monaco .view-lines';
+        await expect(editor.locator(input)).toBeVisible();
+        await editor.locator('.ce-pop-btn').click({ force: true });
+        const overlay = page.locator('.ce-popout-overlay');
+        await overlay.getByRole('tab', { name: 'Message Trees' }).click();
+        await row(page, 'PID').locator('.twisty').click();
+        const transfer = await page.evaluateHandle(() => new DataTransfer());
+        await row(page, 'PID.8').dispatchEvent('dragstart', { dataTransfer: transfer });
+        const path = "msg['PID']['PID.8']['PID.8.1']";
+        expect(await transfer.evaluate(data => data.getData('text/plain'))).toBe(path + '.toString()');
+        const modifier = await page.evaluate(() => /Mac/.test(navigator.platform) ? 'metaKey' : 'ctrlKey');
+        await overlay.locator(input).dispatchEvent('drop', { dataTransfer: transfer, [modifier]: true });
+        await overlay.getByRole('button', { name: 'Back', exact: true }).click();
+        await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+        await expect.poll(() => writes.length).toBe(1);
+        const steps = writes[0].sourceConnector.transformer.elements;
+        const script = steps['com.mirth.connect.plugins.javascriptstep.JavaScriptStep'][0].script;
+        expect(script.split(path)).toHaveLength(2);
+        expect(script).not.toContain(path + '.toString()');
+    });
+}

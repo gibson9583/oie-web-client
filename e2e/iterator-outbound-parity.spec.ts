@@ -8,14 +8,14 @@ const ITERATOR = 'com.mirth.connect.model.IteratorStep';
 const INBOUND = "values[i]['field']";
 const OUTBOUND = "tmp['result']";
 
-async function openBuilder(page: Page, id: string) {
+async function openBuilder(page: Page, id: string, messageSegment = OUTBOUND) {
     let channel = makeChannel(id);
     channel.sourceConnector.transformer.elements = {
         [ITERATOR]: [{ '@version': '4.6.0', name: 'Observations', sequenceNumber: 0, enabled: true,
             properties: { '@version': '4.6.0', target: "msg['OBX']", indexVariable: 'i',
                 prefixSubstitutions: { string: "msg['OBX']" }, children: {
                     [BUILDER]: [{ '@version': '4.6.0', name: 'Build result', sequenceNumber: 0, enabled: true,
-                        messageSegment: OUTBOUND, mapping: `${INBOUND}['value']`, defaultValue: '', replacements: '' }]
+                        messageSegment, mapping: `${INBOUND}['value']`, defaultValue: '', replacements: '' }]
                 } }
         }]
     };
@@ -75,4 +75,18 @@ test('changing an inbound boundary synchronizes a matching outbound index and ot
         mapping: `${INBOUND}['value'][j]`, messageSegment: `${OUTBOUND}[j]`
     });
     await info.attach('saved-outbound-synchronization', { body: JSON.stringify(created, null, 2), contentType: 'application/json' });
+});
+
+test('the outbound chooser keeps a whole method call and the order of explicitly chosen prefixes', async ({ page }) => {
+    const editor = await openBuilder(page, 'iterator-outbound-method', "tmp['result'][0].value.toString()");
+    const outbound = "tmp['result'].value.toString()";
+    await expect(editor.outbound.locator('option')).toHaveCount(1);
+    await expect(editor.outbound).toHaveValue(outbound);
+    expect((await editor.acceptAndSave()).properties.prefixSubstitutions.string).toEqual([INBOUND, outbound]);
+});
+
+test('two explicitly identical inbound and outbound prefixes both survive save', async ({ page }) => {
+    const editor = await openBuilder(page, 'iterator-outbound-same', INBOUND);
+    await expect(editor.outbound).toHaveValue(INBOUND);
+    expect((await editor.acceptAndSave()).properties.prefixSubstitutions.string).toEqual([INBOUND, INBOUND]);
 });

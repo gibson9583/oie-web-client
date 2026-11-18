@@ -3,17 +3,11 @@
  * Only the shipped expression fields participate, never arbitrary script text.
  */
 
-import { readMemberChain } from './rhino-key-source.js';
+import { isJavaBlank, readExpressionParts } from './rhino-key-source.js';
 
 type Element = Record<string, any>;
 
 const ITERATOR_TYPES = new Set(['com.mirth.connect.model.IteratorStep', 'com.mirth.connect.model.IteratorRule']);
-// Rhino uses Java identifier character categories, including currency symbols.
-const name = '[\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}][\\p{L}\\p{Nl}\\p{Sc}\\p{Pc}\\p{Mn}\\p{Mc}\\p{Nd}\\p{Cf}]*';
-const identifierOnly = new RegExp('^' + name + '$', 'u');
-const keywordLiterals = new Set(['true', 'false', 'null', 'this']);
-const numericLiteral = /^(?:0[xX][\da-fA-F]+|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)$/;
-
 function elementType(element: Element): string {
     return element.__type || element['@class'] || '';
 }
@@ -69,89 +63,43 @@ function stringLiteralSource(literal: string): string | null {
     return source + quote;
 }
 
-const quotedKey = /^(?:"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*')$/;
+const stringSuffix = '.toString()';
 
-type ExpressionPart = { value: string; numeric?: boolean };
-
-// ElementGet keys and XmlDotQuery predicates share the visitor's child rules.
-// Unsupported child roots are ignored, while the surrounding member chain
-// remains eligible for numeric-index removal.
-function appendChildParts(parts: ExpressionPart[], key: string, raw: string): void {
-    const quoted = quotedKey.test(key);
-    if (identifierOnly.test(key) && !keywordLiterals.has(key)) {
-        parts.push({ value: parts.length ? `[${key}]` : key });
-    } else if (quoted || numericLiteral.test(key)) {
-        const value = quoted ? stringLiteralSource(key) : key;
-        if (value == null) throw new Error('Invalid string');
-        if (parts.length) parts.push({ value: `[${value}]`, numeric: numericLiteral.test(key) });
-    } else appendMemberParts(raw, parts, true);
-}
-
-/* A member-expression reader, rather than a global [number] replacement: a
- * quoted key containing "[0]", a binary expression, a call or arbitrary code
- * must not have its source edited as though it were a tree path. Rhino's
- * ExpressionVisitor follows member chains and leaves other roots intact.
- */
-function appendMemberParts(expression: string, parts: ExpressionPart[], nested = false): boolean {
-    const chain = readMemberChain(expression, stringLiteralSource, nested);
-    if (!chain) return false;
-    // A nested Name uses its immediate AST parent, so keys.foo contributes
-    // .keys.foo while keys['foo'] contributes [keys]['foo'].
-    const propertyParent = chain.members[0]?.kind === 'property' && chain.members[0].ordinary;
-    if (chain.root) parts.push({ value: parts.length ? propertyParent ? `.${chain.root}` : `[${chain.root}]` : chain.root });
-    for (const member of chain.members) {
-        if (member.kind === 'child') {
-            appendChildParts(parts, member.source, member.expression);
-        } else if (parts.length) parts.push({ value: '.' + member.source });
-        else if (member.kind === 'property' && member.ordinary) parts.push({ value: member.source });
-    }
-    return true;
-}
-
-function expressionParts(expression: string): ExpressionPart[] | null {
-    const parts: ExpressionPart[] = [];
-    try { return appendMemberParts(expression, parts) && parts.length ? parts : null; }
-    catch { return null; }
+function withoutStringSuffix(expression: string): string {
+    return expression.endsWith(stringSuffix) ? expression.slice(0, -stringSuffix.length) : expression;
 }
 
 export function removeNumberLiterals(expression: string): string {
     if (typeof expression !== 'string') return expression;
-    const suffix = expression.endsWith('.toString()') ? '.toString()' : '';
-    const body = suffix ? expression.slice(0, -suffix.length) : expression;
-    const parts = expressionParts(body);
-    return parts ? parts.filter(part => !part.numeric).map(part => part.value).join('') + suffix : expression;
+    const body = withoutStringSuffix(expression);
+    return readExpressionParts(body, stringLiteralSource).map(part => part.value).join('') + expression.slice(body.length);
+}
+
+function wizardComponents(expression: string) {
+    let prefix = '';
+    return readExpressionParts(expression, stringLiteralSource).map(({ value, propertyName }) => {
+        prefix += value;
+        return { value: prefix, propertyName };
+    });
 }
 
 /** Cumulative member prefixes offered by the iterator creation dialog. */
 export function iteratorExpressionParts(expression: string): string[] {
-    const body = expression.endsWith('.toString()') ? expression.slice(0, -'.toString()'.length) : expression;
-    const parts = expressionParts(body);
-    if (!parts) return body.trim() ? [body] : [];
-    let prefix = '';
-    return parts.filter(part => !part.numeric).map(part => (prefix += part.value));
+    return wizardComponents(withoutStringSuffix(expression)).map(part => part.value);
 }
 
 /** Swing hides a boundary immediately before an enclosing iterator's index. */
-export function iteratorWizardPrefixes(expression: string, ancestorIndices: string[]) {
-    const prefixes = iteratorExpressionParts(expression);
-    const isAncestorIndex = (index: number) => {
-        const component = prefixes[index]?.slice(prefixes[index - 1]?.length || 0);
-        // XmlPropRef exposes the local name for both @i and ns::i. Quoted
-        // element keys retain their quotes and must not match a variable.
-        // XmlElemRef exposes its index expression: ns::[i] matches i.
-        const elementRef = component?.match(/^\.@?(?:[^[]*::)?\[([\s\S]*)\]$/);
-        const property = elementRef ? elementRef[1]
-            : component?.startsWith('.') ? component.slice(1).replace(/^@/, '').split('::').at(-1) : component;
-        return ancestorIndices.some(variable => component === `[${variable}]` || property === variable);
-    };
-    const choices = prefixes.map((value, index) => ({ value, index }))
+export function iteratorWizardPrefixes(expression: string, ancestorIndices: string[], field: 'target' | 'outbound' = 'target') {
+    const parts = wizardComponents(field === 'target' ? withoutStringSuffix(expression) : expression);
+    const isAncestorIndex = (index: number) => !!parts[index] && ancestorIndices.includes(parts[index].propertyName);
+    const choices = parts.map(({ value }, index) => ({ value, index }))
         .filter(({ index }) => !isAncestorIndex(index + 1));
     let minIndex = 0;
-    for (let index = prefixes.length - 1; index >= 0; index--) {
+    for (let index = parts.length - 1; index >= 0; index--) {
         if (isAncestorIndex(index)) { minIndex = index + 1; break; }
     }
     const preferred = (values: typeof choices) => values.find(choice => choice.index > 0) || values[0];
-    return { choices, selected: preferred(choices.filter(choice => choice.index >= minIndex)) || preferred(choices) };
+    return { root: parts[0]?.value, choices, selected: preferred(choices.filter(choice => choice.index >= minIndex)) || preferred(choices) };
 }
 
 export function validIteratorIndex(ancestorIndices: string[], descendantIndices: string[]): string {
@@ -166,7 +114,7 @@ export function validIteratorIndex(ancestorIndices: string[], descendantIndices:
 
 /** The first matching iterator at the greatest matched ancestor depth wins. */
 export function preferredIterator(expression: string, iterators: Element[], selected?: Element): Element | null {
-    if (expression.endsWith('.toString()')) expression = expression.slice(0, -'.toString()'.length);
+    expression = withoutStringSuffix(expression);
     let preferred: Element | null = null;
     let maxDepth = -1;
     const visit = (nodes: Element[], target: string, depth: number) => {
@@ -191,8 +139,8 @@ export function iteratorName(element: Element): string {
         : `For each ${target}`;
 }
 
-function rewriteExpression(expression: any, ancestors: Element[], replace: boolean): any {
-    if (typeof expression !== 'string' || !expression.trim()) return expression;
+export function rewriteIteratorExpression(expression: any, ancestors: Element[], replace: boolean): any {
+    if (typeof expression !== 'string' || isJavaBlank(expression)) return expression;
     const iterators = replace ? ancestors : [...ancestors].reverse();
     for (const iterator of iterators) {
         const props = iterator.properties || {};
@@ -200,7 +148,7 @@ function rewriteExpression(expression: any, ancestors: Element[], replace: boole
         for (const prefix of strings(props.prefixSubstitutions)) {
             if (replace) {
                 if (expression.startsWith(prefix) && !expression.startsWith(prefix + index)) {
-                    const suffix = removeNumberLiterals('msg' + expression.slice(prefix.length)).slice(3);
+                    const suffix = removeNumberLiterals('msg' + expression.slice(prefix.length)).replace(/^msg/, '');
                     expression = prefix + index + suffix;
                 }
             } else if (expression.startsWith(prefix + index)) {
@@ -269,7 +217,7 @@ export function rewriteElementIteratorVariables(element: Element, ancestors: Ele
     const iterator = ITERATOR_TYPES.has(type);
     const childAncestors = iterator ? [...ancestors, element] : ancestors;
     if (iterator && !replace) for (const child of children(element)) rewriteElementIteratorVariables(child, childAncestors, false);
-    const rewrite = (value: any) => rewriteExpression(value, ancestors, replace);
+    const rewrite = (value: any) => rewriteIteratorExpression(value, ancestors, replace);
     let fields: string[] = [];
     if (type === 'com.mirth.connect.plugins.mapper.MapperStep') fields = ['mapping', 'defaultValue'];
     else if (type === 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep') fields = ['messageSegment', 'mapping', 'defaultValue'];
@@ -291,7 +239,7 @@ export function getIteratorInfo(element: Element): { target: string; outbound: s
     if (ITERATOR_TYPES.has(type)) return { target: element.properties?.target || '', outbound: null };
     if (type === 'com.mirth.connect.plugins.mapper.MapperStep') return { target: element.mapping || '', outbound: null };
     if (type === 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep') {
-        return element.mapping?.trim() ? { target: element.mapping, outbound: element.messageSegment || '' }
+        return !isJavaBlank(element.mapping) ? { target: element.mapping, outbound: element.messageSegment || '' }
             : { target: element.messageSegment || '', outbound: null };
     }
     if (type === 'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule' || type === 'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep') return { target: element.field || '', outbound: null };
@@ -300,15 +248,19 @@ export function getIteratorInfo(element: Element): { target: string; outbound: s
 }
 
 /** Swing normalizes the primary iterator input on Assign, independently of the auxiliary fields. */
-export function normalizeIteratorTarget(element: Element): void {
+export function normalizeIteratorTarget(element: Element, previous: Element[] = [], current: Element[] = []): void {
     const type = elementType(element);
     const info = getIteratorInfo(element);
-    const target = removeNumberLiterals(info.target);
-    const outbound = info.outbound == null ? null : removeNumberLiterals(info.outbound);
+    const normalize = (expression: string) => {
+        const detached = rewriteIteratorExpression(removeNumberLiterals(expression), previous, false);
+        return rewriteIteratorExpression(detached, current, true);
+    };
+    const target = normalize(info.target);
+    const outbound = info.outbound == null ? null : normalize(info.outbound);
     if (ITERATOR_TYPES.has(type)) element.properties.target = target;
     else if (type === 'com.mirth.connect.plugins.mapper.MapperStep') element.mapping = target;
     else if (type === 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep') {
-        if (!outbound?.trim()) element.messageSegment = target;
+        if (isJavaBlank(outbound)) element.messageSegment = target;
         else { element.messageSegment = outbound; element.mapping = target; }
     } else if (type === 'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule' || type === 'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep') element.field = target;
     // XSLT has getIteratorInfo but deliberately inherits the no-op setter.
