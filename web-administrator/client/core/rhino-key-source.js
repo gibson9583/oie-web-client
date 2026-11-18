@@ -27,15 +27,77 @@ const precedence = {
     '<': 10, '>': 10, '<=': 10, '>=': 10, in: 10, instanceof: 10,
     '<<': 11, '>>': 11, '>>>': 11, '+': 12, '-': 12, '*': 13, '/': 13, '%': 13
 };
+const escapes = { b: '\b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v' };
+const escapeByCharacter = new Map(Object.entries(escapes).map(([key, value]) => [value, key]));
+// Rhino StringLiteral.toSource decodes JavaScript escapes, then prints the
+// original quote style with ASCII escapes. Keep this limited to literal keys;
+// no user expression is evaluated.
+function stringLiteralSource(literal) {
+    const quote = literal[0];
+    let value = '';
+    for (let index = 1; index < literal.length - 1; index++) {
+        let ch = literal[index];
+        if (ch === '\\') {
+            while (literal[index + 1] && literal[index + 1] !== '\ufeff' && /\p{Cf}/u.test(literal[index + 1]))
+                index++;
+            ch = literal[++index];
+            if (Object.hasOwn(escapes, ch))
+                value += escapes[ch];
+            else if (ch === 'u' || ch === 'x') {
+                const size = ch === 'u' ? 4 : 2;
+                const hex = literal.slice(index + 1, index + 1 + size);
+                if (hex.length !== size || !/^[\da-f]+$/i.test(hex))
+                    return null;
+                value += String.fromCharCode(parseInt(hex, 16));
+                index += size;
+            }
+            else if (/[0-7]/.test(ch)) {
+                let octal = ch;
+                while (octal.length < 3 && /[0-7]/.test(literal[index + 1] || '')
+                    && parseInt(octal + literal[index + 1], 8) <= 255)
+                    octal += literal[++index];
+                value += String.fromCharCode(parseInt(octal, 8));
+            }
+            else if (/[\n\r\u2028\u2029]/.test(ch)) {
+                if (ch === '\r' && literal[index + 1] === '\n')
+                    index++;
+            }
+            else
+                value += ch;
+        }
+        else {
+            if (/[\n\r\u2028\u2029]/.test(ch))
+                return null;
+            value += ch;
+        }
+    }
+    let source = quote;
+    for (let index = 0; index < value.length; index++) {
+        const ch = value[index];
+        const code = value.charCodeAt(index);
+        const escape = escapeByCharacter.get(ch);
+        if (escape)
+            source += '\\' + escape;
+        else if (ch === quote || ch === '\\')
+            source += '\\' + ch;
+        else if (code >= 0x20 && code <= 0x7e)
+            source += ch;
+        else
+            source += code < 0x100 ? '\\x' + code.toString(16).padStart(2, '0') : '\\u' + code.toString(16).padStart(4, '0');
+    }
+    return source + quote;
+}
 class RhinoSourceReader {
     text;
-    literalSource;
+    mode;
     position = 0;
     previousEnd = 0;
     rootPath = [];
     linePosition = 0;
     line = 1;
     xmlLiteralDepth = 0;
+    namespaceStatements = 0;
+    hasFormatCharacters;
     functionDepth = 0;
     loopDepth = 0;
     switchDepth = 0;
@@ -43,9 +105,10 @@ class RhinoSourceReader {
     pendingLabels;
     consecutiveLabel = false;
     token = { value: '', end: 0, line: 1 };
-    constructor(text, literalSource) {
+    constructor(text, mode) {
         this.text = text;
-        this.literalSource = literalSource;
+        this.mode = mode;
+        this.hasFormatCharacters = /\p{Cf}/u.test(text);
         this.next();
     }
     advanceCharacters(start, length) {
@@ -84,8 +147,8 @@ class RhinoSourceReader {
         }
         // TokenStream ignores raw BMP format characters while reading tokens,
         // but string text and escaped identifier code units retain them.
-        const tail = withoutFormatCharacters(text.slice(start));
-        const tokenEnd = (length) => this.advanceCharacters(start, length);
+        const tail = this.hasFormatCharacters ? withoutFormatCharacters(text.slice(start)) : text.slice(start);
+        const tokenEnd = (length) => this.hasFormatCharacters ? this.advanceCharacters(start, length) : start + length;
         if (lineBreakBefore && text.startsWith('-->', start)) {
             while (this.position < text.length && !/[\n\r\u2028\u2029]/.test(text[this.position]))
                 this.position++;
@@ -114,23 +177,21 @@ class RhinoSourceReader {
         if (ch === '"' || ch === "'") {
             this.position++;
             while (this.position < text.length) {
-                if (text[this.position] === '\\') {
-                    this.position++;
+                const next = text[this.position++];
+                if (next === ch) {
+                    const value = stringLiteralSource(text.slice(start, this.position));
+                    if (value == null)
+                        throw new Error('Invalid string');
+                    this.token = { value, end: this.position, line, literal: true, lineBreakBefore };
+                    return;
+                }
+                if (next === '\\') {
                     while (formatCharacter(text[this.position]))
                         this.position++;
                     this.position++;
                 }
-                else if (text[this.position++] === ch)
-                    break;
             }
-            const raw = text.slice(start, this.position);
-            if (raw.length < 2 || raw.at(-1) !== ch)
-                throw new Error('Unterminated string');
-            const value = this.literalSource(raw);
-            if (value == null)
-                throw new Error('Invalid string');
-            this.token = { value, end: this.position, line, literal: true, lineBreakBefore };
-            return;
+            throw new Error('Unterminated string');
         }
         const word = encodedName.exec(tail);
         const numeric = number.exec(tail);
@@ -252,7 +313,7 @@ class RhinoSourceReader {
             const args = this.at('(') ? this.arguments() : '()';
             const initializer = this.at('{') ? ' ' + this.primary().source : '';
             node = { source: `new ${target.source}${args}${initializer}` };
-            if (path === this.rootPath)
+            if (this.mode === 'substitution' && path === this.rootPath)
                 path = undefined;
         }
         else {
@@ -273,7 +334,7 @@ class RhinoSourceReader {
             }
             if (this.at('(') && calls) {
                 node = { source: node.source + this.arguments(), reference: true };
-                if (path === this.rootPath && ['.', '..', '.(', '[', '('].includes(this.token.value)) {
+                if (this.mode === 'substitution' && path === this.rootPath && ['.', '..', '.(', '[', '('].includes(this.token.value)) {
                     // A property of a call result cannot stand on its own. Keep the
                     // call and its remaining accesses together. Only ordinary message
                     // selectors before the call can have their repetitions normalized.
@@ -348,9 +409,10 @@ class RhinoSourceReader {
             }
         }
         this.take('[');
+        const beforeKey = this.namespaceStatements;
         const key = this.expression();
         this.take(']');
-        return { kind: 'xml', source: `${prefix}[${key}]`, propertyName: key };
+        return { kind: 'xml', source: `${prefix}[${key}]`, propertyName: key, unprintable: this.namespaceStatements !== beforeKey };
     }
     objectKey() {
         const key = this.token;
@@ -460,6 +522,8 @@ class RhinoSourceReader {
             throw new Error('Expected expression');
         if (/^['"]/.test(token.value))
             path?.push({ kind: 'string', source: token.value });
+        else if (token.literal && this.mode === 'messageBuilder')
+            path?.push({ kind: 'number', source: token.value });
         this.next();
         return { source: token.value };
     }
@@ -534,7 +598,7 @@ class RhinoSourceReader {
         while (this.token.value)
             this.statement();
         const parts = [];
-        for (const { kind, source, propertyName = source } of this.rootPath) {
+        for (const { kind, source, propertyName = source, unprintable } of this.rootPath) {
             let value;
             if (!parts.length) {
                 if (kind !== 'name' && kind !== 'property')
@@ -544,9 +608,11 @@ class RhinoSourceReader {
             else if (kind === 'callTail')
                 value = source;
             else {
+                if (unprintable)
+                    throw new Error('Rhino cannot print a default XML namespace in an XML key');
                 value = kind === 'property' || kind === 'xml' ? '.' + source : `[${source}]`;
             }
-            parts.push({ value, propertyName });
+            parts.push(kind === 'number' ? { value, propertyName, numberLiteral: true } : { value, propertyName });
         }
         if (this.rootPath.some(leaf => leaf.kind === 'callTail')) {
             // A method result is one wizard target. Inferring a matching tmp
@@ -824,6 +890,18 @@ class RhinoSourceReader {
             return this.block();
         if (start === 'function')
             return this.functionSource();
+        if (start === 'default') {
+            // Rhino parses this E4X statement, but its UnaryExpression.toSource
+            // cannot print DEFAULTNAMESPACE. Only a visited XmlElemRef asks for it.
+            this.next();
+            this.take('xml');
+            this.take('namespace');
+            this.take('=');
+            const source = 'default xml namespace = ' + this.expression() + ';';
+            this.semicolon();
+            this.namespaceStatements++;
+            return { kind: 'simple', source };
+        }
         if (start === 'if') {
             this.next();
             const test = this.condition();
@@ -1080,9 +1158,9 @@ export function isJavaBlank(text) {
     return text == null || /^[\u0009-\u000d\u001c-\u0020\u1680\u2000-\u2006\u2008-\u200a\u2028\u2029\u205f\u3000]*$/.test(text);
 }
 /** getExpressionParts falls back to the complete source when the visitor has no parts. */
-export function readExpressionParts(text, literalSource) {
+export function readExpressionParts(text, mode = 'substitution') {
     try {
-        const parts = new RhinoSourceReader(text, literalSource).expressionParts();
+        const parts = new RhinoSourceReader(text, mode).expressionParts();
         if (parts.length)
             return parts;
     }

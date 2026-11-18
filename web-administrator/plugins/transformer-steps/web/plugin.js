@@ -1,6 +1,7 @@
 // plugins/transformer-steps/web/plugin.tsx
 import { platform } from "@oie/web-shell";
 import { replacementPairs, replacementsToWire } from "/core/step-replacements.js";
+import { iteratorName } from "/core/iterator-substitutions.js";
 var React = platform.React;
 var SCOPES = [
   { value: "CHANNEL", label: "Channel Map" },
@@ -124,8 +125,14 @@ function ScriptPathEditor({ element, onChange }) {
     )
   );
 }
-function emptyIteratorProperties() {
-  return { target: "", indexVariable: "i", prefixSubstitutions: "", children: "" };
+function emptyIteratorProperties(isRule) {
+  return {
+    target: "",
+    indexVariable: "i",
+    prefixSubstitutions: "",
+    children: "",
+    ...isRule ? { intersectIterations: false, breakEarly: true } : {}
+  };
 }
 function makeIteratorEditor(isRule) {
   const type = isRule ? "com.mirth.connect.model.IteratorRule" : "com.mirth.connect.model.IteratorStep";
@@ -133,9 +140,14 @@ function makeIteratorEditor(isRule) {
   function IteratorEditor({ element, onChange }) {
     const force = useRerender();
     if (!element.properties || typeof element.properties !== "object") {
-      element.properties = emptyIteratorProperties();
+      element.properties = emptyIteratorProperties(isRule);
     }
     const props = element.properties;
+    const updateName = () => {
+      element.name = iteratorName(element, isBlank(props.target) ? "..." : props.target);
+      onChange();
+      force();
+    };
     return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(
       Field,
       {
@@ -150,8 +162,7 @@ function makeIteratorEditor(isRule) {
           value: props.target ?? "",
           onChange: (e) => {
             props.target = e.target.value;
-            onChange();
-            force();
+            updateName();
           }
         }
       )
@@ -166,7 +177,32 @@ function makeIteratorEditor(isRule) {
           force();
         }
       }
-    )), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(
+    )), isRule && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Field, { label: "Accept Message If" }, /* @__PURE__ */ React.createElement(
+      "select",
+      {
+        "aria-label": "Accept Message If",
+        value: String(props.intersectIterations ?? false),
+        onChange: (e) => {
+          props.intersectIterations = e.target.value === "true";
+          updateName();
+        }
+      },
+      /* @__PURE__ */ React.createElement("option", { value: "false" }, "At least one of the iterations returns true"),
+      /* @__PURE__ */ React.createElement("option", { value: "true" }, "All of the iterations return true")
+    )), /* @__PURE__ */ React.createElement(Field, { label: "Break Early" }, /* @__PURE__ */ React.createElement(
+      "select",
+      {
+        "aria-label": "Break Early",
+        value: String(props.breakEarly ?? true),
+        onChange: (e) => {
+          props.breakEarly = e.target.value === "true";
+          onChange();
+          force();
+        }
+      },
+      /* @__PURE__ */ React.createElement("option", { value: "true" }, "Yes"),
+      /* @__PURE__ */ React.createElement("option", { value: "false" }, "No")
+    ))), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(
       Field,
       {
         label: "Prefix Substitutions",
@@ -194,7 +230,7 @@ function makeIteratorEditor(isRule) {
       name: "",
       enabled: true,
       ...isRule ? { operator: "AND" } : null,
-      properties: emptyIteratorProperties()
+      properties: emptyIteratorProperties(isRule)
     }),
     validate: (el) => {
       const p = el.properties || {};

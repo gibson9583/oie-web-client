@@ -4,6 +4,7 @@
  * Only the shipped expression fields participate, never arbitrary script text.
  */
 import { isJavaBlank, readExpressionParts } from './rhino-key-source.js';
+import { REPLACEMENT_PAIR } from './step-replacements.js';
 const ITERATOR_TYPES = new Set(['com.mirth.connect.model.IteratorStep', 'com.mirth.connect.model.IteratorRule']);
 function elementType(element) {
     return element.__type || element['@class'] || '';
@@ -14,65 +15,6 @@ function strings(value) {
         return [];
     return (Array.isArray(list) ? list : [list]).map(item => String(item ?? ''));
 }
-// Rhino StringLiteral.toSource decodes JavaScript escapes, then prints the
-// original quote style with ASCII escapes. Keep this limited to literal keys;
-// no user expression is evaluated.
-function stringLiteralSource(literal) {
-    const quote = literal[0];
-    const escapes = { b: '\b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v' };
-    let value = '';
-    for (let index = 1; index < literal.length - 1; index++) {
-        let ch = literal[index];
-        if (ch === '\\') {
-            while (literal[index + 1] && literal[index + 1] !== '\ufeff' && /\p{Cf}/u.test(literal[index + 1]))
-                index++;
-            ch = literal[++index];
-            if (Object.hasOwn(escapes, ch))
-                value += escapes[ch];
-            else if (ch === 'u' || ch === 'x') {
-                const size = ch === 'u' ? 4 : 2;
-                const hex = literal.slice(index + 1, index + 1 + size);
-                if (hex.length !== size || !/^[\da-f]+$/i.test(hex))
-                    return null;
-                value += String.fromCharCode(parseInt(hex, 16));
-                index += size;
-            }
-            else if (/[0-7]/.test(ch)) {
-                let octal = ch;
-                while (octal.length < 3 && /[0-7]/.test(literal[index + 1] || '')
-                    && parseInt(octal + literal[index + 1], 8) <= 255)
-                    octal += literal[++index];
-                value += String.fromCharCode(parseInt(octal, 8));
-            }
-            else if (/[\n\r\u2028\u2029]/.test(ch)) {
-                if (ch === '\r' && literal[index + 1] === '\n')
-                    index++;
-            }
-            else
-                value += ch;
-        }
-        else {
-            if (/[\n\r\u2028\u2029]/.test(ch))
-                return null;
-            value += ch;
-        }
-    }
-    let source = quote;
-    for (let index = 0; index < value.length; index++) {
-        const ch = value[index];
-        const code = value.charCodeAt(index);
-        const escape = Object.keys(escapes).find(key => escapes[key] === ch);
-        if (escape)
-            source += '\\' + escape;
-        else if (ch === quote || ch === '\\')
-            source += '\\' + ch;
-        else if (code >= 0x20 && code <= 0x7e)
-            source += ch;
-        else
-            source += code < 0x100 ? '\\x' + code.toString(16).padStart(2, '0') : '\\u' + code.toString(16).padStart(4, '0');
-    }
-    return source + quote;
-}
 const stringSuffix = '.toString()';
 function withoutStringSuffix(expression) {
     return expression.endsWith(stringSuffix) ? expression.slice(0, -stringSuffix.length) : expression;
@@ -81,11 +23,11 @@ export function removeNumberLiterals(expression) {
     if (typeof expression !== 'string')
         return expression;
     const body = withoutStringSuffix(expression);
-    return readExpressionParts(body, stringLiteralSource).map(part => part.value).join('') + expression.slice(body.length);
+    return readExpressionParts(body).map(part => part.value).join('') + expression.slice(body.length);
 }
 function wizardComponents(expression) {
     let prefix = '';
-    return readExpressionParts(expression, stringLiteralSource).map(({ value, propertyName }) => {
+    return readExpressionParts(expression).map(({ value, propertyName }) => {
         prefix += value;
         return { value: prefix, propertyName };
     });
@@ -142,10 +84,10 @@ export function preferredIterator(expression, iterators, selected) {
     visit(iterators, expression, 0);
     return preferred;
 }
-export function iteratorName(element) {
-    const target = element.properties?.target || '';
+export function iteratorName(element, target = element.properties?.target ?? '') {
+    const all = String(element.properties?.intersectIterations) === 'true';
     return elementType(element) === 'com.mirth.connect.model.IteratorRule'
-        ? `Accept message if ${element.properties?.intersectIterations ? 'all of the iterations return' : 'at least one of the iterations returns'} true for each ${target}`
+        ? `Accept message if ${all ? 'all of the iterations return' : 'at least one of the iterations returns'} true for each ${target}`
         : `For each ${target}`;
 }
 export function rewriteIteratorExpression(expression, ancestors, replace) {
@@ -183,12 +125,11 @@ function rewriteReplacements(element, rewrite) {
     const value = element.replacements;
     if (!value)
         return;
-    const list = value['org.apache.commons.lang3.tuple.ImmutablePair'] ?? value.entry ?? value;
+    const list = value[REPLACEMENT_PAIR] ?? value.entry ?? value;
     const rewriteValue = (value) => {
-        if (value && typeof value === 'object' && Object.hasOwn(value, '$'))
-            value.$ = rewrite(value.$);
-        else
+        if (!value || typeof value !== 'object' || !Object.hasOwn(value, '$'))
             return rewrite(value);
+        value.$ = rewrite(value.$);
         return value;
     };
     const pairs = Array.isArray(list) ? list : [list];
@@ -267,18 +208,21 @@ export function rewriteElementIteratorVariables(element, ancestors, replace) {
 }
 export function getIteratorInfo(element) {
     const type = elementType(element);
+    // JSON imports can supply primitives even when the release model declares a String.
+    const text = (value) => String(value ?? '');
     if (ITERATOR_TYPES.has(type))
-        return { target: element.properties?.target || '', outbound: null };
+        return { target: text(element.properties?.target), outbound: null };
     if (type === 'com.mirth.connect.plugins.mapper.MapperStep')
-        return { target: element.mapping || '', outbound: null };
+        return { target: text(element.mapping), outbound: null };
     if (type === 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep') {
-        return !isJavaBlank(element.mapping) ? { target: element.mapping, outbound: element.messageSegment || '' }
-            : { target: element.messageSegment || '', outbound: null };
+        const mapping = text(element.mapping);
+        const segment = text(element.messageSegment);
+        return isJavaBlank(mapping) ? { target: segment, outbound: null } : { target: mapping, outbound: segment };
     }
     if (type === 'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule' || type === 'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep')
-        return { target: element.field || '', outbound: null };
+        return { target: text(element.field), outbound: null };
     if (type === 'com.mirth.connect.plugins.xsltstep.XsltStep')
-        return { target: element.sourceXml || '', outbound: null };
+        return { target: text(element.sourceXml), outbound: null };
     return { target: '', outbound: null };
 }
 /** Swing normalizes the primary iterator input on Assign, independently of the auxiliary fields. */

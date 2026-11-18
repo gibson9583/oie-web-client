@@ -1082,12 +1082,12 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
         const lval = source.accessor.replace(/\.toString\(\)\s*$/, '');   // assignment target, not a read
         if (side === 'inbound') {
             items.push({
-                label: 'Map to Variable', icon: 'transform',
+                label: 'Map to Variable', icon: 'transform', task: 'doSaveChannel', group: 'channelEdit',
                 onClick: () => onAddStep(MAPPER_TYPE, 'Mapper', name, (el: any) => { el.mapping = source.accessor; el.variable = name; })
             });
         }
         items.push({
-            label: 'Map to Message', icon: 'transform',
+            label: 'Map to Message', icon: 'transform', task: 'doSaveChannel', group: 'channelEdit',
             onClick: () => onAddStep(MSGBUILDER_TYPE, 'Message Builder', name, (el: any) => { el.messageSegment = lval; })
         }, '-', { label: 'Copy Accessor', icon: 'copy', onClick: () => copyAccessor(source.accessor) });
         return items;
@@ -1803,17 +1803,17 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
 
     // Swing includes the current parent and index conflicts; validation reports
     // duplicate indices after a move. Only the selected subtree is excluded.
-    function iteratorTargets(path: any) {
-        const source = elementAtPath(elementsRef.current, path);
-        if (!source) return [];
-        return allIteratorPaths(elementsRef.current)
-            .filter(ip => !pathEquals(ip, path) && !isAncestorPath(path, ip))
-            .map(ip => elementAtPath(elementsRef.current, ip))
-            .filter(Boolean);
+    function eligibleIterator(path: number[], source: number[] | null) {
+        return !source || (!pathEquals(path, source) && !isAncestorPath(source, path));
     }
 
     function iteratorAncestors(path: number[]) {
         return path.slice(0, -1).map((_, i) => elementAtPath(elementsRef.current, path.slice(0, i + 1)));
+    }
+
+    function iteratorContext(ancestors: any[]) {
+        return JSON.stringify(ancestors.map(({ properties }) =>
+            [properties?.target, properties?.indexVariable, properties?.prefixSubstitutions]));
     }
 
     function canEditElements() {
@@ -1850,6 +1850,8 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const parentPath = parent ? pathOf(parent, elements) : null;
         const ancestors = sourcePath ? iteratorAncestors(sourcePath)
             : parentPath ? [...iteratorAncestors(parentPath), parent] : [];
+        const context = iteratorContext(ancestors);
+        const originalInfo = getIteratorInfo(el);
         const preview = structuredClone(el);
         if (sourcePath) rewriteElementIteratorVariables(preview, ancestors, false);
         const info = getIteratorInfo(preview);
@@ -1860,11 +1862,38 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const ancestorIndices = ancestors.map(it => it.properties?.indexVariable);
         const targetPrefixes = iteratorWizardPrefixes(wizardTarget, ancestorIndices);
         const outboundPrefixes = iteratorWizardPrefixes(wizardInput(info.outbound || ''), ancestorIndices, 'outbound');
-        const targets = sourcePath ? iteratorTargets(sourcePath)
-            : allIteratorPaths(elements).map(path => elementAtPath(elements, path));
+        const paths = allIteratorPaths(elements).filter(path => eligibleIterator(path, sourcePath));
+        const targets = paths.map(path => elementAtPath(elements, path));
+        const descendantIndices = () => allIteratorPaths([el]).map(path => elementAtPath([el], path).properties?.indexVariable);
+        const index = validIteratorIndex(ancestorIndices, descendantIndices());
+        const createIterator = (target = '', outbound = '') => {
+            const type = isFilter ? 'com.mirth.connect.model.IteratorRule' : 'com.mirth.connect.model.IteratorStep';
+            const iterator = typeDef(type)?.create?.();
+            if (!iterator) return false;
+            iterator.__type = type;
+            iterator.__children = [];
+            iterator.properties.indexVariable = index;
+            if (target) {
+                const prefixes = [target];
+                if (outbound) prefixes.push(outbound);
+                else if (targetPrefixes.root === 'msg') prefixes.push(`tmp${target.slice(3)}`);
+                iterator.properties.target = target;
+                iterator.properties.prefixSubstitutions = { string: prefixes };
+            }
+            onChoose(iterator, true);
+            return true;
+        };
+        if (!targetPrefixes.choices.length && !targets.length) {
+            if (!createIterator()) toast('Iterator is not available.', 'error');
+            return;
+        }
         const choice = h('select', { 'aria-label': 'Iterator' },
             h('option', { value: 'new' }, 'Create New Iterator'),
-            targets.map((it: any, i: number) => h('option', { value: String(i) }, it.name || `Iterator ${i + 1}`))) as HTMLSelectElement;
+            targets.map((it, i) => {
+                const depth = paths[i].length - 1;
+                const indent = depth ? '\u00a0'.repeat(4 + (depth - 1) * 8) + '— ' : '';
+                return h('option', { value: String(i) }, indent + (it.name || `Iterator ${i + 1}`));
+            })) as HTMLSelectElement;
         const preferred = parent || preferredIterator(wizardTarget, elements, sourcePath ? el : undefined);
         const preferredIndex = targets.indexOf(preferred);
         if (preferredIndex >= 0) choice.value = String(preferredIndex);
@@ -1873,20 +1902,32 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             targetPrefixes.choices.map(({ value }) => h('option', { value }, value))) as HTMLSelectElement;
         const outbound = h('select', { 'aria-label': 'Outbound Prefix' },
             outboundPrefixes.choices.map(({ value }) => h('option', { value }, value))) as HTMLSelectElement;
-        const descendantIndices = allIteratorPaths([el]).map(path => elementAtPath([el], path).properties?.indexVariable);
-        const index = validIteratorIndex(ancestorIndices, descendantIndices);
         const indexInput = h('input', { type: 'text', value: index, readOnly: true, 'aria-label': 'Index Variable' }) as HTMLInputElement;
         if (targetPrefixes.selected) target.value = targetPrefixes.selected.value;
+        const lastTarget = targetPrefixes.choices.at(-1)?.value || '';
+        const lastOutbound = outboundPrefixes.choices.at(-1)?.value || '';
+        const substitutions = h('div.mono.break-all', { 'aria-live': 'polite' });
+        function updateSubstitutions() {
+            const preview = (source: string, prefix: string) =>
+                h('div', source, ' → ', prefix, h('strong', `[${index}]`), source.slice(prefix.length));
+            substitutions.replaceChildren(preview(lastTarget, target.value));
+            if (outbound.value) substitutions.appendChild(preview(lastOutbound, outbound.value));
+        }
         function syncOutbound() {
             const selected = targetPrefixes.choices.find(prefix => prefix.value === target.value);
             const matching = outboundPrefixes.choices.find(prefix => prefix.index === selected?.index);
             if (matching) outbound.value = matching.value;
+            updateSubstitutions();
         }
         syncOutbound();
         target.addEventListener('change', syncOutbound);
+        outbound.addEventListener('change', updateSubstitutions);
         const field = (label: string, input: HTMLElement) => h('label.field', label, input);
-        const fields = h('div', field('Iterate On', target), field('Index Variable', indexInput),
-            outboundPrefixes.choices.length ? field('Outbound Prefix', outbound) : null);
+        const fields = targetPrefixes.choices.length
+            ? h('div', field('Iterate On', target), field('Index Variable', indexInput),
+                outboundPrefixes.choices.length ? field('Outbound Prefix', outbound) : null,
+                h('p', 'Drag-and-drop substitutions'), substitutions)
+            : h('p', 'Not enough information available to select iteration target. A new blank Iterator will be added.');
         fields.hidden = choice.value !== 'new';
         const error = h('p.text-danger', { role: 'alert' });
         choice.addEventListener('change', () => { fields.hidden = choice.value !== 'new'; error.textContent = ''; });
@@ -1901,51 +1942,36 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                     const currentParentPath = parent ? pathOf(parent, elementsRef.current) : null;
                     const currentAncestors = currentPath ? iteratorAncestors(currentPath)
                         : currentParentPath ? [...iteratorAncestors(currentParentPath), parent] : [];
+                    const currentInfo = getIteratorInfo(el);
                     if ((sourcePath && !currentPath) || (parent && !currentParentPath)
                         || currentAncestors.length !== ancestors.length
-                        || currentAncestors.some((it: any, i: number) => it !== ancestors[i])) {
+                        || currentAncestors.some((it: any, i: number) => it !== ancestors[i])
+                        || iteratorContext(currentAncestors) !== context
+                        || currentInfo.target !== originalInfo.target || currentInfo.outbound !== originalInfo.outbound) {
                         error.textContent = 'The iterator context changed. Close this dialog and try again.';
                         return false;
                     }
                     if (choice.value !== 'new') {
                         const iterator = targets[Number(choice.value)];
-                        const currentTargets = currentPath ? iteratorTargets(currentPath)
-                            : allIteratorPaths(elementsRef.current).map(path => elementAtPath(elementsRef.current, path));
-                        if (!currentTargets.includes(iterator)) {
+                        const destination = pathOf(iterator, elementsRef.current);
+                        if (!destination || !isIteratorType(iterator.__type) || !eligibleIterator(destination, currentPath)) {
                             error.textContent = 'The iterator context changed. Close this dialog and try again.';
                             return false;
                         }
                         onChoose(iterator, false); return;
                     }
-                    const currentIndices = allIteratorPaths([el]).map(path => elementAtPath([el], path).properties?.indexVariable);
-                    if (validIteratorIndex(currentAncestors.map(it => it.properties?.indexVariable), currentIndices) !== index) {
+                    if (validIteratorIndex(currentAncestors.map(it => it.properties?.indexVariable), descendantIndices()) !== index) {
                         error.textContent = 'The iterator context changed. Close this dialog and try again.';
                         return false;
                     }
-                    const type = isFilter ? 'com.mirth.connect.model.IteratorRule' : 'com.mirth.connect.model.IteratorStep';
-                    const def = typeDef(type);
-                    if (!def?.create) { error.textContent = 'Iterator is not available.'; return false; }
-                    const iterator = def.create();
-                    iterator.__type = type;
-                    iterator.__children = [];
-                    const prefixes = target.value ? [target.value] : [];
-                    if (outbound.value) prefixes.push(outbound.value);
-                    else if (targetPrefixes.root === 'msg') {
-                        prefixes.push(`tmp${target.value.slice(3)}`);
-                    }
-                    Object.assign(iterator.properties, {
-                        target: target.value, indexVariable: index,
-                        prefixSubstitutions: prefixes.length ? { string: prefixes } : '',
-                        ...(isFilter ? { intersectIterations: false, breakEarly: true } : {})
-                    });
-                    iterator.name = iteratorName(iterator);
-                    onChoose(iterator, true);
+                    if (!createIterator(target.value, outbound.value)) { error.textContent = 'Iterator is not available.'; return false; }
                 } }
             ]
         });
     }
 
     function assignToIterator() {
+        if (!canEditElements()) return;
         const el = elementAtPath(elementsRef.current, selectedPathRef.current);
         if (!el) { toast(`Select a ${kind.noun.toLowerCase()} first`, 'warn'); return; }
         const path = pathOf(el, elementsRef.current);
@@ -1953,7 +1979,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const assign = (iterator: any, created: boolean) => {
             if (!canEditElements()) return;
             const sourcePath = pathOf(el, elementsRef.current);
-            if (!sourcePath || (!created && !iteratorTargets(sourcePath).includes(iterator))) return;
+            if (!sourcePath) return;
             if (created) {
                 listAtPath(elementsRef.current, sourcePath).splice(sourcePath.at(-1), 0, iterator);
                 rewriteElementIteratorVariables(iterator, iteratorAncestors(pathOf(iterator, elementsRef.current)), true);
@@ -1961,22 +1987,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             }
             relocateElement(created ? pathOf(el, elementsRef.current) : sourcePath, iterator, { assignment: created ? 'new' : 'existing' });
         };
-        const preview = structuredClone(el);
-        rewriteElementIteratorVariables(preview, iteratorAncestors(path), false);
-        normalizeIteratorTarget(preview);
-        if (!iteratorExpressionParts(getIteratorInfo(preview).target).length && !iteratorTargets(path).length) {
-            const type = isFilter ? 'com.mirth.connect.model.IteratorRule' : 'com.mirth.connect.model.IteratorStep';
-            const def = typeDef(type);
-            if (!def?.create) { toast('Iterator is not available.', 'error'); return; }
-            const iterator = def.create();
-            iterator.__type = type;
-            iterator.__children = [];
-            if (isFilter) Object.assign(iterator.properties, { intersectIterations: false, breakEarly: true });
-            iterator.properties.indexVariable = validIteratorIndex(
-                iteratorAncestors(path).map(it => it.properties?.indexVariable),
-                allIteratorPaths([el]).map(ip => elementAtPath([el], ip).properties?.indexVariable));
-            assign(iterator, true);
-        } else chooseIterator(el, parent, assign);
+        chooseIterator(el, parent, assign);
     }
 
     function removeFromIterator() {
@@ -1992,6 +2003,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
 
     // Steps created from a message-tree node (Map to Variable / Map to Message).
     function addTreeStep(typeId: any, label: any, baseName: any, setup: any) {
+        if (!canEditElements()) return;
         const def = platform.stepTypes().get(typeId);
         if (!def) { toast(`${label} is not available`, 'warn'); return; }
         const el = def.create ? def.create() : { __type: typeId };
@@ -2005,14 +2017,14 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 ? elementAtPath(elementsRef.current, selectedPathRef.current.slice(0, -1)) : null;
         const parentPath = parent ? pathOf(parent, elementsRef.current) : null;
         const ancestors = parentPath ? [...iteratorAncestors(parentPath), parent] : [];
-        const ancestorState = JSON.stringify(ancestors.map(it => it.properties));
+        const ancestorState = iteratorContext(ancestors);
         const isCurrent = channelSessionActive();
         const contextCurrent = () => {
             const currentPath = parent ? pathOf(parent, elementsRef.current) : null;
             const currentAncestors = currentPath ? [...iteratorAncestors(currentPath), parent] : [];
             return isCurrent() && canEditElements() && (!parent || currentPath)
                 && currentAncestors.length === ancestors.length && currentAncestors.every((it, i) => it === ancestors[i])
-                && JSON.stringify(currentAncestors.map(it => it.properties)) === ancestorState;
+                && iteratorContext(currentAncestors) === ancestorState;
         };
         // The chooser shows the selected parent's indices. Keep the tree
         // accessor itself intact until we know which iterator will own it.

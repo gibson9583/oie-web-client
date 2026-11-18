@@ -63,7 +63,10 @@ test('changing an inbound boundary synchronizes a matching outbound index and ot
     await expect(editor.outbound).toHaveValue('tmp');
     await editor.target.selectOption('values[i]');
     await expect(editor.outbound).toHaveValue(OUTBOUND);
+    await expect(editor.dialog.getByText("values[i]['field']['value'] → values[i][j]['field']['value']", { exact: true })).toBeVisible();
+    await expect(editor.dialog.getByText("tmp['result'] → tmp['result'][j]", { exact: true })).toBeVisible();
     await editor.outbound.selectOption('tmp');
+    await expect(editor.dialog.getByText("tmp['result'] → tmp[j]['result']", { exact: true })).toBeVisible();
     await editor.target.selectOption(INBOUND);
     await expect(editor.outbound).toHaveValue('tmp');
     await editor.outbound.selectOption(OUTBOUND);

@@ -15,6 +15,7 @@
  * attributes and any properties contributed by server-side plugins.
  */
 import * as oie from './oie.js';
+import { REPLACEMENT_PAIR } from './step-replacements.js';
 import { API_BASE } from './deployment.js';
 import { engineFetch, assertEngineResponse, captureEngineSession } from './engine-fetch.js';
 import { parseMessageDocument, parseMessageXml, parseMessageListXml } from './message-xml.js';
@@ -471,13 +472,53 @@ export const users = {
    ========================================================================== */
 const responseName = (name, parent) => name === 'responseVariable' && parent === 'sourceConnectorProperties'
     || name === 'variable' && parent === 'com.mirth.connect.plugins.mapper.MapperStep';
-const hasResponseName = (value, test, parent = '') => Array.isArray(value)
-    ? value.some(item => hasResponseName(item, test, parent))
-    : !!value && typeof value === 'object' && Object.entries(value).some(([key, child]) => responseName(key, parent) && test(child) || hasResponseName(child, test, key));
-// Only ambiguous JSON names need an additional XML read. Reject a changed
-// snapshot instead of combining a newer response name with an older channel.
-async function restoreResponseNames(channel) {
-    if (!hasResponseName(channel, value => typeof value !== 'string'))
+// These shipped plugin fields contain JavaScript source, including literal
+// expressions such as false, -0 and null. The JSON writer loses their spelling.
+function editorText(name, parent, owner, holder) {
+    if (responseName(name, parent))
+        return true;
+    switch (parent) {
+        case 'com.mirth.connect.plugins.mapper.MapperStep':
+            return name === 'mapping' || name === 'defaultValue';
+        case 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep':
+            return name === 'mapping' || name === 'messageSegment' || name === 'defaultValue';
+        case 'com.mirth.connect.plugins.xsltstep.XsltStep':
+            return name === 'sourceXml';
+        case 'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule':
+        case 'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep':
+            return name === 'field';
+        case 'properties':
+            return (name === 'target' || name === 'indexVariable')
+                && (owner === 'com.mirth.connect.model.IteratorRule' || owner === 'com.mirth.connect.model.IteratorStep');
+        case 'values':
+            return name === 'string' && (owner === 'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule'
+                || owner === 'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep');
+        case 'prefixSubstitutions':
+            return name === 'string' && owner === 'properties';
+        case 'left':
+        case 'right':
+            return name === '$' && holder['@class'] === 'string' && owner === REPLACEMENT_PAIR;
+        default:
+            return false;
+    }
+}
+function someChannelText(value, field, test, parent = '', owner = '') {
+    if (!value || typeof value !== 'object')
+        return false;
+    if (Array.isArray(value))
+        return value.some(item => someChannelText(item, field, test, parent, owner));
+    return Object.entries(value).some(([key, child]) => {
+        if (field(key, parent, owner, value))
+            return Array.isArray(child) ? child.some(test) : test(child);
+        return someChannelText(child, field, test, key, parent);
+    });
+}
+// A single revision-checked XML read supplies the original strings for every
+// ambiguous field. Lists need response names, individual channels also need
+// exact editor source.
+async function restoreChannelText(channel, field) {
+    const ambiguous = (value) => typeof value !== 'string';
+    if (!someChannelText(channel, field, ambiguous))
         return channel;
     const root = parseMessageDocument(await getXml(`/channels/${enc(channel.id)}`)).documentElement;
     const direct = (node, tag) => Array.from(node.children).find(child => child.tagName === tag);
@@ -485,19 +526,22 @@ async function restoreResponseNames(channel) {
     if (root.tagName !== 'channel' || direct(root, 'id')?.textContent !== String(channel.id)
         || direct(root, 'revision')?.textContent !== String(channel.revision)
         || (stamp ?? '') !== String(channel.exportData?.metadata?.lastModified?.time ?? '')) {
-        throw new Error('Channel changed while reading response names. Reload the channel and retry.');
+        throw new Error('Channel changed while reading its text fields. Reload the channel and retry.');
     }
     const restored = cloneJson(channel);
     const patch = (value, node) => {
         if (!value || typeof value !== 'object')
             return;
         for (const [key, child] of Object.entries(value)) {
-            const nodes = Array.from(node.children).filter(item => item.tagName === key);
-            if (responseName(key, node.tagName)) {
-                if (nodes.length !== 1 || nodes[0].children.length || nodes[0].hasAttribute('reference')) {
-                    throw new Error('Engine returned invalid response name XML.');
+            const nodes = key === '$' ? [node] : Array.from(node.children).filter(item => item.tagName === key);
+            if (field(key, node.tagName, node.parentElement?.tagName || '', value)) {
+                const items = Array.isArray(child) ? child : [child];
+                if (!items.some(ambiguous))
+                    continue;
+                if (nodes.length !== items.length || nodes.some(item => item.children.length || item.hasAttribute('reference'))) {
+                    throw new Error(responseName(key, node.tagName) ? 'Engine returned invalid response name XML.' : 'Engine returned invalid expression XML.');
                 }
-                value[key] = nodes[0].textContent ?? '';
+                value[key] = Array.isArray(child) ? nodes.map(item => item.textContent ?? '') : nodes[0].textContent ?? '';
             }
             else
                 (Array.isArray(child) ? child : [child]).forEach((item, index) => {
@@ -507,24 +551,25 @@ async function restoreResponseNames(channel) {
         }
     };
     patch(restored, root);
-    if (hasResponseName(restored, value => typeof value !== 'string'))
-        throw new Error('Engine returned incomplete response name XML.');
+    if (someChannelText(restored, field, ambiguous))
+        throw new Error('Engine returned incomplete channel text XML.');
     return restored;
 }
 async function readChannels(path, params, list = false) {
     const assertSession = captureEngineSession();
     const value = await get(path, params);
     assertSession();
-    const result = list ? await Promise.all(asList(value, 'channel').map(restoreResponseNames)) : await restoreResponseNames(value);
+    const result = list ? await Promise.all(asList(value, 'channel').map(channel => restoreChannelText(channel, responseName)))
+        : await restoreChannelText(value, editorText);
     assertSession();
     return result;
 }
 function channelWire(channel) {
     const body = oie.encodeChannelTemplates(cloneJson(channel));
-    if (hasResponseName(body, value => typeof value === 'string' && /[\x00-\x08\x0B\x0C\x0E-\x1F\uD800-\uDFFF\uFFFE\uFFFF]/u.test(value))) {
+    if (someChannelText(body, responseName, value => typeof value === 'string' && /[\x00-\x08\x0B\x0C\x0E-\x1F\uD800-\uDFFF\uFFFE\uFFFF]/u.test(value))) {
         throw new Error('This response name contains a character the engine cannot reload. Choose a different response name.');
     }
-    if (!hasResponseName(body, value => typeof value === 'string' && value.includes('\r')))
+    if (!someChannelText(body, responseName, value => typeof value === 'string' && value.includes('\r')))
         return { body, options: { wrapKey: 'channel' } };
     // JSON -> XML normalizes raw CR. Only these uncommon response names need
     // an XML write; other writes stay JSON.

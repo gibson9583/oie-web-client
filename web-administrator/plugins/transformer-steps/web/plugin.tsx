@@ -33,6 +33,7 @@ import { platform } from '@oie/web-shell';
 import type { Platform } from '@oie/web-shell';
 import { replacementPairs, replacementsToWire } from '/core/step-replacements.js';
 import type { Replacement } from '/core/step-replacements.js';
+import { iteratorName } from '/core/iterator-substitutions.js';
 const React = platform.React;
 
 const SCOPES = [
@@ -221,20 +222,26 @@ function ScriptPathEditor({ element, onChange }: any) {
  * collection instead of null.
  */
 
-function emptyIteratorProperties() {
-    return { target: '', indexVariable: 'i', prefixSubstitutions: '', children: '' };
+function emptyIteratorProperties(isRule: boolean) {
+    return { target: '', indexVariable: 'i', prefixSubstitutions: '', children: '',
+        ...(isRule ? { intersectIterations: false, breakEarly: true } : {}) };
 }
 
-function makeIteratorEditor(isRule: any) {
+function makeIteratorEditor(isRule: boolean) {
     const type = isRule ? 'com.mirth.connect.model.IteratorRule' : 'com.mirth.connect.model.IteratorStep';
     const childNoun = isRule ? 'rule' : 'step';
 
     function IteratorEditor({ element, onChange }: any) {
         const force = useRerender();
         if (!element.properties || typeof element.properties !== 'object') {
-            element.properties = emptyIteratorProperties();
+            element.properties = emptyIteratorProperties(isRule);
         }
         const props = element.properties;
+        const updateName = () => {
+            element.name = iteratorName(element, isBlank(props.target) ? '...' : props.target);
+            onChange();
+            force();
+        };
 
         return (
             <>
@@ -247,7 +254,7 @@ function makeIteratorEditor(isRule: any) {
                             type="text"
                             placeholder="msg['OBX']"
                             value={props.target ?? ''}
-                            onChange={(e: any) => { props.target = e.target.value; onChange(); force(); }}
+                            onChange={(e: any) => { props.target = e.target.value; updateName(); }}
                         />
                     </Field>
                     <Field label="Index Variable">
@@ -257,6 +264,21 @@ function makeIteratorEditor(isRule: any) {
                             onChange={(e: any) => { props.indexVariable = e.target.value; onChange(); force(); }}
                         />
                     </Field>
+                    {isRule && <>
+                        <Field label="Accept Message If">
+                            <select aria-label="Accept Message If" value={String(props.intersectIterations ?? false)}
+                                onChange={e => { props.intersectIterations = e.target.value === 'true'; updateName(); }}>
+                                <option value="false">At least one of the iterations returns true</option>
+                                <option value="true">All of the iterations return true</option>
+                            </select>
+                        </Field>
+                        <Field label="Break Early">
+                            <select aria-label="Break Early" value={String(props.breakEarly ?? true)}
+                                onChange={e => { props.breakEarly = e.target.value === 'true'; onChange(); force(); }}>
+                                <option value="true">Yes</option><option value="false">No</option>
+                            </select>
+                        </Field>
+                    </>}
                     <div className="span-2">
                         <Field
                             label="Prefix Substitutions"
@@ -292,7 +314,7 @@ function makeIteratorEditor(isRule: any) {
             __type: type,
             name: '', enabled: true,
             ...(isRule ? { operator: 'AND' } : null),
-            properties: emptyIteratorProperties()
+            properties: emptyIteratorProperties(isRule)
         }),
         validate: (el: any) => {
             const p = el.properties || {};

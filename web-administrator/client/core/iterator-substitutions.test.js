@@ -360,6 +360,17 @@ for (const statement of ['<x><![CDATA[text]]></x>', '<?target?><x/>', '/value/y'
     assert.equal(removeNumberLiterals(`msg['OBX'][0].value[0]; ${statement};`), "msg['OBX'].value");
 }
 assert.equal(validIteratorIndex(['i', 'j'], ['k']), 'l');
+const firstPath = "msg['OBX'][0].value[0]";
+for (const statement of ["'unfinished\\'", 'var s = "unfinished\\"']) {
+    const draft = firstPath + '; ' + statement;
+    assert.equal(removeNumberLiterals(draft), draft, 'an escaped quote at EOF leaves the whole draft intact');
+}
+for (const statement of ["var s = 'quoted\\''", 'var s = "quoted\\""',
+    "default xml namespace = 'urn:hl7-org:v3'", 'function read() { default xml namespace = ns; return msg; }']) {
+    assert.equal(removeNumberLiterals(firstPath + '; ' + statement), "msg['OBX'].value");
+}
+const namespaceKey = "msg['OBX'][0].*::[(function(){default xml namespace = ns; return 'value';})()][0]";
+assert.equal(removeNumberLiterals(namespaceKey), namespaceKey, 'Rhino cannot print the visited default namespace statement');
 assert.equal(validIteratorIndex('ijklmnopqrstuvwxyz'.split(''), ['ii']), 'jj');
 assert.equal(validIteratorIndex([], []), 'i');
 const preferredInner = iterator("msg['OBX'][i]['OBX.5']", 'j');
@@ -405,4 +416,34 @@ for (let i = 0; i < msg.OBX.length; i++) {
     new Function('msg', 'i', 'validate', 'channelMap', scriptText)(msg, i, value => value, { put: (_key, value) => observed.push(value) });
 }
 assert.deepEqual(observed, ['one', 'two']);
+
+// The Generated Script tab and Validate consume the same source. Exercise the
+// resulting filter decision and the number of evaluations before a break.
+const scriptRule = (script, operator, enabled = true) => ({ __type: plugin('javascriptrule.JavaScriptRule'), script, operator, enabled });
+const filterLoop = (all, stop, children) => ({
+    __type: 'com.mirth.connect.model.IteratorRule',
+    properties: { target: 'rows', indexVariable: 'i', intersectIterations: all, breakEarly: stop },
+    __children: children
+});
+for (const all of [true, false]) {
+    for (const stop of [true, false]) {
+        const children = [scriptRule('return observe(rows[i]);', 'NONE'),
+            scriptRule('throw Error("disabled rule");', 'OR', false), scriptRule('return true;', 'AND')];
+        const run = new Function('rows', 'getArrayOrXmlLength', 'observe', generateElementScript(filterLoop(all, stop, children)));
+        const visits = [];
+        assert.equal(run([true, false, true], rows => rows.length, value => { visits.push(value); return value; }), !all);
+        assert.deepEqual(visits, stop ? (all ? [true, false] : [true]) : [true, false, true]);
+        assert.equal(run([], rows => rows.length), all);
+        const empty = new Function('rows', 'getArrayOrXmlLength', generateElementScript(filterLoop(all, stop, [])));
+        assert.equal(empty([true], rows => rows.length), all);
+    }
+}
+const builder = { __type: plugin('messagebuilder.MessageBuilderStep'), messageSegment: "tmp['OBX'][i]['OBX.5']",
+    mapping: 'rows[i]', defaultValue: '', replacements: '' };
+const builderScript = generateElementScript(iterator('rows', 'i', [builder]));
+assert.ok(builderScript.includes("createSegment('OBX', tmp, i);"), 'create the XML repetition before writing its child');
+const build = new Function('tmp', 'rows', 'getArrayOrXmlLength', 'validate', builderScript);
+const outbound = {};
+build(outbound, ['one', 'two'], rows => rows.length, value => value);
+assert.deepEqual(outbound, { OBX: [{ 'OBX.5': 'one' }, { 'OBX.5': 'two' }] });
 console.log('iterator substitution assignment, removal, nested moves, plugin fields and wire shapes passed');

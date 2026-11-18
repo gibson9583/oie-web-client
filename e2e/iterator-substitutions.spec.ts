@@ -198,6 +198,83 @@ test('assign and detach rewrite every Mapper expression and retain unrelated fie
     expect(detached.defaultValue).toBe(`${PREFIX}['OBX.5'].toString()`);
 });
 
+test('reopened Mapper constants keep their exact source through assignment and save', async ({ page }) => {
+    const id = 'iterator-constant-mappings';
+    const channel = makeChannel(id);
+    // OIE 4.6.0 ObjectJSONSerializer maps both empty text and "null" to JSON
+    // null and loses the original spelling of numeric Java String fields.
+    const constants = ['', 'null', 'false', 'true', '-0', '1.0', '1e3', '9007199254740993'];
+    const mappers = constants.map((source, i) => ({ ...mapper('Constant ' + i), mapping: source, defaultValue: source,
+        replacements: { [PAIR]: { left: { '@class': 'string', $: "'pattern'" },
+            right: source ? { '@class': 'string', $: source } : { '@class': 'string' } } } }));
+    channel.sourceConnector.transformer.elements = wire([...mappers, iterator('Observations')]);
+    let written: any;
+    await mockEngine(page, {
+        [`GET /channels/${id}`]: (request: any) => {
+            if (written || request.headers().accept === 'application/xml') return { channel: written || channel };
+            const json = structuredClone(channel);
+            for (const el of json.sourceConnector.transformer.elements[MAPPER]) {
+                el.mapping = el.defaultValue = el.mapping === '' ? null : JSON.parse(el.mapping);
+                const right = el.replacements[PAIR].right;
+                if ('$' in right) right.$ = el.mapping;
+            }
+            return { channel: json };
+        },
+        [`PUT /channels/${id}`]: (request: any) => { written = request.postDataJSON().channel; return true; }
+    });
+    await page.goto(`/channels/${id}/transformer/0`);
+    await row(page, 'Constant 2').locator('td.num').click();
+    await expect(field(page, 'Mapping')).toHaveValue('false');
+    await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+    await useExistingIterator(page, 'Observations');
+    await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+    await expect.poll(() => !!written).toBe(true);
+    const elements = written.sourceConnector.transformer.elements;
+    const saved = [...elements[MAPPER], ...children(elements, 'Observations')[MAPPER]];
+    for (const original of mappers) {
+        expect(saved.find(el => el.name === original.name)).toMatchObject({
+            mapping: original.mapping, defaultValue: original.defaultValue, replacements: original.replacements
+        });
+    }
+    await page.reload();
+    await row(page, 'Constant 6').locator('td.num').click();
+    await expect(field(page, 'Mapping')).toHaveValue('1e3');
+});
+
+test('expression recovery rejects stale or incomplete XML and retries against the current revision', async ({ page }) => {
+    const id = 'iterator-constant-retry';
+    const channel = makeChannel(id);
+    channel.sourceConnector.transformer.elements = wire([{ ...mapper(), mapping: 1000 }]);
+    let mode = 'stale', reads = 0;
+    await mockEngine(page, {
+        [`GET /channels/${id}`]: (request: any) => {
+            if (request.headers().accept !== 'application/xml') return { channel };
+            reads++;
+            if (mode === 'forbidden') return { __status: 403, body: 'Forbidden' };
+            const snapshot = structuredClone(channel);
+            const element = snapshot.sourceConnector.transformer.elements[MAPPER][0];
+            if (mode === 'missing') delete element.mapping;
+            else element.mapping = '1e3';
+            if (mode === 'stale') snapshot.revision++;
+            return { channel: snapshot };
+        }
+    });
+    await page.goto('/');
+    const read = () => page.evaluate(async id => {
+        const { channels } = await import(String('/core/api.js'));
+        try { return (await channels.get(id)).sourceConnector.transformer.elements['com.mirth.connect.plugins.mapper.MapperStep'][0].mapping; }
+        catch (error: any) { return error.message; }
+    }, id);
+    expect(await read()).toMatch(/Channel changed/);
+    mode = 'missing';
+    expect(await read()).toMatch(/invalid expression XML/);
+    mode = 'forbidden';
+    expect(await read()).toMatch(/Forbidden|403/);
+    mode = 'current';
+    expect(await read()).toBe('1e3');
+    expect(reads).toBe(4);
+});
+
 test('Message Builder assignment substitutes both inbound and outbound prefixes', async ({ page }) => {
     const element: Element = {
         type: BUILDER, name: 'Build observation', messageSegment: "tmp['OBX'][0]['OBX.5']",
@@ -392,6 +469,27 @@ test('Iterator chooser keeps the captured source when selection changes before a
     expect(elements[MAPPER][0]).toMatchObject({ name: 'Other', mapping: mapping() });
 });
 
+test('an open Iterator chooser rechecks save permission before changing membership', async ({ page }) => {
+    const save = await openEditor(page, [mapper('Original'), iterator('Destination')]);
+    await row(page, 'Original').locator('td.num').click();
+    await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Assign To Iterator' });
+    await dialog.getByRole('combobox', { name: 'Iterator', exact: true }).selectOption({ label: 'Destination' });
+    const permission = (allowed: boolean) => page.evaluate(async allowed => {
+        const { platform } = await import(String('@oie/web-shell'));
+        platform.setAuthorizationController({ checkTask: (group: string, task: string) =>
+            allowed || group !== 'channelEdit' || task !== 'doSaveChannel' });
+    }, allowed);
+    await permission(false);
+    await dialog.getByRole('button', { name: 'Use Iterator', exact: true }).click();
+    await expect(row(page, 'Original')).toHaveAttribute('data-path', '0');
+    await permission(true);
+    await row(page, 'Original').locator('input.grid-name').fill('Renamed');
+    const elements = await save();
+    expect(elements[MAPPER][0]).toMatchObject({ name: 'Renamed', mapping: mapping() });
+    expect(children(elements, 'Destination')).toBe('');
+});
+
 test('a removed chooser source cannot create an orphan Iterator on acceptance', async ({ page }) => {
     const save = await openEditor(page, [mapper('Original'), iterator('First'), iterator('Second', 'j')]);
     await row(page, 'Original').locator('td.num').click();
@@ -514,6 +612,25 @@ test('message-tree Iterator cancellation is a no-op and adding without one retai
 });
 
 
+test('assigning a step without a source offers a blank Iterator and preserves its script', async ({ page }) => {
+    const script = { type: 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep', name: 'Set status', script: "channelMap.put('status', 'OK');" };
+    const save = await openEditor(page, [script, iterator('Observations')]);
+    await row(page, script.name).locator('td.num').click();
+    await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Assign To Iterator', exact: true });
+    await dialog.getByRole('combobox', { name: 'Iterator', exact: true }).selectOption('new');
+    await expect(dialog.getByText(/A new blank Iterator will be added/)).toBeVisible();
+    await dialog.getByRole('button', { name: 'Use Iterator', exact: true }).click();
+    await expect(row(page, script.name)).toHaveAttribute('data-path', '0.0');
+    await page.locator('tr[data-path="0"] td.num').click();
+    const target = field(page, 'Iterate On (target)');
+    await expect(target).toHaveValue('');
+    await target.fill('rows');
+    const created = (await save())[ITERATOR][0];
+    expect(created.properties.prefixSubstitutions).toBe('');
+    expect(created.properties.children[script.type][0].script).toBe(script.script);
+});
+
 test('a sole unrelated Iterator still opens assignment with a new target and fixed index', async ({ page }) => {
     const element = mapper('Patient identifier');
     element.mapping = "msg['PID'][0]['PID.3'].toString()";
@@ -547,7 +664,7 @@ test('assignment prefers the current parent and the deepest matching Iterator', 
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
     await row(page, 'Outside').locator('td.num').click();
     await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
-    await expect(dialog.getByRole('combobox', { name: 'Iterator', exact: true }).locator('option:checked')).toHaveText('Values');
+    await expect(dialog.getByRole('combobox', { name: 'Iterator', exact: true }).locator('option:checked')).toHaveText('— Values');
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 });
 
@@ -561,7 +678,7 @@ test('XSLT assignment prefers the deepest Iterator after normalizing its wizard 
     await row(page, xslt.name).locator('td.num').click();
     await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Assign To Iterator', exact: true });
-    await expect(dialog.getByRole('combobox', { name: 'Iterator', exact: true }).locator('option:checked')).toHaveText('Values');
+    await expect(dialog.getByRole('combobox', { name: 'Iterator', exact: true }).locator('option:checked')).toHaveText('— Values');
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 });
 
@@ -605,6 +722,12 @@ test('new filter Iterators use the Swing name and defaults', async ({ page }) =>
     const created = (await save())[FILTER_ITERATOR][0];
     expect(created).toMatchObject({ name: `Accept message if at least one of the iterations returns true for each ${PREFIX}`, properties: { intersectIterations: false, breakEarly: true } });
     expect(created.properties.children[RULE][0]).toMatchObject({ operator: 'NONE', field: mapping('i') });
+    await row(page, created.name).locator('td.num').click();
+    await page.getByRole('combobox', { name: 'Accept Message If' }).selectOption('true');
+    await page.getByRole('combobox', { name: 'Break Early' }).selectOption('false');
+    const edited = (await save())[FILTER_ITERATOR][0];
+    expect(edited).toMatchObject({ name: `Accept message if all of the iterations return true for each ${PREFIX}`,
+        properties: { intersectIterations: true, breakEarly: false } });
 });
 
 test('moving a non-first filter rule into an existing Iterator retains OR', async ({ page }) => {
@@ -629,7 +752,8 @@ for (const nested of [false, true]) {
         await tree.mapFromTree();
         await treePrompt(page).getByRole('button', { name: 'Yes', exact: true }).click();
         const chooser = page.getByRole('dialog', { name: 'Select Iterator', exact: true });
-        await chooser.getByRole('combobox', { name: 'Iterator', exact: true }).selectOption({ label: nested ? 'Values' : 'Destination' });
+        const selected = chooser.getByRole('option', { name: nested ? '— Values' : 'Destination', exact: true });
+        await chooser.getByRole('combobox', { name: 'Iterator', exact: true }).selectOption((await selected.getAttribute('value'))!);
         await chooser.getByRole('button', { name: 'Use Iterator', exact: true }).click();
         const elements = await tree.save();
         expect(children(elements, 'Original')).toBe('');
