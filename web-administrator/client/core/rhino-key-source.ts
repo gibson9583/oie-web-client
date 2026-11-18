@@ -19,8 +19,8 @@ type PathMode = 'substitution' | 'messageBuilder';
 // The same expression parser produces their source and their position in the path.
 type PathLeaf = { kind: 'name' | 'property' | 'string' | 'xml' | 'number' | 'callTail'; source: string; propertyName?: string; unprintable?: boolean };
 type ExpressionPart = { value: string; propertyName: string; numberLiteral?: boolean };
-type ArrowParameters = { items: string[]; parenthesized?: boolean };
-type Operand = { source: string; reference?: boolean; parameters?: ArrowParameters };
+type ParameterList = { items: string[]; names: string[]; parenthesized?: boolean };
+type Operand = { source: string; reference?: boolean; parameters?: ParameterList };
 type Block = { kind: 'block'; body: Statement[] };
 type FunctionSource = { kind: 'function'; head: string; body: Block; statement?: boolean };
 type SwitchBranch = { test?: string; body: Statement[]; inlineComment?: SourceComment };
@@ -62,8 +62,7 @@ const escapeByCharacter = new Map(Object.entries(escapes).map(([key, value]) => 
 // Rhino StringLiteral.toSource decodes JavaScript escapes, then prints the
 // original quote style with ASCII escapes. Keep this limited to literal keys;
 // no user expression is evaluated.
-function stringLiteralSource(literal: string): string | null {
-    const quote = literal[0];
+function stringLiteralValue(literal: string): string | null {
     let value = '';
     for (let index = 1; index < literal.length - 1; index++) {
         let ch = literal[index];
@@ -95,6 +94,13 @@ function stringLiteralSource(literal: string): string | null {
             value += ch;
         }
     }
+    return value;
+}
+
+function stringLiteralSource(literal: string): string | null {
+    const value = stringLiteralValue(literal);
+    if (value == null) return null;
+    const quote = literal[0];
     let source = quote;
     for (let index = 0; index < value.length; index++) {
         const ch = value[index];
@@ -118,6 +124,8 @@ class RhinoSourceReader {
     private namespaceStatements = 0;
     private readonly hasFormatCharacters: boolean;
     private destructuring = false;
+    private strict = false;
+    private symbols = new Map<string, 'variable' | 'const'>();
     private functionDepth = 0;
     private loopDepth = 0;
     private switchDepth = 0;
@@ -256,12 +264,13 @@ class RhinoSourceReader {
             } else if (op === '=>' && min <= 2 && !this.token.lineBreakBefore) {
                 const parameters = node.parameters;
                 if (!parameters || (!parameters.parenthesized && parameters.items.length !== 1)) throw new Error('Invalid arrow parameters');
+                this.checkParameters(parameters.items);
                 if (path) path.length = 0;
                 this.next();
                 const args = parameters.items.join(', ');
                 const head = parameters.parenthesized ? `(${args})` : args;
-                const body = this.at('{') ? statementSource(this.functionBody()).trimEnd()
-                    : this.inFunction(() => this.expression(2, allowIn));
+                const body = this.at('{') ? statementSource(this.functionBody(parameters)).trimEnd()
+                    : this.inFunction(parameters, () => this.expression(2, allowIn));
                 node = { source: `${head} => ${body}` };
             } else {
                 const priority = Object.hasOwn(precedence, op) ? precedence[op] : undefined;
@@ -273,7 +282,7 @@ class RhinoSourceReader {
                 const right = this.expressionNode(priority === 2 ? priority : priority + 1, allowIn);
                 const parameters = op === ',' && node.parameters && right.parameters
                     && !node.parameters.parenthesized && !right.parameters.parenthesized
-                    ? { items: [...node.parameters.items, ...right.parameters.items] } : undefined;
+                    ? { items: [...node.parameters.items, ...right.parameters.items], names: [...node.parameters.names, ...right.parameters.names] } : undefined;
                 node = { source: `${node.source} ${op} ${right.source}`, parameters };
             }
         }
@@ -433,21 +442,21 @@ class RhinoSourceReader {
             if (this.at(')')) {
                 this.next();
                 if (!this.at('=>') || this.token.lineBreakBefore) throw new Error('Expected expression');
-                return { source: '()', parameters: { items: [], parenthesized: true } };
+                return { source: '()', parameters: { items: [], names: [], parenthesized: true } };
             }
             let inner = this.expressionNode();
             if (this.at('for')) inner = { source: inner.source + this.comprehension(false) };
             this.take(')');
             const parameters = inner.parameters && !inner.parameters.parenthesized
-                ? { items: inner.parameters.items, parenthesized: true } : undefined;
+                ? { ...inner.parameters, parenthesized: true } : undefined;
             return { source: `(${inner.source})`, reference: inner.reference, parameters };
         }
         if (token.value === '[') {
-            this.next(); const values: string[] = [];
+            this.next(); const values: string[] = [], names: string[] = [];
             let trailingHole = false;
             while (this.token.value !== ']') {
                 trailingHole = this.token.value === ',';
-                values.push(trailingHole ? '' : this.expression(2));
+                values.push(trailingHole ? '' : this.patternValue(names));
                 if (values.length === 1 && !trailingHole && this.at('for')) {
                     const source = `[${values[0]}${this.comprehension(true)}]`;
                     this.take(']'); return { source };
@@ -457,20 +466,31 @@ class RhinoSourceReader {
             }
             this.take(']');
             const source = `[${values.join(', ')}${trailingHole ? ',' : ''}]`;
-            return { source, parameters: { items: [source] } };
+            return { source, parameters: { items: [source], names } };
         }
         if (token.value === '{') {
-            this.next(); const properties: string[] = [];
+            this.next(); const properties: string[] = [], names: string[] = [];
+            const defined = this.strict ? new Map<string, string>() : null;
             while (this.token.value !== '}') {
                 const key = this.objectKey();
                 const accessor = ['get', 'set'].includes(key) && !this.at(':') && !this.at('(');
+                const name = accessor ? this.objectKey() : key;
+                if (defined) {
+                    const id = /^['"]/.test(name) ? stringLiteralValue(name)! : name;
+                    const kind = accessor ? key : 'property';
+                    const earlier = defined.get(id);
+                    if (earlier && (earlier === kind || earlier === 'property' || kind === 'property')) {
+                        throw new Error('Duplicate strict object property');
+                    }
+                    defined.set(id, earlier ? 'property' : kind);
+                }
                 if (accessor || this.at('(')) {
-                    const property = accessor ? key + ' ' + this.objectKey() : key;
+                    const property = accessor ? key + ' ' + name : name;
                     const parameters = this.parameters();
-                    properties.push(`${property}(${parameters.join(', ')}) ${statementSource(this.functionBody(), 1).trimStart()}`);
+                    properties.push(`${property}(${parameters.items.join(', ')}) ${statementSource(this.functionBody(parameters), 1).trimStart()}`);
                 } else {
                     this.take(':');
-                    properties.push(`${key}: ${this.expression(2)}`);
+                    properties.push(`${key}: ${this.patternValue(names)}`);
                 }
                 this.skipComments();
                 if (this.token.value !== ',') break;
@@ -478,7 +498,7 @@ class RhinoSourceReader {
             }
             this.take('}');
             const source = properties.length ? `{\n  ${properties.join(', \n  ')}}` : '{}';
-            return { source, parameters: { items: [source] } };
+            return { source, parameters: { items: [source], names } };
         }
         if (token.value === '/' || token.value === '/=') {
             // A slash in operand position starts a RegExpLiteral. Brackets and
@@ -510,10 +530,11 @@ class RhinoSourceReader {
         if (token.value === '@' || (token.word && !token.keyword)) {
             const ref = this.propertyRef();
             path?.push(ref);
-            return ref.kind === 'name' ? { source: ref.source, reference: true, parameters: { items: [ref.source] } }
+            return ref.kind === 'name' ? { source: ref.source, reference: true, parameters: { items: [ref.source], names: [ref.source] } }
                 : { source: ref.source };
         }
         if (!token.literal && (!token.word || (token.keyword && !['true', 'false', 'null', 'this'].includes(token.value)))) throw new Error('Expected expression');
+        if (this.strict && token.literal && /^0\d/.test(token.value)) throw new Error('Legacy octal in strict code');
         if (/^['"]/.test(token.value)) path?.push({ kind: 'string', source: token.value });
         else if (token.literal && this.mode === 'messageBuilder') path?.push({ kind: 'number', source: token.value });
         this.next();
@@ -527,13 +548,27 @@ class RhinoSourceReader {
         return value;
     }
 
+    private patternValue(names: string[]): string {
+        const value = this.expressionNode(2);
+        if (value.parameters && !value.parameters.parenthesized) names.push(...value.parameters.names);
+        return value.source;
+    }
+
     // Rhino reads array and object binding patterns with its literal grammar,
     // with assignment operators disabled inside the pattern.
-    private binding(): string {
-        if (!this.at('[') && !this.at('{')) return this.identifier();
+    private binding(names?: string[]): string {
+        if (!this.at('[') && !this.at('{')) {
+            const name = this.bindingName();
+            names?.push(name);
+            return name;
+        }
         const before = this.destructuring;
         this.destructuring = true;
-        try { return this.primary().source; }
+        try {
+            const pattern = this.primary();
+            if (names && pattern.parameters) names.push(...pattern.parameters.names);
+            return pattern.source;
+        }
         finally { this.destructuring = before; }
     }
 
@@ -547,6 +582,7 @@ class RhinoSourceReader {
             }
             this.take('(');
             const iterator = this.binding();
+            if (this.symbols.get(iterator) === 'const') throw new Error('Iterator redeclares a constant');
             const operator = array && !each && this.at('of') ? 'of' : 'in';
             this.take(operator);
             const iterable = this.expression(); this.take(')');
@@ -558,9 +594,8 @@ class RhinoSourceReader {
 
     expressionParts(): ExpressionPart[] {
         if (!this.token.value || this.token.skippedComment) return [];
-        this.statement(this.rootPath);
         // Swing visits only the first expression, after parsing the entire program.
-        while (this.token.value) this.statement();
+        this.statementList('', true, this.rootPath);
         const parts: ExpressionPart[] = [];
         for (const { kind, source, propertyName = source, unprintable } of this.rootPath) {
             let value: string;
@@ -665,35 +700,63 @@ class RhinoSourceReader {
         throw new Error('Unterminated XML literal');
     }
 
-    private parameters(): string[] {
+    private parameters(): ParameterList {
         this.take('(');
-        const parameters: string[] = [];
+        const items: string[] = [], names: string[] = [];
         if (this.token.value !== ')') {
             do {
-                parameters.push(this.binding());
+                items.push(this.binding(names));
                 if (this.token.value !== ',') break;
                 this.next();
             } while (true);
         }
         this.take(')');
-        return parameters;
+        this.checkParameters(items);
+        return { items, names };
     }
 
-    private functionSource(): FunctionSource {
+    private bindingName(): string {
+        const name = this.identifier();
+        if (this.strict && (name === 'eval' || name === 'arguments')) throw new Error('Invalid strict binding');
+        return name;
+    }
+
+    private checkParameters(parameters: string[]): void {
+        if (!this.strict) return;
+        const names = parameters.filter(name => !name.startsWith('[') && !name.startsWith('{'));
+        if (new Set(names).size !== names.length || names.includes('eval') || names.includes('arguments')) {
+            throw new Error('Invalid strict parameters');
+        }
+    }
+
+    // Rhino registers var, const and function declarations in the containing
+    // function, including declarations in blocks. A const cannot share a name.
+    private declare(name: string, kind: 'const' | 'variable'): void {
+        const previous = this.symbols.get(name);
+        if (previous && (previous === 'const' || kind === 'const')) throw new Error('Constant redeclaration');
+        this.symbols.set(name, kind);
+    }
+
+    private functionSource(declaration = false): FunctionSource {
         this.take('function');
-        const functionName = this.token.value === '(' ? '' : ` ${this.identifier()}`;
+        const name = this.at('(') ? '' : this.bindingName();
+        if (declaration && name) this.declare(name, 'variable');
         const parameters = this.parameters();
-        return { kind: 'function', head: `function${functionName}(${parameters.join(', ')})`, body: this.functionBody() };
+        const head = `function${name ? ' ' + name : ''}(${parameters.items.join(', ')})`;
+        return { kind: 'function', head, body: this.functionBody(parameters) };
     }
 
-    private functionBody(): Block {
-        return this.inFunction(() => this.block(true));
+    private functionBody(parameters: ParameterList): Block {
+        return this.inFunction(parameters, () => this.block(true));
     }
 
-    private inFunction<T>(parse: () => T): T {
-        const { loopDepth, switchDepth, labels } = this;
+    private inFunction<T>(parameters: ParameterList, parse: () => T): T {
+        // The packaged Rhino parser starts each function body with a new directive prologue.
+        const { loopDepth, switchDepth, labels, strict, symbols } = this;
         this.loopDepth = this.switchDepth = 0;
         this.labels = [];
+        this.strict = false;
+        this.symbols = new Map(parameters.names.map(name => [name, 'variable']));
         this.functionDepth++;
         try { return parse(); }
         finally {
@@ -701,16 +764,33 @@ class RhinoSourceReader {
             this.loopDepth = loopDepth;
             this.switchDepth = switchDepth;
             this.labels = labels;
+            this.strict = strict;
+            this.symbols = symbols;
         }
     }
 
     private block(functionBody = false): Block {
-        this.take('{', false); const body: Statement[] = [];
-        while (this.token.value !== '}') {
-            body.push(functionBody && this.at('function') ? { ...this.functionSource(), statement: true } : this.statement());
-        }
+        this.take('{', false);
+        const body = this.statementList('}', functionBody);
         this.take('}', false);
         return { kind: 'block', body };
+    }
+
+    private statementList(end: string, scriptOrFunction: boolean, path?: PathLeaf[]): Statement[] {
+        const body: Statement[] = [];
+        let directives = scriptOrFunction;
+        while (!this.at(end)) {
+            const token = this.token;
+            const statement = scriptOrFunction && this.at('function') ? { ...this.functionSource(true), statement: true }
+                : this.statement(body.length ? undefined : path);
+            body.push(statement);
+            if (directives && statement.kind !== 'comment' && statement.kind !== 'function') {
+                directives = !!token.literal && /^['"]/.test(token.value) && statement.kind === 'simple'
+                    && statement.source === token.value + ';';
+                if (directives && token.value.slice(1, -1) === 'use strict') this.strict = true;
+            }
+        }
+        return body;
     }
 
     private condition(): string {
@@ -741,6 +821,7 @@ class RhinoSourceReader {
         do {
             const destructuring = this.at('[') || this.at('{');
             let variable = this.binding();
+            if (!destructuring) this.declare(variable, kind === 'const' ? 'const' : 'variable');
             if (this.token.value === '=') { this.next(); variable += ` = ${this.expression(2, allowIn)}`; }
             else if (destructuring && allowIn) throw new Error('Missing initializer in destructuring declaration');
             declarations.push(variable);
@@ -800,7 +881,7 @@ class RhinoSourceReader {
         const consecutiveLabel = this.consecutiveLabel;
         this.consecutiveLabel = false;
         if (start === '{') return this.block();
-        if (start === 'function') return this.functionSource();
+        if (start === 'function') return this.functionSource(true);
         if (start === 'default') {
             // Rhino parses this E4X statement, but its UnaryExpression.toSource
             // cannot print DEFAULTNAMESPACE. Only a visited XmlElemRef asks for it.
@@ -827,6 +908,7 @@ class RhinoSourceReader {
             return { kind: 'if', test, consequent, alternate, inlineComment, alternateComment };
         }
         if (start === 'while' || start === 'with') {
+            if (start === 'with' && this.strict) throw new Error('With statement in strict code');
             this.next(); const test = this.condition();
             return { kind: 'loop', keyword: start, head: `${start} (${test})`,
                 ...(start === 'while' ? this.iterationBody() : this.statementBody()) };
@@ -862,7 +944,7 @@ class RhinoSourceReader {
             while (this.at('catch')) {
                 if (unguardedCatch) throw new Error('Unreachable catch');
                 this.next(); this.take('(');
-                let binding = this.identifier();
+                let binding = this.bindingName();
                 // Rhino permits guarded catches before an unconditional one.
                 if (this.at('if')) { this.next(); binding += ` if ${this.expression()}`; }
                 else unguardedCatch = true;

@@ -4,11 +4,11 @@
  */
 
 import { isJavaBlank, readExpressionParts } from './rhino-key-source.js';
+import { isIteratorType } from './oie.js';
 import { REPLACEMENT_PAIR } from './step-replacements.js';
 
 type Element = Record<string, any>;
 
-const ITERATOR_TYPES = new Set(['com.mirth.connect.model.IteratorStep', 'com.mirth.connect.model.IteratorRule']);
 function elementType(element: Element): string {
     return element.__type || element['@class'] || '';
 }
@@ -75,7 +75,7 @@ export function preferredIterator(expression: string, iterators: Element[], sele
     let maxDepth = -1;
     const visit = (nodes: Element[], target: string, depth: number) => {
         for (const iterator of nodes) {
-            if (iterator === selected || !ITERATOR_TYPES.has(elementType(iterator))) continue;
+            if (iterator === selected || !isIteratorType(elementType(iterator))) continue;
             for (const prefix of strings(iterator.properties?.prefixSubstitutions)) {
                 if (target.startsWith(prefix)) {
                     if (depth > maxDepth) { preferred = iterator; maxDepth = depth; }
@@ -171,7 +171,7 @@ function children(element: Element): Element[] {
 /** Mutates the live element tree just as the editor's other model operations do. */
 export function rewriteElementIteratorVariables(element: Element, ancestors: Element[], replace: boolean): void {
     const type = elementType(element);
-    const iterator = ITERATOR_TYPES.has(type);
+    const iterator = isIteratorType(type);
     const childAncestors = iterator ? [...ancestors, element] : ancestors;
     if (iterator && !replace) for (const child of children(element)) rewriteElementIteratorVariables(child, childAncestors, false);
     const rewrite = (value: any) => rewriteIteratorExpression(value, ancestors, replace);
@@ -195,7 +195,7 @@ export function getIteratorInfo(element: Element): { target: string; outbound: s
     const type = elementType(element);
     // JSON imports can supply primitives even when the release model declares a String.
     const text = (value: unknown) => String(value ?? '');
-    if (ITERATOR_TYPES.has(type)) return { target: text(element.properties?.target), outbound: null };
+    if (isIteratorType(type)) return { target: text(element.properties?.target), outbound: null };
     if (type === 'com.mirth.connect.plugins.mapper.MapperStep') return { target: text(element.mapping), outbound: null };
     if (type === 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep') {
         const mapping = text(element.mapping);
@@ -217,7 +217,7 @@ export function normalizeIteratorTarget(element: Element, previous: Element[] = 
     };
     const target = normalize(info.target);
     const outbound = info.outbound == null ? null : normalize(info.outbound);
-    if (ITERATOR_TYPES.has(type)) element.properties.target = target;
+    if (isIteratorType(type)) element.properties.target = target;
     else if (type === 'com.mirth.connect.plugins.mapper.MapperStep') element.mapping = target;
     else if (type === 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep') {
         if (isJavaBlank(outbound)) element.messageSegment = target;

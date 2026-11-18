@@ -43,12 +43,13 @@ import { parseFilterTransformerImport, normalizeImportTypes, alignDestinationTyp
 
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import { h, modal, detailModal, toast, loading, saveFile, pickFile, contextMenu } from '@oie/web-ui';
-import api from '@oie/web-api';
+import api, { isIteratorType } from '@oie/web-api';
 import * as oie from '@oie/web-api';
 import { createCodeEditor } from '@oie/web-ui';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import { generateElementScript } from '../../core/step-script.js';
+import { editorVariableMappings } from '../../core/mappings.js';
 import { rewriteIteratorExpression, rewriteElementIteratorVariables, normalizeIteratorTarget, getIteratorInfo, iteratorExpressionParts,
     iteratorWizardPrefixes, validIteratorIndex, preferredIterator, iteratorName, removeNumberLiterals } from '../../core/iterator-substitutions.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
@@ -79,8 +80,6 @@ const KINDS = {
 
 /* ---- element tree machinery (pure, shared by grid + actions) ------------------ */
 
-const isIteratorType = (t: any) => t === 'com.mirth.connect.model.IteratorStep'
-    || t === 'com.mirth.connect.model.IteratorRule';
 const childrenOf = (el: any) => (el.__children || (el.__children = []));
 
 // Hydrate serialized iterator children into live __children arrays so the
@@ -148,17 +147,6 @@ function allIteratorPaths(list: any, parent: any[] = [], out: any[] = []) {
 
 /* ---- persistence helpers ------------------------------------------------------ */
 
-// Re-serialize the live tree; iterator children come from their __children.
-function serializeList(list: any) {
-    return list.map((el: any) => {
-        if (!isIteratorType(el.__type)) return el;
-        const { __children, ...rest } = el;
-        const properties = { ...(rest.properties || {}) };
-        properties.children = oie.arrayToElements(serializeList(__children || [])) || '';
-        return { ...rest, properties };
-    });
-}
-
 function normalizeOperators(list: any) {
     list.forEach((el: any, i: any) => {
         if (i === 0) el.operator = 'NONE';
@@ -196,23 +184,6 @@ const REFERENCE_CATEGORY_ORDER = [
 // The code-template ContextType of this view's script editors.
 const scriptContext = (connectorType: any) => connectorType === 'RESPONSE' ? 'DESTINATION_RESPONSE_TRANSFORMER'
     : connectorType === 'SOURCE' ? 'SOURCE_FILTER_TRANSFORMER' : 'DESTINATION_FILTER_TRANSFORMER';
-
-// Variables made available by this transformer's enabled steps — Mapper
-// output variables and map puts in JavaScript steps. Mirrors the engine's
-// VariableListUtil (which regex-scans each step's generated script).
-function collectStepVariables(elements: any) {
-    const vars = new Set();
-    const putRe = /(?:globalMap|globalChannelMap|channelMap|connectorMap|responseMap|sourceMap)\.put\s*\(\s*['"]([^'"]+)['"]|\$(?:gc|co|g|c|r|s)\s*\(\s*['"]([^'"]+)['"]\s*,/g;
-    for (const el of elements) {
-        if (el.enabled === false) continue;
-        if (typeof el.variable === 'string' && el.variable.trim()) vars.add(el.variable.trim());
-        if (typeof el.script === 'string') {
-            let m: any;
-            while ((m = putRe.exec(el.script))) vars.add(m[1] || m[2]);
-        }
-    }
-    return [...vars];
-}
 
 /* ---- accessor drag-and-drop ---------------------------------------------------
    Tree nodes and reference rows are dragged and dropped directly into a script
@@ -485,7 +456,7 @@ function GridRow({ el, path, ancestorsEnabled, isFilter, selected, typeOptions, 
                 <input type="checkbox" checked={elementEnabled(el)} disabled={!ancestorsEnabled} onClick={stop}
                     onChange={(e: any) => { el.enabled = e.target.checked; onCommit(); }} />
             </td>
-            <td className="num">{String(idx + 1)}</td>
+            <td className="num">{path.join('-')}</td>
             {isFilter && (
                 <td>
                     {idx === 0 ? '' : (
@@ -569,7 +540,7 @@ function ElementsGrid({ kind, isFilter, elements, selectedPath, typeOptions, can
    onChange() defaults during mount don't mark the channel dirty. The island
    remounts when the selected element or iterator context changes — never on
    ordinary rev bumps, so plugin state (Monaco etc.) survives grid edits. */
-function StepEditorPanel({ kind, isFilter, element, contextRevision, headerIndex, settlingRef, onChange, onReplaceElement, destinations }: any) {
+function StepEditorPanel({ kind, isFilter, element, contextRevision, sequenceNumber, settlingRef, onChange, onReplaceElement, destinations }: any) {
     const hostRef = useRef<any>(null);
     const def = element ? typeDefFor(isFilter, element.__type) : null;
     const hasComponent = !!(def && typeof def.component === 'function');
@@ -617,7 +588,7 @@ function StepEditorPanel({ kind, isFilter, element, contextRevision, headerIndex
     }
     return (
         <div className="panel">
-            <div className="panel-header">{`${kind.noun} ${headerIndex} — ${oie.elementTypeLabel(element.__type)}`}</div>
+            <div className="panel-header">{`${kind.noun} ${sequenceNumber} — ${oie.elementTypeLabel(element.__type)}`}</div>
             {hasComponent
                 ? <div className="panel-body" ref={hostRef} />
                 : <div className="panel-body">
@@ -737,16 +708,19 @@ function ReferenceRow({ dragRef, name, subtitle, dropText, title }: any) {
     );
 }
 
-function ReferenceTab({ dragRef, channelId, context, getElements }: any) {
+function ReferenceTab({ dragRef, channelId, context, getVariables, changes }: any) {
     // Only categorized references appear in the Swing reference panel;
     // null-category entries (context variables, E4X methods) are
     // autocomplete-only in the client, so they are excluded here. Plugin
     // references join the engine catalog; both filter on the editor context.
     const builtin = useMemo(() => referencesFor(REFERENCE_CATALOG, [context])
         .map(r => ({ name: r.name, category: r.category, description: r.description, code: r.code, type: r.type })), [context]);
-    // Variables defined by this transformer's steps, computed when the tab
-    // mounts (the panel remounts per tab switch, matching the legacy rebuild).
-    const availableVars = useMemo(() => collectStepVariables(getElements()), [getElements]);
+    const [availableVars, setAvailableVars] = useState<Array<[string, string]>>(getVariables);
+    useEffect(() => {
+        const refresh = () => setAvailableVars(getVariables());
+        changes.addEventListener('change', refresh);
+        return () => changes.removeEventListener('change', refresh);
+    }, [getVariables, changes]);
 
     const [category, setCategory] = useState('');
     const [query, setQuery] = useState('');
@@ -830,8 +804,8 @@ function ReferenceTab({ dragRef, channelId, context, getElements }: any) {
             <div className="font-semibold text-[10px] uppercase tracking-[0.04em] mt-3 mx-0 mb-1">Available Variables</div>
             <div className="border border-line rounded overflow-auto max-h-[126px]">
                 {availableVars.length
-                    ? availableVars.map(v => <ReferenceRow key={v} dragRef={dragRef} name={v} dropText={v} />)
-                    : <div className="text-text-faint py-2 px-2.5 text-[10px]">(no variables defined by steps yet)</div>}
+                    ? availableVars.map(([name, text]) => <ReferenceRow key={name} dragRef={dragRef} name={name} dropText={text} />)
+                    : <div className="text-text-faint py-2 px-2.5 text-[10px]">(no variables available here)</div>}
             </div>
         </div>
     );
@@ -1086,7 +1060,7 @@ function copyAccessor(text: string) {
 
 const subscribeToChannelEdit = (notify: () => void) => store.subscribe('editingChannel', notify);
 
-function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef, treeAccessor, onAddTreeField, isFilter }: any) {
+function TreeSection({ side, varName, hidden, showSide, query, hideEmpty, target, dragRef, treeAccessor, onAddTreeField, canEdit, isFilter }: any) {
     const [parse, setParse] = useState<any>({ status: 'idle' });   // idle | parsing | ready | failed | empty
     const [collapsed, setCollapsed] = useState<Set<string>>(NO_KEYS);
     const [filterCollapsed, setFilterCollapsed] = useState<any>({ q: '', keys: NO_KEYS });
@@ -1097,10 +1071,24 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
     const dataType = useSyncExternalStore(subscribeToChannelEdit, () => target[`${side}DataType`] || 'RAW');
     const serialization = useSyncExternalStore(subscribeToChannelEdit, () => target[`${side}Properties`]?.serializationProperties);
     const dtLabel = (dataTypeDef(dataType) || { label: dataType }).label;
-    const regionLabel = `${side === 'inbound' ? 'Inbound' : 'Outbound'} message tree (${varName})`;
+    const sideLabel = side === 'inbound' ? 'Inbound' : 'Outbound';
+    const regionLabel = `${sideLabel} message tree (${varName})`;
+    const caption = showSide && <strong className="mt-side">{sideLabel}</strong>;
     const dragProps = (source: any, path: TreeNamePath | null) => {
         const field = treeField(side, source.accessor, path);
         return accessorDragProps(dragRef, { field, getText: event => treeAccessor(field.accessor, event) });
+    };
+    const treeDropEffect = (row: any) => {
+        const source = dragRef.current?.field;
+        return source && source.side !== side && row.source.value != null && canEdit() ? 'copy' : 'none';
+    };
+    const mapBetweenTrees = (_text: string, row: any) => {
+        const source = dragRef.current.field;
+        const destination = treeField(side, row.source.accessor, row.path);
+        dragRef.current = null;
+        setSelected(row);
+        const [outbound, inbound] = side === 'outbound' ? [destination, source] : [source, destination];
+        onAddTreeField(outbound, true, inbound);
     };
 
     useEffect(() => {
@@ -1180,6 +1168,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
         return (
             <section className="mt-section" style={{ display: hidden ? 'none' : undefined }} aria-label={regionLabel}>
                 <div className="mt-note">
+                    {caption}
                     {parse.status === 'empty' && '(no template — set one on the Message Templates tab)'}
                     {(parse.status === 'parsing' || parse.status === 'idle') && 'Parsing…'}
                     {parse.status === 'failed' && `Could not build the message tree — the engine could not serialize this ${dtLabel} template.`}
@@ -1234,6 +1223,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
     return (
         <section className="mt-section" style={{ display: hidden ? 'none' : undefined }} aria-label={regionLabel}>
             <div className="mt-root">
+                {caption}
                 <span className="mt-root-label" title={`Drag into a script editor: ${root.accessor}`}
                     {...dragProps(root, null)} onContextMenu={rootMenu}>
                     {root.label !== varName ? root.label : dtLabel}
@@ -1257,6 +1247,8 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
                     rowDraggable={() => true}
                     onRowDragStart={(row: any, e: any) => dragProps(row.source, row.path).onDragStart(e)}
                     onRowDragEnd={() => { dragRef.current = null; }}
+                    rowDropEffect={treeDropEffect}
+                    onRowDrop={isFilter ? undefined : mapBetweenTrees}
                     matches={matches}
                     collapsedKeys={openKeys}
                     onToggleCollapse={(key: any) => updateKeys(keys => { if (keys.has(key)) keys.delete(key); else keys.add(key); })}
@@ -1277,8 +1269,8 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
     );
 }
 
-function TreesTab({ target, dragRef, treeAccessor, onAddTreeField, isFilter }: any) {
-    const [side, setSide] = useState('inbound');
+function TreesTab({ target, dragRef, treeAccessor, onAddTreeField, canEdit, isFilter }: any) {
+    const [side, setSide] = useState(isFilter ? 'inbound' : 'both');
     const [query, setQuery] = useState('');
     const [hideEmpty, setHideEmpty] = useState(false);
     return (
@@ -1286,7 +1278,8 @@ function TreesTab({ target, dragRef, treeAccessor, onAddTreeField, isFilter }: a
             <div className="mt-bar">
                 {!isFilter && <SegPill label="Message template" value={side} onChange={setSide} options={[
                     { value: 'inbound', label: 'Inbound', title: 'Inbound message template (msg)' },
-                    { value: 'outbound', label: 'Outbound', title: 'Outbound message template (tmp)' }
+                    { value: 'outbound', label: 'Outbound', title: 'Outbound message template (tmp)' },
+                    { value: 'both', label: 'Both', title: 'Show both templates to map fields between them' }
                 ]} />}
                 <input type="text" placeholder="Filter fields…" aria-label="Filter fields" value={query}
                     onChange={(e: any) => setQuery(e.target.value)} />
@@ -1294,18 +1287,17 @@ function TreesTab({ target, dragRef, treeAccessor, onAddTreeField, isFilter }: a
                     title={hideEmpty ? 'Show empty fields' : 'Hide empty fields'} aria-label="Hide empty fields"
                     onClick={() => setHideEmpty(v => !v)}><Icon name={hideEmpty ? 'eyeOff' : 'eye'} size={14} /></button>
             </div>
-            <TreeSection side="inbound" varName="msg" hidden={side !== 'inbound'} query={query} hideEmpty={hideEmpty}
-                target={target} dragRef={dragRef} treeAccessor={treeAccessor} onAddTreeField={onAddTreeField} isFilter={isFilter} />
-            {!isFilter && <TreeSection side="outbound" varName="tmp" hidden={side !== 'outbound'} query={query} hideEmpty={hideEmpty}
-                target={target} dragRef={dragRef} treeAccessor={treeAccessor} onAddTreeField={onAddTreeField} />}
+            <TreeSection side="inbound" varName="msg" showSide={side === 'both'} hidden={side === 'outbound'} query={query} hideEmpty={hideEmpty}
+                target={target} dragRef={dragRef} treeAccessor={treeAccessor} onAddTreeField={onAddTreeField} canEdit={canEdit} isFilter={isFilter} />
+            {!isFilter && <TreeSection side="outbound" varName="tmp" showSide={side === 'both'} hidden={side === 'inbound'} query={query} hideEmpty={hideEmpty}
+                target={target} dragRef={dragRef} treeAccessor={treeAccessor} onAddTreeField={onAddTreeField} canEdit={canEdit} />}
         </div>
     );
 }
 
 /* Side tabs mirror the Swing client: Reference, Message Trees, Message
    Templates. The active tab is KEYED so switching remounts it — each tab
-   re-reads the current steps (Reference's Available Variables) and template
-   edits on activation, matching the legacy rebuild-on-switch. The whole panel
+   re-reads the working channel on activation. The whole panel
    collapses to a strip; its fixed-width wrapper and the splitter live in the
    MAIN tree (this is a separate root), so the flag is mirrored out through
    ctx.onSideCollapsed for the wrapper to follow. */
@@ -1331,10 +1323,10 @@ function SidePanel({ ctx }: any) {
     let body: any = null;
     if (label === 'Reference') {
         body = <ReferenceTab key="ref" dragRef={ctx.dragRef} channelId={ctx.channelId}
-            context={scriptContext(ctx.connectorType)} getElements={ctx.getElements} />;
+            context={scriptContext(ctx.connectorType)} getVariables={ctx.getVariables} changes={ctx.referenceChanges} />;
     } else if (label === 'Message Trees') {
         body = <TreesTab key="trees" target={ctx.templateTarget} dragRef={ctx.dragRef}
-            treeAccessor={ctx.treeAccessor} onAddTreeField={ctx.onAddTreeField} isFilter={isFilter} />;
+            treeAccessor={ctx.treeAccessor} onAddTreeField={ctx.onAddTreeField} canEdit={ctx.canEdit} isFilter={isFilter} />;
     } else if (label === 'Message Templates') {
         body = <TemplatesTab key="templates" target={ctx.templateTarget} version={ctx.version}
             connectorType={ctx.connectorType} channel={ctx.channel} commit={ctx.commit} canEdit={ctx.canEdit} isFilter={isFilter} />;
@@ -1448,7 +1440,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         // The first rule in each list has no boolean operator; the rest do.
         if (isFilter) normalizeOperators(elementsRef.current);
         stampVersions(elementsRef.current, version);
-        target.elements = oie.arrayToElements(serializeList(elementsRef.current));
+        target.elements = oie.arrayToElements(elementsRef.current);
         // Refresh the store's working copy only while we're still in the editing
         // flow. If the nav guard cleared it (left the editor with Don't Save), the
         // teardown persist() must not resurrect the discarded copy.
@@ -1611,43 +1603,21 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     /* ---- actions (resolve their targets at execution time via the refs) ---- */
 
     function addElement() {
-        const entries = availableTypeEntries();
-        const items = h('div.step-list');
-        const m = modal({
-            title: `Add ${kind.noun}`,
-            body: entries.length ? items : h('div.text-text-faint', 'No element types registered'),
-            buttons: [{ label: 'Cancel' }]
-        });
-        for (const [type, def] of entries) {
-            const item = h('div.step-item',
-                h('div', { class: 'flex-1' },
-                    h('div', def.label || oie.elementTypeLabel(type))));
-            item.addEventListener('click', () => {
-                m.close();
-                const element = def.create ? def.create() : { __type: type, name: '', enabled: true };
-                if (!element.__type) element.__type = type;
-                // Match the Swing client: if an Iterator is selected, add the
-                // new element as its child; otherwise insert as a sibling right
-                // after the selection (or append to the top level if none).
-                const elements = elementsRef.current;
-                const selPath = selectedPathRef.current;
-                const sel = elementAtPath(elements, selPath);
-                if (sel && isIteratorType(sel.__type)) {
-                    childrenOf(sel).push(element);
-                    setSelected([...selPath!, childrenOf(sel).length - 1]);
-                } else if (selPath && selPath.length) {
-                    const list = listAtPath(elements, selPath);
-                    const idx = selPath[selPath.length - 1];
-                    list.splice(idx + 1, 0, element);
-                    setSelected([...selPath.slice(0, -1), idx + 1]);
-                } else {
-                    elements.push(element);
-                    setSelected([elements.length - 1]);
-                }
-                commitRef.current();
-            });
-            items.appendChild(item);
-        }
+        if (!canEditElements()) return;
+        const type = isFilter ? RULEBUILDER_TYPE : MAPPER_TYPE;
+        const def = typeDef(type);
+        if (!def) { toast(`${oie.elementTypeLabel(type)} is not available`, 'warn'); return; }
+        const element = def.create?.() ?? { name: '', enabled: true };
+        element.__type = type;
+        const elements = elementsRef.current;
+        const selectedPath = selectedPathRef.current ?? [];
+        const selected = elementAtPath(elements, selectedPath);
+        const parentPath = isIteratorType(selected?.__type) ? selectedPath : selectedPath.slice(0, -1);
+        const parent = elementAtPath(elements, parentPath);
+        const siblings = parent ? childrenOf(parent) : elements;
+        siblings.push(element);
+        setSelected([...parentPath, siblings.length - 1]);
+        commitRef.current();
     }
 
     function changeElementType(path: number[], newType: string) {
@@ -1677,7 +1647,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             commitRef.current();
         };
         const defaults = typeDef(old.__type)?.create?.();
-        const [current] = serializeList([old]);
+        const current = oie.arrayToElements([old])![old.__type][0];
         const keys = new Set([...Object.keys(current), ...Object.keys(defaults ?? {})]);
         if (defaults && [...keys].every(key => gridProperties.has(key) || (Object.hasOwn(defaults, key) && matchesSetting(current[key], defaults[key])))) {
             replace();
@@ -1745,10 +1715,9 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     }
 
     async function importElements() {
-        if (importingRef.current) return;
+        if (importingRef.current || !canEditElements()) return;
         const isCurrent = channelSessionActive();
-        const active = () => isCurrent() && mountedRef.current && store.getState('editingChannel') === channel;
-        if (!active()) return;
+        const active = () => isCurrent() && canEditElements();
         importingRef.current = true;
         try {
             const file = await pickFile('.xml,.json');
@@ -1808,7 +1777,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         // rebuild iterator children from their stale wire copies.
         try {
             await saveFile(`${channel.name || channel.id}-${kindName}.json`, 'application/json',
-                () => JSON.stringify({ ...target, elements: serializeList(elementsRef.current) }, null, 2), assertSession);
+                () => JSON.stringify({ ...target, elements: oie.elementsToArray(oie.arrayToElements(elementsRef.current)) }, null, 2), assertSession);
         } catch (e: any) {
             try { assertSession(); } catch { return; }
             toast(`Export failed: ${e.message}`, 'error');
@@ -1823,7 +1792,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     function elementError(el: any, message: any) {
         const containerWord = isFilter ? 'filter' : 'transformer';
         const responsePrefix = kindName === 'response' ? 'response ' : '';
-        const seq = el.sequenceNumber != null ? el.sequenceNumber : '';
+        const seq = pathOf(el, elementsRef.current)?.join('-') ?? el.sequenceNumber ?? '';
         return `Error in connector "${connector.name}" at `
             + `${responsePrefix}${containerWord} ${kind.noun.toLowerCase()} ${seq} `
             + `("${elementName(el)}"):\n${message}`;
@@ -2114,7 +2083,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         relocateElement(selPath, elementAtPath(elements, selPath.slice(0, -2)));
     }
 
-    function addTreeField(field: TreeField, asMessage = false) {
+    function addTreeField(field: TreeField, asMessage = false, inbound?: TreeField) {
         if (!canEditElements()) return;
         const messageBuilder = asMessage || field.side === 'outbound';
         const typeId = isFilter ? RULEBUILDER_TYPE : messageBuilder ? MSGBUILDER_TYPE : MAPPER_TYPE;
@@ -2128,6 +2097,10 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         else if (messageBuilder) {
             el.name = `${field.description} (out)`;
             el.messageSegment = withoutTreeStringSuffix(field.accessor);
+            if (inbound) {
+                el.name += ` <-- ${inbound.description} (in)`;
+                el.mapping = inbound.accessor;
+            }
         } else {
             el.name = field.variable;
             el.variable = field.variable;
@@ -2291,6 +2264,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
        the main tree's reconciliation: a plain div appended behind a ref, with
        the panel mounted into it as a separate React root. The panel reads live
        editor state through stable ctx getters. */
+    const [referenceChanges] = useState(() => new EventTarget());
+    useEffect(() => {
+        referenceChanges.dispatchEvent(new Event('change'));
+    }, [referenceChanges, rev, selectedPath]);
+
     const sideWrapRef = useRef<any>(null);
     const sideHostRef = useRef<any>(null);
     const sidePlaceholderRef = useRef<any>(null);
@@ -2321,9 +2299,13 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 const expression = acceleratorPressed(event) ? withoutTreeStringSuffix(text) : text;
                 return rewriteIteratorExpression(expression, iteratorAncestors(selectedPathRef.current || []), true);
             },
-            getElements: () => elementsRef.current,
+            referenceChanges,
+            getVariables: () => {
+                const row = flattenRows(elementsRef.current).findIndex(item => pathEquals(item.path, selectedPathRef.current));
+                return editorVariableMappings(channel, connector, row, kindName === 'response');
+            },
             commit: () => commitRef.current(),
-            onAddTreeField: (field: TreeField, asMessage: boolean) => addTreeFieldRef.current(field, asMessage),
+            onAddTreeField: (...args: Parameters<typeof addTreeField>) => addTreeFieldRef.current(...args),
             // The panel's collapse flag, mirrored onto the wrapper the MAIN tree
             // renders: .side-collapsed squeezes the fixed width down to the strip
             // (its splitter hides via CSS :has — nothing left to drag). Class
@@ -2418,7 +2400,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                                 node: <StepEditorPanel kind={kind} isFilter={isFilter}
                                     element={selectedElement}
                                     contextRevision={elementContextRevision}
-                                    headerIndex={selectedPath ? selectedPath[selectedPath.length - 1] + 1 : 0}
+                                    sequenceNumber={selectedPath?.join('-')}
                                     settlingRef={settlingRef}
                                     onChange={() => commitRef.current()}
                                     onReplaceElement={(parsed: any) => {

@@ -769,8 +769,7 @@ function editorText(name: string, parent: string, owner: string, holder: Json): 
         case 'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep':
             return name === 'field';
         case 'properties':
-            return (name === 'target' || name === 'indexVariable')
-                && (owner === 'com.mirth.connect.model.IteratorRule' || owner === 'com.mirth.connect.model.IteratorStep');
+            return (name === 'target' || name === 'indexVariable') && oie.isIteratorType(owner);
         case 'values':
             return name === 'string' && (owner === 'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule'
                 || owner === 'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep');

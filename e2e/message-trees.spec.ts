@@ -73,6 +73,49 @@ const row = (page: Page, field: string, varName = 'msg') =>
     tree(page, varName).getByRole('row').filter({ has: page.getByText(field, { exact: true }) });
 const stepField = (page: Page, label: string) => page.locator(`.step-editor-fill .field:has(label:text-is("${label}")) input`);
 
+for (const [from, indexed] of [
+    ['inbound', false], ['inbound', true], ['outbound', false], ['outbound', true]
+] as const) {
+    test(`mapping between message trees from the ${from} row saves both Message Builder fields ${indexed ? 'inside' : 'outside'} an Iterator`, async ({ page }) => {
+        const writes = await openTrees(page, { serialize: text => text, dataType: 'XML',
+            template: '<in><a>one</a><a>two</a></in>', outboundDataType: 'XML',
+            outboundTemplate: '<out><b>first</b><b>second</b></out>' });
+        await expect(page.getByRole('radio', { name: 'Both', exact: true })).toBeChecked();
+        await expect(tree(page).getByText('Inbound', { exact: true })).toBeVisible();
+        await expect(tree(page, 'tmp').getByText('Outbound', { exact: true })).toBeVisible();
+        const inbound = row(page, 'a[0]');
+        const outbound = row(page, 'b[1]', 'tmp');
+        const drag = () => from === 'inbound' ? inbound.dragTo(outbound) : outbound.dragTo(inbound);
+        await inbound.dragTo(row(page, 'a[1]'));
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+        await drag();
+        const prompt = page.getByRole('dialog', { name: 'Select An Option' });
+        await prompt.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(page.locator('.element-list-pane tr[data-path]')).toHaveCount(0);
+        await drag();
+        if (indexed) {
+            await prompt.getByRole('button', { name: 'Yes', exact: true }).click();
+            const chooser = page.getByRole('dialog', { name: 'Select Iterator' });
+            await chooser.getByLabel('Iterate On', { exact: true }).selectOption("msg['a']");
+            await chooser.getByLabel('Outbound Prefix', { exact: true }).selectOption("tmp['b']");
+            await chooser.getByRole('button', { name: 'Use Iterator' }).click();
+        } else await prompt.getByRole('button', { name: 'No', exact: true }).click();
+        const mapping = "msg['a']" + (indexed ? '[i]' : '[0]') + '.toString()';
+        const segment = "tmp['b']" + (indexed ? '[i]' : '[1]');
+        await expect(stepField(page, 'Mapping')).toHaveValue(mapping);
+        await expect(stepField(page, 'Message Segment')).toHaveValue(segment);
+        await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+        await expect.poll(() => writes.length).toBe(1);
+        const saved = writes[0].sourceConnector.transformer.elements;
+        const elements = indexed ? saved['com.mirth.connect.model.IteratorStep'][0].properties.children : saved;
+        expect(elements[BUILDER][0]).toMatchObject({ name: 'b [1] (out) <-- a [0] (in)', mapping, messageSegment: segment });
+        await page.reload();
+        await page.locator('tr[data-path]').last().locator('td.num').click();
+        await expect(stepField(page, 'Mapping')).toHaveValue(mapping);
+        await expect(stepField(page, 'Message Segment')).toHaveValue(segment);
+    });
+}
+
 test('message tree table shows segments, joined values, folded fields and filters', async ({ page }) => {
     await openTrees(page);
     await expect(tree(page).locator('.mt-root-label')).toHaveText('ADT-A01 (2.5.1) (Admit/Visit Notification)');
@@ -160,7 +203,7 @@ test('message tree rows map, drag and copy their accessors', async ({ page, brow
 test('message tree rows drop their accessor into a script editor', async ({ page }) => {
     await openTrees(page);
     await page.getByRole('button', { name: 'Add New Step' }).first().click();
-    await page.getByRole('dialog', { name: 'Add Step' }).getByText('JavaScript', { exact: true }).click();
+    await page.locator('tr.selected td:last-child select').selectOption({ label: 'JavaScript' });
     await expect(page.locator('.step-editor-fill .ce-monaco')).toBeVisible();
     await page.getByRole('tab', { name: 'Message Trees', exact: true }).click();
     await row(page, 'PID').locator('.twisty').click();
@@ -396,7 +439,7 @@ for (const fallback of [false, true]) {
         if (fallback) await page.route('**/vendor/monaco/**', route => route.abort());
         const writes = await openTrees(page);
         await page.getByRole('button', { name: 'Add New Step' }).first().click();
-        await page.getByRole('dialog', { name: 'Add Step' }).getByText('JavaScript', { exact: true }).click();
+        await page.locator('tr.selected td:last-child select').selectOption({ label: 'JavaScript' });
         const editor = page.locator('.step-editor-fill');
         const input = fallback ? 'textarea.ce-area' : '.ce-monaco .view-lines';
         await expect(editor.locator(input)).toBeVisible();
@@ -455,7 +498,7 @@ test('dropping an accessor into the expanded generated script leaves the read-on
     await page.route('**/vendor/monaco/**', route => route.abort());
     await openTrees(page);
     await page.getByRole('button', { name: 'Add New Step' }).first().click();
-    await page.getByRole('dialog', { name: 'Add Step' }).getByText('JavaScript', { exact: true }).click();
+    await page.locator('tr.selected td:last-child select').selectOption({ label: 'JavaScript' });
     const script = page.locator('.step-editor-fill textarea.ce-area');
     await expect(script).toHaveValue('');
     await script.fill('// Existing script');

@@ -348,6 +348,45 @@ for (const [name, input, expected] of [
     });
 }
 
+test('Reference follows a nested Mapper and drops its Swing map lookup', async ({ page }) => {
+    const consumer = { ...mapper('Consumer'), variable: 'later' };
+    const save = await openEditor(page, [mapper(), iterator('Observations'), consumer]);
+    const reference = page.locator('.step-item').filter({ has: page.getByText('observations', { exact: true }) });
+    await expect(reference).toHaveCount(0);
+    await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+    await useExistingIterator(page, 'Observations');
+    await expect(reference).toBeVisible();
+    await row(page, 'Observations').locator('td.num').click();
+    await expect(reference).toHaveCount(0);
+    await row(page, 'Consumer').locator('td.num').click();
+    await reference.dragTo(field(page, 'Default Value'));
+    await expect(field(page, 'Default Value')).toHaveValue("$('observations')");
+    expect((await save())[MAPPER][0].defaultValue).toBe("$('observations')");
+    await page.reload();
+    await row(page, 'Consumer').locator('td.num').click();
+    await expect(reference).toBeVisible();
+    await expect(field(page, 'Default Value')).toHaveValue("$('observations')");
+});
+
+for (const [name, statement] of [
+    ['legacy octal', 'var n=010;'],
+    ['conflicting declarations', 'var n=1; const n=2;']
+]) {
+    test(`assigning and detaching a strict-mode Mapper preserves ${name} through reload`, async ({ page }) => {
+        const original = `${PREFIX}[0].value[0]; function key(){ 'use strict'; ${statement} }`;
+        const assigned = original.replace(PREFIX, PREFIX + '[i]');
+        const save = await openEditor(page, [{ ...mapper(), mapping: original }, iterator('Observations')]);
+        await page.getByRole('button', { name: 'Assign To Iterator', exact: true }).click();
+        await useExistingIterator(page, 'Observations');
+        expect(children(await save(), 'Observations')[MAPPER][0].mapping).toBe(assigned);
+        await page.reload();
+        await row(page, 'Observation').locator('td.num').click();
+        await expect(field(page, 'Mapping')).toHaveValue(assigned);
+        await page.getByRole('button', { name: 'Remove From Iterator', exact: true }).click();
+        expect((await save())[MAPPER][0].mapping).toBe(original);
+    });
+}
+
 const firstValueLength = `String(${PREFIX}[0].value).length.toString()`;
 for (const [input, assigned, detached] of [
     [firstValueLength, firstValueLength, firstValueLength],
@@ -405,7 +444,7 @@ for (const direction of ['Up', 'Down']) {
         await expect(field(page, 'Mapping')).toHaveValue(innerPrefix + '.toString()');
         const outer = children(await save(), 'Outer');
         const saved = outer[MAPPER].find((el: any) => el.name === 'Moving');
-        expect(Number(saved.sequenceNumber)).toBe(position);
+        expect(saved.sequenceNumber).toBe('0-' + position);
         expect(saved.mapping).toBe(innerPrefix + '.toString()');
         expect(outer[ITERATOR][0].properties.children).toBe('');
     });

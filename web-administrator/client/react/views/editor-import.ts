@@ -41,8 +41,7 @@ function parse(text: string, rootName: string): any {
     return parsed?.[rootName] ?? parsed;
 }
 
-function normalizeElements(container: Model): void {
-    const source = container.elements;
+function importedElements(source: any, defaults?: (type: string) => any): oie.Element[] {
     if (source != null && source !== '' && typeof source !== 'object') throw new Error('Invalid elements collection');
     if (source && typeof source === 'object' && !Array.isArray(source)) {
         for (const [type, value] of Object.entries(source)) {
@@ -52,18 +51,23 @@ function normalizeElements(container: Model): void {
             }
         }
     }
-    const elements = Array.isArray(container.elements) ? container.elements : oie.elementsToArray(container.elements);
+    const elements = Array.isArray(source) ? source : oie.elementsToArray(source);
     for (const element of elements) {
         if (!element || typeof element !== 'object' || typeof element.__type !== 'string') throw new Error('Invalid filter rule or transformer step');
         if (element.enabled === 'false') element.enabled = false;
         else if (element.enabled === 'true') element.enabled = true;
-        if (element.properties?.children && /Iterator(Step|Rule)$/.test(element.__type)) {
-            const children = { elements: element.properties.children };
-            normalizeElements(children);
-            element.properties.children = children.elements;
+        if (defaults) normalizeImportTypes(element, defaults(element.__type));
+        if (oie.isIteratorType(element.__type)) {
+            element.__children = importedElements(element.properties?.children, defaults);
+        } else if (element.properties?.children && /Iterator(Step|Rule)$/.test(element.__type)) {
+            element.properties.children = oie.arrayToElements(importedElements(element.properties.children, defaults));
         }
     }
-    container.elements = oie.arrayToElements(elements);
+    return elements;
+}
+
+export function normalizeImportedElementTypes(container: Model, defaults?: (type: string) => any): void {
+    container.elements = oie.arrayToElements(importedElements(container.elements, defaults));
 }
 
 export function parseFilterTransformerImport(text: string, isFilter: boolean, version: string, current?: Model): Model {
@@ -91,7 +95,7 @@ export function parseFilterTransformerImport(text: string, isFilter: boolean, ve
     const elementsOnly = !fromXml && !['inboundDataType', 'outboundDataType', 'inboundTemplate', 'outboundTemplate', 'inboundProperties', 'outboundProperties'].some(key => Object.hasOwn(parsed, key));
     const defaults = elementsOnly && current ? structuredClone(current) : isFilter ? oie.emptyFilter(version) : oie.emptyTransformer(version);
     const result = { ...defaults, ...parsed };
-    normalizeElements(result);
+    normalizeImportedElementTypes(result);
     if (!isFilter) decodeImportedTemplates(result);
     return result;
 }
@@ -111,12 +115,12 @@ export function parseConnectorImport(text: string, mode: 'SOURCE' | 'DESTINATION
     normalizeImportTypes(connector, { metaDataId: 0, enabled: true, waitForPrevious: true });
     connector.filter = { ...oie.emptyFilter(version), ...connector.filter };
     connector.transformer = { ...oie.emptyTransformer(version), ...connector.transformer };
-    normalizeElements(connector.filter);
-    normalizeElements(connector.transformer);
+    normalizeImportedElementTypes(connector.filter);
+    normalizeImportedElementTypes(connector.transformer);
     decodeImportedTemplates(connector.transformer);
     if (mode === 'DESTINATION') {
         connector.responseTransformer = { ...oie.emptyTransformer(version), ...connector.responseTransformer };
-        normalizeElements(connector.responseTransformer);
+        normalizeImportedElementTypes(connector.responseTransformer);
         decodeImportedTemplates(connector.responseTransformer);
     }
     return connector;
@@ -200,19 +204,6 @@ export function hasImportedResources(connector: Model): boolean {
     return Object.entries(connector).some(([key, value]) => key === 'resourceIds'
         ? !!value && typeof value === 'object' && !!value.entry
         : !!value && typeof value === 'object' && hasImportedResources(value));
-}
-
-export function normalizeImportedElementTypes(container: Model, defaults: (type: string) => any): void {
-    const elements = oie.elementsToArray(container.elements);
-    for (const element of elements) {
-        normalizeImportTypes(element, defaults(element.__type));
-        if (element.properties?.children && /Iterator(Step|Rule)$/.test(element.__type)) {
-            const children = { elements: element.properties.children };
-            normalizeImportedElementTypes(children, defaults);
-            element.properties.children = children.elements;
-        }
-    }
-    container.elements = oie.arrayToElements(elements);
 }
 
 function decodeImportedTemplates(transformer: Model): void {

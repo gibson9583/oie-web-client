@@ -33,7 +33,7 @@ for (const width of [1440, 760]) {
             const noun = kind === 'filter' ? 'Rule' : 'Step';
             const add = async () => {
                 await page.getByRole('button', { name: `Add New ${noun}`, exact: true }).first().click();
-                await page.locator('.step-item').filter({ hasText: /^JavaScript$/ }).click();
+                await pane.locator('tr.selected td:last-child select').selectOption(c.class);
             };
             for (let i = 0; i < 6; i++) await add();
             await expect(rows).toHaveCount(7);
@@ -86,7 +86,6 @@ for (const width of [1440, 760]) {
         const box = (await pane.boundingBox())!;
         expect(box.height).toBeLessThan(220);
         await pane.getByRole('button', { name: 'Add New Step' }).click();
-        await page.locator('.step-item').filter({ hasText: /^JavaScript$/ }).click();
         await expect(pane.locator('tbody tr')).toHaveCount(1);
         await expect.poll(() => pane.evaluate(el => el.getBoundingClientRect().height)).toBeCloseTo(128, 0);
     });

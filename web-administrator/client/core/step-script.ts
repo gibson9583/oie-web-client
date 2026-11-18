@@ -14,7 +14,7 @@
 
 import { replacementPairs } from './step-replacements.js';
 import { isJavaBlank, readExpressionParts } from './rhino-key-source.js';
-import { elementsToArray } from './oie.js';
+import { elementsToArray, isIteratorType } from './oie.js';
 
 /* Scope enum -> map object (MapperStep.Scope.map). */
 const SCOPE_MAP: Record<string, string> = {
@@ -129,11 +129,6 @@ const GENERATORS: Record<string, (el: any) => string> = {
     // Iterator step/rule are recursive over children — handled below.
 };
 
-const ITERATOR_TYPES = new Set([
-    'com.mirth.connect.model.IteratorStep',
-    'com.mirth.connect.model.IteratorRule'
-]);
-
 /*
  * Build the generated JavaScript for one element. Returns a string, or null if
  * the type has no client-side generator (the caller falls back to element.script
@@ -144,7 +139,7 @@ export function generateElementScript(element: any, getChildren?: (el: any) => a
     if (!element) return null;
     const type = element.__type;
 
-    if (ITERATOR_TYPES.has(type)) return iteratorScript(element, getChildren);
+    if (isIteratorType(type)) return iteratorScript(element, getChildren);
 
     const gen = GENERATORS[type];
     if (gen) return gen(element);
@@ -172,7 +167,7 @@ function iteratorPhase(element: any, phase: 'pre' | 'iteration' | 'post', getChi
         ?? (Array.isArray(props.children) ? props.children : elementsToArray(props.children));
     const enabled = kids.filter((c: any) => c && c.enabled !== false && c.enabled !== 'false');
     const childScript = (child: any): string | null => {
-        if (ITERATOR_TYPES.has(child.__type)) return iteratorPhase(child, phase, getChildren, indices);
+        if (isIteratorType(child.__type)) return iteratorPhase(child, phase, getChildren, indices);
         if (child.__type === 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep') {
             return phase === 'iteration' ? messageBuilderIteration(child, indices) : '';
         }

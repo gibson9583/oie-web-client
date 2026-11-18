@@ -4,8 +4,8 @@
  * Only the shipped expression fields participate, never arbitrary script text.
  */
 import { isJavaBlank, readExpressionParts } from './rhino-key-source.js';
+import { isIteratorType } from './oie.js';
 import { REPLACEMENT_PAIR } from './step-replacements.js';
-const ITERATOR_TYPES = new Set(['com.mirth.connect.model.IteratorStep', 'com.mirth.connect.model.IteratorRule']);
 function elementType(element) {
     return element.__type || element['@class'] || '';
 }
@@ -68,7 +68,7 @@ export function preferredIterator(expression, iterators, selected) {
     let maxDepth = -1;
     const visit = (nodes, target, depth) => {
         for (const iterator of nodes) {
-            if (iterator === selected || !ITERATOR_TYPES.has(elementType(iterator)))
+            if (iterator === selected || !isIteratorType(elementType(iterator)))
                 continue;
             for (const prefix of strings(iterator.properties?.prefixSubstitutions)) {
                 if (target.startsWith(prefix)) {
@@ -174,7 +174,7 @@ function children(element) {
 /** Mutates the live element tree just as the editor's other model operations do. */
 export function rewriteElementIteratorVariables(element, ancestors, replace) {
     const type = elementType(element);
-    const iterator = ITERATOR_TYPES.has(type);
+    const iterator = isIteratorType(type);
     const childAncestors = iterator ? [...ancestors, element] : ancestors;
     if (iterator && !replace)
         for (const child of children(element))
@@ -210,7 +210,7 @@ export function getIteratorInfo(element) {
     const type = elementType(element);
     // JSON imports can supply primitives even when the release model declares a String.
     const text = (value) => String(value ?? '');
-    if (ITERATOR_TYPES.has(type))
+    if (isIteratorType(type))
         return { target: text(element.properties?.target), outbound: null };
     if (type === 'com.mirth.connect.plugins.mapper.MapperStep')
         return { target: text(element.mapping), outbound: null };
@@ -235,7 +235,7 @@ export function normalizeIteratorTarget(element, previous = [], current = []) {
     };
     const target = normalize(info.target);
     const outbound = info.outbound == null ? null : normalize(info.outbound);
-    if (ITERATOR_TYPES.has(type))
+    if (isIteratorType(type))
         element.properties.target = target;
     else if (type === 'com.mirth.connect.plugins.mapper.MapperStep')
         element.mapping = target;

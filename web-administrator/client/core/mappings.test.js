@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { destinationMappingsFor, DESTINATION_MAPPINGS } from './mappings.js';
+import { destinationMappingsFor, editorVariableMappings, DESTINATION_MAPPINGS } from './mappings.js';
 import { generateElementScript } from './step-script.js';
 import { elementsToArray } from './oie.js';
 
@@ -110,6 +110,33 @@ test('literal decoding and transfer quoting match installed Swing binaries', () 
     assert.deepEqual(dynamic(ch, selected), expected);
     selected.properties = properties('js');
     assert.deepEqual(dynamic(ch, selected), literals.map(([, key]) => [key, key.includes("'") ? `$("${key}")` : `$('${key}')`]));
+});
+
+test('editor references follow the selected Swing row and connector scope', () => {
+    const source = {
+        filter: stage("$co('ruleLocal', 1); $c('sharedRule', 1);", RULE),
+        transformer: { elements: {
+            [ITERATOR]: { sequenceNumber: 0, properties: { target: 'rows', indexVariable: 'i', children: {
+                [MAPPER]: { variable: 'observations', scope: 'CHANNEL', mapping: 'rows[i]' }
+            } } },
+            [JS]: { sequenceNumber: 1, script: "$c('later', 1); $co('sourceLocal', 1);" }
+        } }
+    };
+    const previous = connector('Archive', 2, { responseTransformer: stage("$r('priorAck', 1);") });
+    const active = connector('Send', 3, {
+        transformer: stage("$co('localResult', 1);"), responseTransformer: stage("$r('ack', 1);")
+    });
+    const ch = channel([previous, active], source);
+    const names = (row, connector = source, response = false) =>
+        editorVariableMappings(ch, connector, row, response).map(([name]) => name);
+    assert.deepEqual(names(0), ['ruleLocal', 'sharedRule']);
+    assert.deepEqual(names(1), ['ruleLocal', 'sharedRule', 'observations']);
+    assert.deepEqual(names(2), ['ruleLocal', 'sharedRule', 'observations', 'later', 'sourceLocal']);
+    assert.deepEqual(names(0, active), ['sharedRule', 'Archive', 'observations', 'later', 'priorAck']);
+    assert.deepEqual(names(0, active, true), [...names(0, active), 'localResult']);
+    const refs = new Map(editorVariableMappings(ch, active, 1, true));
+    assert.equal(refs.get('ack'), "$('ack')");
+    assert.equal(refs.get('Archive'), "$('d2')");
 });
 
 test('enabled wire elements and getScript(false) include Mapper expressions and other shipped plugins', () => {

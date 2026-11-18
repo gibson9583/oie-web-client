@@ -361,6 +361,41 @@ for (const statement of ['<x><![CDATA[text]]></x>', '<?target?><x/>', '/value/y'
 }
 assert.equal(validIteratorIndex(['i', 'j'], ['k']), 'l');
 const firstPath = "msg['OBX'][0].value[0]";
+// The packaged parser rejects the entire input when a later strict function
+// is invalid. Dropping that function would turn an invalid mapping into a valid one.
+for (const invalid of [
+    'var octal = 010;', 'with (obj) {}', 'var eval = 1;', 'try {} catch (arguments) {}',
+    'function inner(x, x) {}', 'var arrow = (x, x) => x;', 'var obj = {a: 1, "a": 2};',
+    'var obj = {get x(){}, set x(v){}, get x(){}};', 'var x = 1; const x = 2;'
+]) {
+    const source = `${firstPath}; function key(){ /* header */ 'directive'; 'use strict'; ${invalid} }`;
+    assert.equal(removeNumberLiterals(source), source);
+    assert.deepEqual(iteratorExpressionParts(source), [source]);
+}
+for (const valid of [
+    "'use strict'; var n = 0x10; var obj = {get x(){}, set x(v){}};",
+    "'use strict'; function inner(){ var n = 010; }",
+    "var first = 1; 'use strict'; var n = 010;",
+    "('use strict'); with (obj) {}"
+]) {
+    assert.equal(removeNumberLiterals(`${firstPath}; function key(){ ${valid} }`), "msg['OBX'].value");
+}
+// The release parser checks const conflicts in the containing function even
+// without a strict directive. A destructured parameter binds its value name.
+for (const [body, valid] of [
+    ['const x = 1; { var x = 2; }', false],
+    ['function f() {} const f = 1;', false],
+    ['var f = ({key: x}) => { const x = 1; };', false],
+    ['function f([x]) { const x = 1; }', false],
+    ['const x = 1; var a = [v for (x in rows)];', false],
+    ['const x = 1; function f() { var x = 2; }', true],
+    ['function f({key: x}) { const key = 1; }', true],
+    ['var f = function internal() {}; const internal = 1;', true],
+    ['var x = 1; var x = 2;', true]
+]) {
+    const draft = `${firstPath}; function read() { ${body} }`;
+    assert.equal(removeNumberLiterals(draft), valid ? "msg['OBX'].value" : draft);
+}
 for (const statement of ["'unfinished\\'", 'var s = "unfinished\\"']) {
     const draft = firstPath + '; ' + statement;
     assert.equal(removeNumberLiterals(draft), draft, 'an escaped quote at EOF leaves the whole draft intact');

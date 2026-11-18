@@ -108,6 +108,29 @@ for (const kind of ['filter', 'transformer', 'response']) {
     });
 }
 
+test('Import rechecks save permission before applying a replacement', async ({ page }) => {
+    const channel = makeChannel('edit-permission-at-accept');
+    channel.sourceConnector.transformer.elements = { [stepType]: step('Existing') };
+    const writes = await setup(page, channel, 'transformer/0');
+    const permission = (allowed: boolean) => page.evaluate(async allowed => {
+        const { platform } = await import(String('@oie/web-shell'));
+        platform.setAuthorizationController({ checkTask: (group: string, task: string) =>
+            allowed || group !== 'channelEdit' || task !== 'doSaveChannel' });
+    }, allowed);
+    const dialog = page.getByRole('dialog');
+    const imported = xml('transformer', { elements: { [stepType]: step('Imported') } });
+    await upload(page, 'Import Transformer', imported);
+    await expect(dialog.getByRole('button', { name: 'Replace' })).toBeVisible();
+    await permission(false);
+    await dialog.getByRole('button', { name: 'Replace' }).click();
+    await expect(page.locator('input.grid-name')).toHaveValue('Existing');
+    await permission(true);
+    await upload(page, 'Import Transformer', imported);
+    await dialog.getByRole('button', { name: 'Append' }).click();
+    const saved = await save(page, writes);
+    expect(saved.sourceConnector.transformer.elements[stepType].map((item: any) => item.name)).toEqual(['Existing', 'Imported']);
+});
+
 test('full transformer XML replacement imports data types, properties and templates and clears existing steps', async ({ page }) => {
     const channel = makeChannel('replace-transformer');
     channel.sourceConnector.transformer.elements = { [stepType]: step('Existing') };
