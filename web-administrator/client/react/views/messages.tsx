@@ -1007,45 +1007,96 @@ function MappingsTable({ cm }: any) {
         return out;
     }, [cm]);
 
+    const presentScopes = useMemo(() => {
+        const seen = new Set(rows.map((r: any) => r.scope));
+        return ['Source', 'Connector', 'Channel', 'Response'].filter(s => seen.has(s));
+    }, [rows]);
+
     // null sort key = original Source→Response order.
     const [sort, setSort] = useState<any>({ key: null, dir: 1 });
+    const [scopeFilter, setScopeFilter] = useState<string>('All');
+    const [textFilter, setTextFilter] = useState<string>('');
 
     if (!rows.length) {
         return <div className="p-3.5"><div className="text-text-faint">There are no mappings present.</div></div>;
     }
 
-    const view = sort.key
-        ? [...rows].sort((a: any, b: any) => String(a[sort.key]).localeCompare(String(b[sort.key]), undefined, { numeric: true }) * sort.dir)
-        : rows;
+    const needle = textFilter.trim().toLowerCase();
+    const activeScope = scopeFilter !== 'All' && presentScopes.includes(scopeFilter) ? scopeFilter : 'All';
+    const filtered = rows.filter((r: any) => {
+        if (activeScope !== 'All' && r.scope !== activeScope) return false;
+        if (needle && !r.variable.toLowerCase().includes(needle) && !r.value.toLowerCase().includes(needle)) return false;
+        return true;
+    });
 
-    // No inner overflow wrapper: the table scrolls in the tab body
-    // (flex-1 min-h-0 overflow-auto), so the sticky header sticks to the pane
-    // top and reads as a static banner instead of scrolling away with a nested
-    // scroll container.
+    const view = sort.key
+        ? [...filtered].sort((a: any, b: any) => String(a[sort.key]).localeCompare(String(b[sort.key]), undefined, { numeric: true }) * sort.dir)
+        : filtered;
+
+    const isFiltered = activeScope !== 'All' || needle !== '';
+
     return (
-        <table className="dt">
-            <thead>
-                <tr>
-                    {MAPPING_COLS.map(col => (
-                        <th key={col.key} className="sortable"
-                            onClick={() => setSort((s: any) => s.key === col.key ? { key: col.key, dir: -s.dir } : { key: col.key, dir: 1 })}>
-                            {col.label}
-                            {sort.key === col.key ? <span className="sort-arrow">{sort.dir > 0 ? '▲' : '▼'}</span> : null}
-                        </th>
-                    ))}
-                </tr>
-            </thead>
-            <tbody>
-                {view.map((r: any, i: any) => (
-                    <tr key={i} className="cursor-pointer" title="Double-click for the full value"
-                        onDoubleClick={() => openMappingValue(r.value)}>
-                        <td className="w-[108px]">{r.scope}</td>
-                        <td className="mono w-[30%]">{r.variable}</td>
-                        <td className="mono whitespace-pre-wrap break-all">{r.value}</td>
-                    </tr>
-                ))}
-            </tbody>
-        </table>
+        <div className="flex flex-col h-full min-h-0">
+            <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-line bg-bg1 flex-none">
+                <div className="relative flex items-center">
+                    <input type="text" placeholder="Filter variable or value…" aria-label="Filter mappings"
+                        className="w-[220px] pr-6"
+                        value={textFilter} onChange={(e: any) => setTextFilter(e.target.value)} />
+                    {textFilter && (
+                        <button type="button" aria-label="Clear mapping filter" title="Clear filter"
+                            className="icon-btn absolute right-1" onClick={() => setTextFilter('')}>
+                            <Icon name="x" size={12} />
+                        </button>
+                    )}
+                </div>
+                {presentScopes.length > 1 && (
+                    <div className="flex items-center gap-1" role="group" aria-label="Filter by scope">
+                        {['All', ...presentScopes].map(scope => {
+                            const active = activeScope === scope;
+                            return (
+                                <button key={scope} type="button" aria-pressed={active}
+                                    className={'btn btn-sm ' + (active ? 'btn-primary' : '')}
+                                    onClick={() => setScopeFilter(scope)}>
+                                    {scope}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+                {isFiltered && (
+                    <span className="text-text-faint ml-auto">{`${view.length} / ${rows.length}`}</span>
+                )}
+            </div>
+            <div className="flex-1 min-h-0 overflow-auto">
+                {!view.length ? (
+                    <div className="p-3.5"><div className="text-text-faint">No mappings match the current filter.</div></div>
+                ) : (
+                    <table className="dt">
+                        <thead>
+                            <tr>
+                                {MAPPING_COLS.map(col => (
+                                    <th key={col.key} className="sortable"
+                                        onClick={() => setSort((s: any) => s.key === col.key ? { key: col.key, dir: -s.dir } : { key: col.key, dir: 1 })}>
+                                        {col.label}
+                                        {sort.key === col.key ? <span className="sort-arrow">{sort.dir > 0 ? '▲' : '▼'}</span> : null}
+                                    </th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {view.map((r: any, i: any) => (
+                                <tr key={i} className="cursor-pointer" title="Double-click for the full value"
+                                    onDoubleClick={() => openMappingValue(r.value)}>
+                                    <td className="w-[108px] align-top">{r.scope}</td>
+                                    <td className="mono w-[30%] align-top">{r.variable}</td>
+                                    <td className="mono whitespace-pre-wrap break-all align-top">{r.value}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+            </div>
+        </div>
     );
 }
 
