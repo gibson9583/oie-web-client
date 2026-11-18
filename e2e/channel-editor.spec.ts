@@ -601,11 +601,10 @@ test.describe('Channel editor', () => {
         // render the "No Rules Configured" landing state — seed one Rule Builder
         // rule so the grid itself is what we assert on.
         const channel = structuredClone(FULL_CHANNEL);
-        const field = "msg['MSH']['MSH.9']['MSH.9.1'].toString()";
         channel.destinationConnectors.connector[0].filter.elements = {
             'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule': {
                 '@version': '4.6.0', name: 'Accept ADT Only', sequenceNumber: '0', enabled: true,
-                operator: 'NONE', field,
+                operator: 'NONE', field: "msg['MSH']['MSH.9']['MSH.9.1'].toString()",
                 condition: 'EXISTS', values: '',
             },
         };
@@ -615,7 +614,7 @@ test.describe('Channel editor', () => {
 
         // The rule held by the DESTINATION's filter — proves the channel was
         // fetched cold AND metaDataId 1 resolved to the right connector/target.
-        await expect(page.locator('input.grid-name')).toHaveValue(`Accept message if "${field}" exists`, { timeout: 15_000 });
+        await expect(page.locator('input.grid-name')).toHaveValue('Accept ADT Only', { timeout: 15_000 });
 
         // "Operator" is emitted only when kindName === 'filter'; the transformer
         // and response routes share this component and never render that column.
@@ -626,15 +625,13 @@ test.describe('Channel editor', () => {
         await expect(page.getByRole('button', { name: 'Add New Rule', exact: true })).toBeVisible();
         await expect(page.getByRole('button', { name: 'Validate Filter', exact: true })).toBeVisible();
 
-        // Swing filters use their connector's inbound transformer template.
+        // Filter routes get a Reference-only side panel — no message-tree tabs.
         await expect(page.getByRole('tab', { name: 'Reference', exact: true })).toBeVisible();
-        await page.getByRole('tab', { name: 'Message Trees', exact: true }).click();
-        await expect(page.getByRole('region', { name: 'Inbound message tree (msg)' })).toBeVisible();
-        await expect(page.getByRole('region', { name: 'Outbound message tree (tmp)' })).toHaveCount(0);
+        await expect(page.getByRole('tab', { name: 'Message Trees', exact: true })).toHaveCount(0);
 
         // The rule's plugin editor mounted from the RULE registry (platform.ruleType).
         await expect(page.locator('.step-editor-fill .field:has(label:text-is("Field")) input'))
-            .toHaveValue(field);
+            .toHaveValue("msg['MSH']['MSH.9']['MSH.9.1'].toString()");
 
         // Swing-parity banner, built from the fetched channel + resolved connector.
         await expect(page.locator('.view-title'))

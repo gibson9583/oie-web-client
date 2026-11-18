@@ -33,9 +33,7 @@ import { platform } from '@oie/web-shell';
 import type { Platform } from '@oie/web-shell';
 import { replacementPairs, replacementsToWire } from '/core/step-replacements.js';
 import type { Replacement } from '/core/step-replacements.js';
-import { iteratorName } from '/core/iterator-substitutions.js';
-import { isJavaBlank } from '/core/rhino-key-source.js';
-const React: typeof import('react') = platform.React;
+const React = platform.React;
 
 const SCOPES = [
     { value: 'CHANNEL', label: 'Channel Map' },
@@ -70,7 +68,7 @@ const CONDITION_USES_VALUES = new Set(['EQUALS', 'NOT_EQUAL', 'CONTAINS', 'NOT_C
    client. The editor's validateAll runs these before returning to the channel.
    (JavaScript step/rule have no field check — their script is syntax-validated
    through the engine's Rhino compiler instead.) */
-const isBlank = (value: unknown) => isJavaBlank(value == null ? null : String(value));
+const isBlank = (v: any) => v == null || String(v).trim() === '';
 
 /* ---- XStream list helpers ----------------------------------------------------
  * List<String>  round-trips as { string: [...] }  ('' when empty — an empty
@@ -78,13 +76,16 @@ const isBlank = (value: unknown) => isJavaBlank(value == null ? null : String(va
  * List<Integer> round-trips as { int: [...] }.
  */
 
-type WireStrings = '' | { string: string[] };
-
-function stringListValues(value: unknown): string[] {
+function stringListToLines(value: any) {
     if (!value || typeof value !== 'object') return [];
-    const list = Array.isArray(value) ? value : 'string' in value ? value.string : null;
-    if (list == null) return [];
-    return (Array.isArray(list) ? list : [list]).map(item => String(item ?? ''));
+    const list = value.string;
+    if (list === null || list === undefined) return [];
+    return (Array.isArray(list) ? list : [list]).map(v => String(v ?? ''));
+}
+
+function linesToStringList(text: any) {
+    const lines = String(text || '').split('\n').map(s => s.trim()).filter(Boolean);
+    return lines.length ? { string: lines } : '';
 }
 
 /* DestinationSetFilter metaDataIds <-> the set of checked destination ids.
@@ -103,6 +104,13 @@ function idSetToMetaData(set: any, destinations: any) {
     // Preserve any checked ids that aren't in the current destination list.
     for (const id of set) if (!ordered.includes(id)) ordered.push(id);
     return ordered.length ? { int: ordered } : '';
+}
+
+/* DestinationSetFilter values <-> an array of strings (List<String>). Unlike
+   linesToStringList this does NOT drop blanks — the values table keeps empty
+   rows the user is still typing into; '' stands in for an empty list. */
+function stringArrayToList(arr: any) {
+    return arr.length ? { string: arr.map((s: any) => String(s ?? '')) } : '';
 }
 
 /* ---- JSX form helpers --------------------------------------------------------
@@ -131,51 +139,6 @@ function Select({ options, value, onChange }: any) {
             })}
         </select>
     );
-}
-
-// One Swing table cell is one expression. A computed XML key or a comparison
-// can contain newlines of its own, including when the iterator wizard prints it.
-function ExpressionTable({ label, value, condition, keep = Boolean, onChange }: {
-    label: string; value: unknown; condition?: string;
-    keep?: (text: string) => boolean; onChange: (value: WireStrings) => void;
-}) {
-    const [rows, setRows] = React.useState(() => stringListValues(value));
-    const [selected, setSelected] = React.useState(-1);
-    const disabled = condition !== undefined && !CONDITION_USES_VALUES.has(condition);
-    React.useEffect(() => { setSelected(-1); }, [condition]);
-    const change = (next: string[]) => {
-        setRows(next);
-        const saved = next.filter(keep);
-        onChange(saved.length ? { string: saved } : '');
-    };
-    const add = () => {
-        setSelected(rows.length);
-        change([...rows, '']);
-    };
-    const remove = () => {
-        change(rows.filter((_, i) => i !== selected));
-        setSelected(Math.min(selected, rows.length - 2));
-    };
-    return <>
-        <div className="flex gap-2 mb-1.5">
-            <button type="button" className="btn btn-sm" disabled={disabled}
-                aria-label={`New ${label.toLowerCase()}`} onClick={add}>New</button>
-            <button type="button" className="btn btn-sm btn-danger" disabled={disabled || selected < 0}
-                aria-label={`Delete ${label.toLowerCase()}`} onClick={remove}>Delete</button>
-        </div>
-        <div className="dt-wrap border border-line rounded max-h-[162px]">
-            <table className="dt">
-                <thead><tr><th>{label}</th></tr></thead>
-                <tbody>{rows.map((text, i) => (
-                    <tr key={i} className={i === selected ? 'selected' : undefined}>
-                        <td><textarea rows={1} spellCheck={false} disabled={disabled}
-                            aria-label={`${label} ${i + 1}`} value={text} onFocus={() => setSelected(i)}
-                            onChange={e => change(rows.map((entry, index) => index === i ? e.target.value : entry))} /></td>
-                    </tr>
-                ))}</tbody>
-            </table>
-        </div>
-    </>;
 }
 
 /* A small force-update hook: the editors mutate the shared `element` object in
@@ -258,26 +221,20 @@ function ScriptPathEditor({ element, onChange }: any) {
  * collection instead of null.
  */
 
-function emptyIteratorProperties(isRule: boolean) {
-    return { target: '', indexVariable: 'i', prefixSubstitutions: '', children: '',
-        ...(isRule ? { intersectIterations: false, breakEarly: true } : {}) };
+function emptyIteratorProperties() {
+    return { target: '', indexVariable: 'i', prefixSubstitutions: '', children: '' };
 }
 
-function makeIteratorEditor(isRule: boolean) {
+function makeIteratorEditor(isRule: any) {
     const type = isRule ? 'com.mirth.connect.model.IteratorRule' : 'com.mirth.connect.model.IteratorStep';
     const childNoun = isRule ? 'rule' : 'step';
 
     function IteratorEditor({ element, onChange }: any) {
         const force = useRerender();
         if (!element.properties || typeof element.properties !== 'object') {
-            element.properties = emptyIteratorProperties(isRule);
+            element.properties = emptyIteratorProperties();
         }
         const props = element.properties;
-        const updateName = () => {
-            element.name = iteratorName(element, isBlank(props.target) ? '...' : props.target);
-            onChange();
-            force();
-        };
 
         return (
             <>
@@ -288,42 +245,33 @@ function makeIteratorEditor(isRule: boolean) {
                     >
                         <input
                             type="text"
-                            aria-label="Iterate On (target)"
                             placeholder="msg['OBX']"
                             value={props.target ?? ''}
-                            onChange={(e: any) => { props.target = e.target.value; updateName(); }}
+                            onChange={(e: any) => { props.target = e.target.value; onChange(); force(); }}
                         />
                     </Field>
                     <Field label="Index Variable">
                         <input
                             type="text"
-                            aria-label="Index Variable"
                             value={props.indexVariable ?? 'i'}
                             onChange={(e: any) => { props.indexVariable = e.target.value; onChange(); force(); }}
                         />
                     </Field>
-                    {isRule && <>
-                        <Field label="Accept Message If">
-                            <select aria-label="Accept Message If" value={String(props.intersectIterations ?? false)}
-                                onChange={e => { props.intersectIterations = e.target.value === 'true'; updateName(); }}>
-                                <option value="false">At least one of the iterations returns true</option>
-                                <option value="true">All of the iterations return true</option>
-                            </select>
-                        </Field>
-                        <Field label="Break Early">
-                            <select aria-label="Break Early" value={String(props.breakEarly === true || props.breakEarly === 'true')}
-                                onChange={e => { props.breakEarly = e.target.value === 'true'; onChange(); force(); }}>
-                                <option value="true">Yes</option><option value="false">No</option>
-                            </select>
-                        </Field>
-                    </>}
                     <div className="span-2">
                         <Field
                             label="Prefix Substitutions"
-                            hint="Dragging a field into a child inserts the index variable after a matching prefix."
+                            hint="One prefix per line — when dragging values into children, the index variable (e.g. [i]) is injected after these prefixes"
                         >
-                            <ExpressionTable label="Prefix" value={props.prefixSubstitutions} keep={prefix => !isJavaBlank(prefix)}
-                                onChange={value => { props.prefixSubstitutions = value; onChange(); }} />
+                            <textarea
+                                rows={3}
+                                placeholder="msg['OBX']"
+                                value={stringListToLines(props.prefixSubstitutions).join('\n')}
+                                onChange={(e: any) => {
+                                    props.prefixSubstitutions = linesToStringList(e.target.value);
+                                    onChange();
+                                    force();
+                                }}
+                            />
                         </Field>
                     </div>
                 </div>
@@ -340,12 +288,11 @@ function makeIteratorEditor(isRule: boolean) {
 
     return {
         label: 'Iterator',
-        nameEditable: false,
         create: () => ({
             __type: type,
-            name: iteratorName({ __type: type }, '...'), enabled: true,
+            name: '', enabled: true,
             ...(isRule ? { operator: 'AND' } : null),
-            properties: emptyIteratorProperties(isRule)
+            properties: emptyIteratorProperties()
         }),
         validate: (el: any) => {
             const p = el.properties || {};
@@ -418,7 +365,7 @@ function MapperEditor({ element, onChange }: any) {
                 <input
                     type="text"
                     value={element.variable ?? ''}
-                    onChange={e => { element.variable = e.target.value; element.name = e.target.value; onChange(); force(); }}
+                    onChange={(e: any) => { element.variable = e.target.value; onChange(); force(); }}
                 />
             </Field>
             <Field label="Add to">
@@ -526,38 +473,11 @@ function XsltEditor({ element, onChange }: any) {
    compatible. metaDataIds is stored as the List<Integer> of CHECKED ids and
    values as a List<String>, in the same wire shape the model loaded with — a
    loaded element the user only renames round-trips untouched. */
-const conditionVerbs: Record<string, string> = {
-    EXISTS: 'exists', NOT_EXIST: 'does not exist', EQUALS: 'equals', NOT_EQUAL: 'does not equal',
-    CONTAINS: 'contains', NOT_CONTAIN: 'does not contain'
-};
-
-function comparisonName(element: any, subject: string) {
-    const condition = element.condition || 'EXISTS';
-    let predicate = conditionVerbs[condition];
-    if (CONDITION_USES_VALUES.has(condition)) {
-        const values = stringListValues(element.values).filter(value => !isJavaBlank(value));
-        if (values.length) predicate += ' ' + values.join(' or ');
-        else if (condition === 'EQUALS') predicate = 'is blank';
-        else if (condition === 'NOT_EQUAL') predicate = 'is not blank';
-        else predicate += ' ""';
-    }
-    return `${subject} if "${element.field ?? ''}" ${predicate}`;
-}
-
-// Both Swing panels set the loaded element's name and update it as the user edits.
-function useComparisonEditor(element: any, subject: string, onChange: () => void) {
-    const refresh = useRerender();
-    React.useLayoutEffect(() => {
-        const name = comparisonName(element, subject);
-        if (element.name !== name) { element.name = name; onChange(); }
-    }, [element, subject, onChange]);
-    return () => { element.name = comparisonName(element, subject); onChange(); refresh(); };
-}
-
 let dsfUid = 0;
 
 function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
-    const updateComparison = useComparisonEditor(element, 'Filter destination(s)', onChange);
+    const force = useRerender();
+    const [selValue, setSelValue] = React.useState(-1);
     // Per-INSTANCE radio-group name: keying on the element class collides when
     // two Destination Set Filter steps are on screen at once (same class), and
     // colliding names let one step's Condition radios uncheck the other's.
@@ -567,11 +487,13 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
     const behavior = element.behavior || 'REMOVE';
     const condition = element.condition || 'EXISTS';
     const checked = checkedIdSet(element.metaDataIds);
+    const values = stringListToLines(element.values);
 
     const listDisabled = behavior === 'REMOVE_ALL';   // REMOVE_ALL takes no ids
+    const valuesEnabled = CONDITION_USES_VALUES.has(condition);
 
     // ---- destination checkbox list ----
-    const setChecked = (next: any) => { element.metaDataIds = idSetToMetaData(next, dests); updateComparison(); };
+    const setChecked = (next: any) => { element.metaDataIds = idSetToMetaData(next, dests); onChange(); force(); };
     const toggleId = (id: any, on: any) => {
         const next = new Set(checked);
         if (on) next.add(String(id)); else next.delete(String(id));
@@ -580,13 +502,25 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
     const selectAll = () => setChecked(new Set(dests.map(d => String(d.metaDataId))));
     const deselectAll = () => setChecked(new Set());
 
+    // ---- values table ----
+    const setValues = (arr: any) => { element.values = stringArrayToList(arr); onChange(); force(); };
+    const newValue = () => { setValues([...values, '']); setSelValue(values.length); };
+    const editValue = (i: any, v: any) => { const next = values.slice(); next[i] = v; setValues(next); };
+    const deleteSelected = () => {
+        if (selValue < 0 || selValue >= values.length) return;
+        const next = values.slice();
+        next.splice(selValue, 1);
+        setValues(next);
+        setSelValue(next.length ? Math.min(selValue, next.length - 1) : -1);
+    };
+
     return (
         <div className="form-grid">
             <Field label="Behavior">
                 <Select
                     options={BEHAVIORS}
                     value={behavior}
-                    onChange={(e: any) => { element.behavior = e.target.value; updateComparison(); }}
+                    onChange={(e: any) => { element.behavior = e.target.value; onChange(); force(); }}
                 />
             </Field>
             <Field label="Field">
@@ -594,7 +528,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
                     type="text"
                     placeholder="msg['PID']['PID.3']['PID.3.1'].toString()"
                     value={element.field ?? ''}
-                    onChange={e => { element.field = e.target.value; updateComparison(); }}
+                    onChange={(e: any) => { element.field = e.target.value; onChange(); force(); }}
                 />
             </Field>
 
@@ -651,7 +585,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
                                     type="radio"
                                     name={`dsf-condition-${uid}`}
                                     checked={condition === opt.value}
-                                    onChange={() => { element.condition = opt.value; updateComparison(); }}
+                                    onChange={() => { element.condition = opt.value; onChange(); force(); }}
                                 />
                                 {opt.label}
                             </label>
@@ -662,8 +596,44 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
 
             <div className="span-2 mt-2">
                 <Field label="Values">
-                    <ExpressionTable label="Value" value={element.values} condition={condition}
-                        onChange={value => { element.values = value; updateComparison(); }} />
+                    <div className="flex gap-2 mb-1.5">
+                        <button type="button" className="btn btn-sm" disabled={!valuesEnabled} onClick={newValue}>New</button>
+                        <button
+                            type="button"
+                            className="btn btn-sm btn-danger"
+                            disabled={!valuesEnabled || selValue < 0 || selValue >= values.length}
+                            onClick={deleteSelected}
+                        >Delete</button>
+                    </div>
+                    <div
+                        className="dt-wrap border border-line rounded max-h-[162px]"
+                        style={!valuesEnabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
+                    >
+                        <table className="dt">
+                            <thead><tr><th>Value</th></tr></thead>
+                            <tbody>
+                                {values.length ? values.map((v: any, i: any) => (
+                                    <tr
+                                        key={i}
+                                        className={selValue === i ? 'selected' : undefined}
+                                        onClick={() => setSelValue(i)}
+                                    >
+                                        <td>
+                                            <input
+                                                type="text"
+                                                value={v}
+                                                disabled={!valuesEnabled}
+                                                onFocus={() => setSelValue(i)}
+                                                onChange={(e: any) => editValue(i, e.target.value)}
+                                            />
+                                        </td>
+                                    </tr>
+                                )) : (
+                                    <tr><td><span className="text-text-faint">No values — use New</span></td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </Field>
             </div>
         </div>
@@ -671,8 +641,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
 }
 
 function RuleBuilderEditor({ element, onChange }: any) {
-    const updateComparison = useComparisonEditor(element, 'Accept message', onChange);
-    const condition = element.condition || 'EXISTS';
+    const force = useRerender();
     return (
         <div className="form-grid">
             <Field label="Field">
@@ -680,20 +649,25 @@ function RuleBuilderEditor({ element, onChange }: any) {
                     type="text"
                     placeholder="msg['MSH']['MSH.9']['MSH.9.1'].toString()"
                     value={element.field ?? ''}
-                    onChange={e => { element.field = e.target.value; updateComparison(); }}
+                    onChange={(e: any) => { element.field = e.target.value; onChange(); force(); }}
                 />
             </Field>
             <Field label="Condition">
                 <Select
                     options={CONDITIONS}
-                    value={condition}
-                    onChange={(e: any) => { element.condition = e.target.value; updateComparison(); }}
+                    value={element.condition || 'EXISTS'}
+                    onChange={(e: any) => { element.condition = e.target.value; onChange(); force(); }}
                 />
             </Field>
             <div className="span-2">
                 <Field label="Values">
-                    <ExpressionTable label="Value" value={element.values} condition={condition}
-                        onChange={value => { element.values = value; updateComparison(); }} />
+                    <textarea
+                        rows={4}
+                        placeholder="One value per line"
+                        title="Only used by Equals / Not Equal / Contains / Not Contain"
+                        value={stringListToLines(element.values).join('\n')}
+                        onChange={(e: any) => { element.values = linesToStringList(e.target.value); onChange(); force(); }}
+                    />
                 </Field>
             </div>
         </div>
@@ -711,14 +685,13 @@ export function register(platform: Platform) {
         create: () => ({
             __type: 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep',
             name: '', enabled: true,
-            script: ''
+            script: '// Write your JavaScript here\n'
         }),
         component: ScriptEditor
     });
 
     platform.registerStepType('com.mirth.connect.plugins.mapper.MapperStep', {
         label: 'Mapper',
-        nameEditable: false,
         create: () => ({
             __type: 'com.mirth.connect.plugins.mapper.MapperStep',
             name: '', enabled: true,
@@ -758,7 +731,6 @@ export function register(platform: Platform) {
 
     platform.registerStepType('com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep', {
         label: 'Destination Set Filter',
-        nameEditable: false,
         // Only available on the source transformer (DestinationSetFilterPlugin
         // .onlySourceConnector()); destinations/response transformers exclude it.
         onlySource: true,
@@ -791,14 +763,13 @@ export function register(platform: Platform) {
         create: () => ({
             __type: 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule',
             name: '', enabled: true, operator: 'AND',
-            script: ''
+            script: '// Return true to accept the message, false to filter it\nreturn true;'
         }),
         component: ScriptEditor
     });
 
     platform.registerRuleType('com.mirth.connect.plugins.rulebuilder.RuleBuilderRule', {
         label: 'Rule Builder',
-        nameEditable: false,
         create: () => ({
             __type: 'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule',
             name: '', enabled: true, operator: 'AND',

@@ -249,7 +249,8 @@ function attachCodeView(editor: CodeEditor, opts: CodeEditorOptions): void {
         if (!carrying) return;
         if (el.contains(e.target as Node)) { e.preventDefault(); e.dataTransfer!.dropEffect = 'copy'; }
     }
-    function onOverlayDrop(e: DragEvent, token: string | undefined): void {
+    function onOverlayDrop(e: DragEvent): void {
+        const token = dragToken || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
         dragToken = null;
         if (!token || !el.contains(e.target as Node)) return;
         e.preventDefault();
@@ -273,19 +274,16 @@ function attachCodeView(editor: CodeEditor, opts: CodeEditorOptions): void {
                 h('div.ce-popout-title', String(opts.popoutTitle || 'Code editor')),
                 h('div.ce-popout-esc', 'Esc closes')),
             body);
-        // A host supplying its own panel can resolve the dragged text at release.
-        const detail = { open: true, overlay, body, editorEl: el, origin,
-            getDropText: (event: DragEvent) => dragToken || event.dataTransfer?.getData('text/plain') };
         // Capture-phase so the insert wins over Monaco's own dnd handling.
-        if (!opts.readOnly) {
-            overlay.addEventListener('dragover', onOverlayDragOver, true);
-            overlay.addEventListener('drop', event => onOverlayDrop(event, detail.getDropText(event)), true);
-        }
+        overlay.addEventListener('dragover', onOverlayDragOver, true);
+        overlay.addEventListener('drop', onOverlayDrop, true);
         document.body.appendChild(overlay);
         // Host views can react (e.g. the transformer editor moves its full
         // Reference / Message Templates / Message Trees panel into the view).
         // `origin` is where the editor came from, since el itself has moved.
-        document.dispatchEvent(new CustomEvent('oie:code-view', { detail }));
+        document.dispatchEvent(new CustomEvent('oie:code-view', {
+            detail: { open: true, overlay, body, editorEl: el, origin }
+        }));
         if (editor.monaco) editor.monaco.layout();
         editor.focus && editor.focus();
     }

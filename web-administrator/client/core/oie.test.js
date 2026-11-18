@@ -7,7 +7,7 @@
  * would otherwise normalize to '\n'.
  */
 
-import { arrayToElements, elementsToArray, decodeChannelTemplates, encodeChannelTemplates, validateChannel } from './oie.js';
+import { decodeChannelTemplates, encodeChannelTemplates, validateChannel } from './oie.js';
 
 let pass = 0, fail = 0;
 function eq(label, got, want) {
@@ -75,19 +75,6 @@ eq('wire "false" string counts as disabled', validateChannel(withDests(connector
 eq('one enabled destination -> ok', validateChannel(withDests(connector(false), connector(true))).includes(NEEDS_ENABLED), false);
 eq('absent enabled flag means enabled', validateChannel(withDests(connector(undefined))).includes(NEEDS_ENABLED), false);
 eq('no destinations reports the missing-destination problem instead', validateChannel(withDests()).includes(NEEDS_ENABLED), false);
-
-// Swing writes a zero-based path. The engine's JSON groups repeated classes,
-// so a heterogeneous iterator can arrive with its children out of order.
-const js = 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep';
-const mapper = 'com.mirth.connect.plugins.mapper.MapperStep';
-const children = elementsToArray({
-    [js]: [{ sequenceNumber: '2-3-0' }, { sequenceNumber: '2-3-10' }],
-    [mapper]: { sequenceNumber: '2-3-2' }
-});
-eq('nested positions sort numerically', children.map(child => child.sequenceNumber).join(), '2-3-0,2-3-2,2-3-10');
-const regrouped = arrayToElements(children, '2-3');
-eq('wire positions follow the new sibling order', elementsToArray(regrouped).map(child => child.sequenceNumber).join(), '2-3-0,2-3-1,2-3-2');
-eq('deep siblings fit the release converter’s Java int', arrayToElements(children, '2-1-4-7-4-8-3-6-5')[mapper][0].sequenceNumber, '1');
 
 console.log(`\noie.test: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

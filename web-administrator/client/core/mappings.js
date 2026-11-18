@@ -40,10 +40,10 @@ export const DESTINATION_MAPPINGS = destinationMappings.map(([label, token]) => 
 const JAVASCRIPT_DESTINATION_MAPPINGS = destinationMappings
     .filter(([, , script]) => script !== null)
     .map(([label, , script]) => [label, script]);
-// VariableListHandler's static transfers take precedence over discovered map keys
-// and connector names. Channel ID and Channel Name are dynamic in its JavaScript mode.
+// VariableListHandler reserves these labels too, although they are not fixed
+// destination rows. Its static transfer text wins over a discovered map key
+// or a destination with the same name.
 const JAVASCRIPT_TRANSFER_OVERRIDES = new Map([
-    ...JAVASCRIPT_DESTINATION_MAPPINGS.filter(([label]) => label !== 'Channel ID' && label !== 'Channel Name'),
     ['Message with Attachments', 'var rawData = AttachmentUtil.reAttachMessage(connectorMessage)']
 ]);
 const VELOCITY_TRANSFER_OVERRIDES = new Map([
@@ -76,17 +76,13 @@ function unescapeMapKey(key) {
         return escapes[value] ?? value;
     });
 }
-function addVariables(target, stage, includeLocal, beforeRow = -1) {
-    if (beforeRow === 0 || !stage?.elements)
-        return;
+function addVariables(target, stage, includeLocal) {
     const pattern = mapVariablePattern(includeLocal);
-    for (const [row, element] of elementsToArray(stage.elements).entries()) {
-        if (row === beforeRow)
-            break;
+    for (const element of elementsToArray(stage?.elements)) {
         if (element.enabled === false || element.enabled === 'false')
             continue;
         try {
-            const script = generateElementScript(element);
+            const script = generateElementScript(element, child => elementsToArray(child.properties?.children));
             if (!script)
                 continue;
             // Keep the same simple-comment then block-comment order as Swing.
@@ -100,48 +96,25 @@ function addVariables(target, stage, includeLocal, beforeRow = -1) {
         }
     }
 }
-// BaseEditorPane passes the selected tree-table row to VariableListUtil, which
-// counts top-level steps and scans each enabled step's full generated script.
-function variablesInScope(channel, active, beforeRow = -1, response = false) {
+function destinationVariables(channel, destination) {
     const rules = new Set();
     const steps = new Set();
     const source = channel.sourceConnector;
-    const atSource = active === source;
-    addVariables(rules, source?.filter, atSource);
-    addVariables(steps, source?.transformer, atSource, atSource ? beforeRow : -1);
-    if (!atSource) {
-        for (const connector of destinationsOf(channel)) {
-            const selected = connector === active || String(connector.metaDataId) === String(active.metaDataId);
-            addVariables(rules, connector.filter, selected);
-            addVariables(steps, connector.transformer, selected, selected && !response ? beforeRow : -1);
-            if (selected) {
-                if (response)
-                    addVariables(steps, connector.responseTransformer, true, beforeRow);
-                break;
-            }
-            addVariables(steps, connector.responseTransformer, false);
-            if (connector.name != null) {
-                rules.add(connector.name);
-                steps.add(connector.name);
-            }
+    addVariables(rules, source?.filter, false);
+    addVariables(steps, source?.transformer, false);
+    for (const connector of destinationsOf(channel)) {
+        const selected = connector === destination || String(connector.metaDataId) === String(destination.metaDataId);
+        addVariables(rules, connector.filter, selected);
+        addVariables(steps, connector.transformer, selected);
+        if (selected)
+            break;
+        addVariables(steps, connector.responseTransformer, false);
+        if (connector.name != null) {
+            rules.add(connector.name);
+            steps.add(connector.name);
         }
     }
     return new Set([...rules, ...steps]);
-}
-function variableTransfer(label, ids, javascript) {
-    const connector = ids.has(label);
-    const key = connector ? `d${ids.get(label)}` : label;
-    const quote = key.includes("'") ? '"' : "'";
-    if (javascript)
-        return JAVASCRIPT_TRANSFER_OVERRIDES.get(label) ?? `$(${quote}${key}${quote})`;
-    return VELOCITY_TRANSFER_OVERRIDES.get(label) ?? (connector ? `\${${key}.message}`
-        : /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(key) ? `\${${key}}` : `\${maps.get(${quote}${key}${quote})}`);
-}
-/** Variables and JavaScript transfer text for the filter/transformer Reference tab. */
-export function editorVariableMappings(channel, connector, beforeRow, response) {
-    const destinations = connector === channel.sourceConnector ? [] : destinationsOf(channel);
-    const ids = new Map(destinations.map(item => [item.name, item.metaDataId]));
-    return Array.from(variablesInScope(channel, connector, beforeRow, response), label => [label, variableTransfer(label, ids, true)]);
 }
 /** Swing's destination list uses the connector's transfer mode, not editor syntax.
  * Source receivers and authentication scripts have separate reference contexts.
@@ -164,10 +137,17 @@ export function destinationMappingsFor(properties, channel, destination) {
     const mappings = [...base];
     const labels = new Set(mappings.map(([label]) => label));
     const metaDataIds = new Map(connectors.map(connector => [connector.name, connector.metaDataId]));
-    for (const label of variablesInScope(channel, selected)) {
+    const overrides = javascript ? JAVASCRIPT_TRANSFER_OVERRIDES : VELOCITY_TRANSFER_OVERRIDES;
+    for (const label of destinationVariables(channel, selected)) {
         if (labels.has(label))
             continue;
-        mappings.push([label, variableTransfer(label, metaDataIds, javascript)]);
+        const connector = metaDataIds.has(label);
+        const key = connector ? `d${metaDataIds.get(label)}` : label;
+        const quote = key.includes("'") ? '"' : "'";
+        const token = overrides.get(label) ?? (javascript ? `$(${quote}${key}${quote})`
+            : connector ? `\${${key}.message}`
+                : /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(key) ? `\${${key}}` : `\${maps.get(${quote}${key}${quote})}`);
+        mappings.push([label, token]);
         labels.add(label);
     }
     return mappings;

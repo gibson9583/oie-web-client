@@ -3,11 +3,39 @@
  * Only the shipped expression fields participate, never arbitrary script text.
  */
 
-import { isJavaBlank, readExpressionParts } from './rhino-key-source.js';
-import { isIteratorType } from './oie.js';
-import { REPLACEMENT_PAIR } from './step-replacements.js';
+import { isJavaBlank, readExpressionParts } from './iterator-expression.js';
+import { arrayToElements } from '../../core/oie.js';
+import { REPLACEMENT_PAIR } from '../../core/step-replacements.js';
 
 type Element = Record<string, any>;
+
+export function isIteratorType(type: unknown): boolean {
+    return type === 'com.mirth.connect.model.IteratorStep' || type === 'com.mirth.connect.model.IteratorRule';
+}
+
+export function childrenOf(element: Element): Element[] {
+    return element.__children ??= [];
+}
+
+/** Write the editor's hydrated children back in Swing's execution order. */
+export function serializeEditorElements(list: Parameters<typeof arrayToElements>[0], parentPosition = ''): ReturnType<typeof arrayToElements> {
+    const wire = arrayToElements(list);
+    if (!wire) return null;
+    // The release converter reads the digits as a Java int. Deeply nested
+    // positions can use local sibling indices if the full path would overflow.
+    const lastPosition = parentPosition.replaceAll('-', '') + (list.length - 1);
+    const prefix = parentPosition && Number(lastPosition) <= 2_147_483_647 ? parentPosition + '-' : '';
+    for (const [type, siblings] of Object.entries(wire)) {
+        for (const element of siblings) {
+            element.sequenceNumber = prefix + element.sequenceNumber;
+            if (isIteratorType(type) && Array.isArray(element.__children)) {
+                element.properties = { ...element.properties, children: serializeEditorElements(element.__children, element.sequenceNumber) ?? '' };
+                delete element.__children;
+            }
+        }
+    }
+    return wire;
+}
 
 function elementType(element: Element): string {
     return element.__type || element['@class'] || '';
@@ -79,7 +107,7 @@ export function preferredIterator(expression: string, iterators: Element[], sele
             for (const prefix of strings(iterator.properties?.prefixSubstitutions)) {
                 if (target.startsWith(prefix)) {
                     if (depth > maxDepth) { preferred = iterator; maxDepth = depth; }
-                    visit(children(iterator), prefix + `[${iterator.properties?.indexVariable}]` + target.slice(prefix.length), depth + 1);
+                    visit(childrenOf(iterator), prefix + `[${iterator.properties?.indexVariable}]` + target.slice(prefix.length), depth + 1);
                 }
             }
         }
@@ -95,7 +123,7 @@ export function iteratorName(element: Element, target = element.properties?.targ
         : `For each ${target}`;
 }
 
-export function rewriteIteratorExpression(expression: any, ancestors: Element[], replace: boolean): any {
+function rewriteIteratorExpression(expression: any, ancestors: Element[], replace: boolean): any {
     if (typeof expression !== 'string' || isJavaBlank(expression)) return expression;
     const iterators = replace ? ancestors : [...ancestors].reverse();
     for (const iterator of iterators) {
@@ -149,31 +177,12 @@ function rewriteReplacements(element: Element, rewrite: (value: any) => any) {
     }
 }
 
-function children(element: Element): Element[] {
-    if (Array.isArray(element.__children)) return element.__children;
-    const wire = element.properties?.children;
-    if (Array.isArray(wire)) return wire;
-    if (!wire || typeof wire !== 'object') return [];
-    const result: Element[] = [];
-    for (const [type, values] of Object.entries(wire)) {
-        for (const child of Array.isArray(values) ? values : [values]) {
-            if (child && typeof child === 'object') {
-                // Keep the wire shape intact; type is supplied separately by
-                // elementsToArray when this is hydrated in the editor.
-                if (!elementType(child)) Object.defineProperty(child, '__type', { value: type, configurable: true });
-                result.push(child);
-            }
-        }
-    }
-    return result;
-}
-
 /** Mutates the live element tree just as the editor's other model operations do. */
 export function rewriteElementIteratorVariables(element: Element, ancestors: Element[], replace: boolean): void {
     const type = elementType(element);
     const iterator = isIteratorType(type);
     const childAncestors = iterator ? [...ancestors, element] : ancestors;
-    if (iterator && !replace) for (const child of children(element)) rewriteElementIteratorVariables(child, childAncestors, false);
+    if (iterator && !replace) for (const child of childrenOf(element)) rewriteElementIteratorVariables(child, childAncestors, false);
     const rewrite = (value: any) => rewriteIteratorExpression(value, ancestors, replace);
     let fields: string[] = [];
     if (type === 'com.mirth.connect.plugins.mapper.MapperStep') fields = ['mapping', 'defaultValue'];
@@ -187,7 +196,7 @@ export function rewriteElementIteratorVariables(element: Element, ancestors: Ele
         const props = element.properties || {};
         if (Object.hasOwn(props, 'target')) props.target = rewrite(props.target);
         rewriteStringList(props, 'prefixSubstitutions', rewrite);
-        if (replace) for (const child of children(element)) rewriteElementIteratorVariables(child, childAncestors, true);
+        if (replace) for (const child of childrenOf(element)) rewriteElementIteratorVariables(child, childAncestors, true);
     }
 }
 

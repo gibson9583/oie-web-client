@@ -17,7 +17,6 @@
  *   selectedKey  currently-selected rowKey (or null).
  *   onSelect / onActivate / onRowContextMenu(node, e) / onEmptyContextMenu(e)
  *   rowDraggable (node) => bool; onRowDrop(draggedKey, node) — row reorder.
- *   rowDropEffect(node) => 'copy' | 'move' | 'none' — accepted drag at this row.
  *   onRowDragStart(node, e) / onRowDragEnd(node) — replace the reorder payload
  *                for rows dragged elsewhere (e.g. message-tree accessors).
  *   columnsKey   localStorage key (createColumnManager storageKey).
@@ -40,7 +39,7 @@ import { scrollMemory as savedScroll } from './list-state.js';
 export function TreeTable({
     columns, data, getChildren, rowKey, rowClassName,
     selectedKey, selectedKeys, onSelect, onActivate, onRowContextMenu, onEmptyContextMenu,
-    rowDraggable, onRowDrop, rowDropEffect, onRowDragStart, onRowDragEnd,
+    rowDraggable, onRowDrop, onRowDragStart, onRowDragEnd,
     columnsKey, columnWidths = {}, defaultHidden = [], pinnedKeys = [],
     emptyText = 'No items', matches, collapsedKeys, onToggleCollapse,
     // Controlled sort (opt-in): pass `sort={{key,dir}}` + `onSort(key)` to let the
@@ -351,17 +350,8 @@ export function TreeTable({
                                     e.dataTransfer.setData('text/plain', key); e.dataTransfer.effectAllowed = 'move';
                                 } : undefined}
                                 onDragEnd={drag && onRowDragEnd ? () => onRowDragEnd(node) : undefined}
-                                onDragOver={onRowDrop ? (e: any) => {
-                                    const effect = rowDropEffect?.(node) ?? 'move';
-                                    if (effect === 'none') return;
-                                    e.preventDefault();
-                                    e.dataTransfer.dropEffect = effect;
-                                } : undefined}
-                                onDrop={onRowDrop ? (e: any) => {
-                                    if (rowDropEffect?.(node) === 'none') return;
-                                    e.preventDefault();
-                                    onRowDrop(e.dataTransfer.getData('text/plain'), node);
-                                } : undefined}
+                                onDragOver={onRowDrop ? (e: any) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } : undefined}
+                                onDrop={onRowDrop ? (e: any) => { e.preventDefault(); onRowDrop(e.dataTransfer.getData('text/plain'), node); } : undefined}
                                 onClick={(e: any) => {
                                     onSelect && onSelect(node, e);
                                     if (!onActivate) return;

@@ -1992,7 +1992,6 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 .mtree .icon-btn[aria-pressed="true"] { background: var(--accent-glow); color: var(--accent); }
 .mtree .mt-section { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .mtree .mt-root { display: flex; align-items: center; gap: 2px; padding: 0 8px 4px 12px; flex: none; min-width: 0; }
-.mtree .mt-side { margin-right: 4px; font-size: 11px; color: var(--text); }
 .mtree .mt-root-label {
     flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     font-size: 11px; color: var(--text-dim); cursor: grab;
@@ -2245,7 +2244,7 @@ input.grid-name {
     padding: 2px 4px;
     border-radius: 4px;
 }
-input.grid-name:not(:read-only):hover { border-color: var(--line); }
+input.grid-name:hover { border-color: var(--line); }
 input.grid-name:focus {
     border-color: var(--accent);
     background: var(--bg0);

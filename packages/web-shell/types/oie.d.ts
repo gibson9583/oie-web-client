@@ -5,14 +5,13 @@ export interface Element {
     [key: string]: any;
 }
 export declare function uuid(): string;
-export declare function isIteratorType(type: unknown): boolean;
 /**
  * Flatten a class-keyed element map into an ordered array, tagging each entry
  * with `__type` (its Java class) and sorting by `sequenceNumber`. Accepts `''`
  * because that is what an EMPTY collection looks like on the wire.
  */
 export declare function elementsToArray(elements: XStreamElements | OieObject | '' | null | undefined): Element[];
-export declare function arrayToElements(items: Element[], parentSequence?: string): OieObject | null;
+export declare function arrayToElements(items: Element[]): OieObject | null;
 export declare const CHANNEL_STATES: string[];
 export declare function statePip(state: string): 'ok' | 'warn' | 'err' | 'busy' | '';
 export declare function stateLabel(state: string | null | undefined): string;

@@ -28,9 +28,6 @@ export function uuid() {
     });
 }
 /* ---- polymorphic element collections (filter rules / transformer steps) ---- */
-export function isIteratorType(type) {
-    return type === 'com.mirth.connect.model.IteratorStep' || type === 'com.mirth.connect.model.IteratorRule';
-}
 // FilterTransformerElementsConverter compares the digits of Swing positions
 // (e.g. "0-2" and "0-10"). Older web channels use a local number at each level.
 function sequenceValue(position) {
@@ -56,21 +53,13 @@ export function elementsToArray(elements) {
     out.sort((a, b) => sequenceValue(a.sequenceNumber) - sequenceValue(b.sequenceNumber));
     return out;
 }
-export function arrayToElements(items, parentSequence = '') {
+export function arrayToElements(items) {
     if (!items || !items.length)
         return null;
-    // The release converter parses a signed Java int. Keep every sibling in
-    // local order if a deeply nested Swing position would overflow on reload.
-    const lastPosition = `${parentSequence}-${items.length - 1}`;
-    const prefix = parentSequence && sequenceValue(lastPosition) <= 2_147_483_647 ? parentSequence + '-' : '';
     const elements = {};
     items.forEach((item, index) => {
         const { __type, ...rest } = item;
-        rest.sequenceNumber = prefix + index;
-        if (isIteratorType(__type) && Array.isArray(rest.__children)) {
-            rest.properties = { ...rest.properties, children: arrayToElements(rest.__children, rest.sequenceNumber) ?? '' };
-            delete rest.__children;
-        }
+        rest.sequenceNumber = String(index);
         // Attribute keys ('@class'/'@version') MUST be the first keys: the
         // engine converts this JSON to XML and cannot place an attribute after
         // child elements, and its reorder fallback does not descend into arrays
