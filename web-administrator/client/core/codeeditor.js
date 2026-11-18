@@ -251,8 +251,10 @@ function attachCodeView(editor, opts) {
         const detail = { open: true, overlay, body, editorEl: el, origin,
             getDropText: (event) => dragToken || event.dataTransfer?.getData('text/plain') };
         // Capture-phase so the insert wins over Monaco's own dnd handling.
-        overlay.addEventListener('dragover', onOverlayDragOver, true);
-        overlay.addEventListener('drop', event => onOverlayDrop(event, detail.getDropText(event)), true);
+        if (!opts.readOnly) {
+            overlay.addEventListener('dragover', onOverlayDragOver, true);
+            overlay.addEventListener('drop', event => onOverlayDrop(event, detail.getDropText(event)), true);
+        }
         document.body.appendChild(overlay);
         // Host views can react (e.g. the transformer editor moves its full
         // Reference / Message Templates / Message Trees panel into the view).

@@ -19,7 +19,8 @@ type PathMode = 'substitution' | 'messageBuilder';
 // The same expression parser produces their source and their position in the path.
 type PathLeaf = { kind: 'name' | 'property' | 'string' | 'xml' | 'number' | 'callTail'; source: string; propertyName?: string; unprintable?: boolean };
 type ExpressionPart = { value: string; propertyName: string; numberLiteral?: boolean };
-type Operand = { source: string; reference?: boolean };
+type ArrowParameters = { items: string[]; parenthesized?: boolean };
+type Operand = { source: string; reference?: boolean; parameters?: ArrowParameters };
 type Block = { kind: 'block'; body: Statement[] };
 type FunctionSource = { kind: 'function'; head: string; body: Block; statement?: boolean };
 type SwitchBranch = { test?: string; body: Statement[]; inlineComment?: SourceComment };
@@ -72,10 +73,15 @@ function stringLiteralSource(literal: string): string | null {
             if (Object.hasOwn(escapes, ch)) value += escapes[ch];
             else if (ch === 'u' || ch === 'x') {
                 const size = ch === 'u' ? 4 : 2;
-                const hex = literal.slice(index + 1, index + 1 + size);
-                if (hex.length !== size || !/^[\da-f]+$/i.test(hex)) return null;
-                value += String.fromCharCode(parseInt(hex, 16));
-                index += size;
+                let hex = '', end = index + 1;
+                while (hex.length < size) {
+                    while (formatCharacter(literal[end])) end++;
+                    if (!/[\da-f]/i.test(literal[end] || '')) break;
+                    hex += literal[end++];
+                }
+                // Rhino treats an incomplete hex escape as literal text after the backslash.
+                value += hex.length === size ? String.fromCharCode(parseInt(hex, 16)) : ch + hex;
+                index = end - 1;
             } else if (/[0-7]/.test(ch)) {
                 let octal = ch;
                 while (octal.length < 3 && /[0-7]/.test(literal[index + 1] || '')
@@ -111,6 +117,7 @@ class RhinoSourceReader {
     private xmlLiteralDepth = 0;
     private namespaceStatements = 0;
     private readonly hasFormatCharacters: boolean;
+    private destructuring = false;
     private functionDepth = 0;
     private loopDepth = 0;
     private switchDepth = 0;
@@ -208,7 +215,7 @@ class RhinoSourceReader {
             this.position = tokenEnd(raw.length);
             this.token = { value, end: this.position, line, literal: !!numeric, word: !!word, keyword: !!word && !escaped && keywords.has(value), lineBreakBefore }; return;
         }
-        const operator = /^(?:>>>=|===|!==|>>>|<<=|>>=|\+\+|--|&&|\|\||==|!=|<=|>=|<<|>>|[+*/%&|^-]=|::|\.\.|\.\()/.exec(tail);
+        const operator = /^(?:>>>=|===|!==|>>>|<<=|>>=|\+\+|--|&&|\|\||=>|==|!=|<=|>=|<<|>>|[+*/%&|^-]=|::|\.\.|\.\()/.exec(tail);
         const value = operator?.[0] || ch;
         this.position = tokenEnd(value.length);
         this.token = { value, end: this.position, line, lineBreakBefore };
@@ -246,13 +253,28 @@ class RhinoSourceReader {
                 const yes = this.expression(2);
                 this.take(':');
                 node = { source: `${node.source} ? ${yes} : ${this.expression(2, allowIn)}` };
+            } else if (op === '=>' && min <= 2 && !this.token.lineBreakBefore) {
+                const parameters = node.parameters;
+                if (!parameters || (!parameters.parenthesized && parameters.items.length !== 1)) throw new Error('Invalid arrow parameters');
+                if (path) path.length = 0;
+                this.next();
+                const args = parameters.items.join(', ');
+                const head = parameters.parenthesized ? `(${args})` : args;
+                const body = this.at('{') ? statementSource(this.functionBody()).trimEnd()
+                    : this.inFunction(() => this.expression(2, allowIn));
+                node = { source: `${head} => ${body}` };
             } else {
                 const priority = Object.hasOwn(precedence, op) ? precedence[op] : undefined;
                 if (op === 'in' && !allowIn) break;
                 if (priority == null || priority < min) break;
+                if (priority === 2 && this.destructuring) throw new Error('Unsupported destructuring default');
                 if (path) path.length = 0;
                 this.next();
-                node = { source: `${node.source} ${op} ${this.expression(priority === 2 ? priority : priority + 1, allowIn)}` };
+                const right = this.expressionNode(priority === 2 ? priority : priority + 1, allowIn);
+                const parameters = op === ',' && node.parameters && right.parameters
+                    && !node.parameters.parenthesized && !right.parameters.parenthesized
+                    ? { items: [...node.parameters.items, ...right.parameters.items] } : undefined;
+                node = { source: `${node.source} ${op} ${right.source}`, parameters };
             }
         }
         return node;
@@ -408,10 +430,17 @@ class RhinoSourceReader {
         const token = this.token;
         if (token.value === '(') {
             this.next();
+            if (this.at(')')) {
+                this.next();
+                if (!this.at('=>') || this.token.lineBreakBefore) throw new Error('Expected expression');
+                return { source: '()', parameters: { items: [], parenthesized: true } };
+            }
             let inner = this.expressionNode();
             if (this.at('for')) inner = { source: inner.source + this.comprehension(false) };
             this.take(')');
-            return { source: `(${inner.source})`, reference: inner.reference };
+            const parameters = inner.parameters && !inner.parameters.parenthesized
+                ? { items: inner.parameters.items, parenthesized: true } : undefined;
+            return { source: `(${inner.source})`, reference: inner.reference, parameters };
         }
         if (token.value === '[') {
             this.next(); const values: string[] = [];
@@ -426,7 +455,9 @@ class RhinoSourceReader {
                 if (this.token.value !== ',') break;
                 this.next();
             }
-            this.take(']'); return { source: `[${values.join(', ')}${trailingHole ? ',' : ''}]` };
+            this.take(']');
+            const source = `[${values.join(', ')}${trailingHole ? ',' : ''}]`;
+            return { source, parameters: { items: [source] } };
         }
         if (token.value === '{') {
             this.next(); const properties: string[] = [];
@@ -446,7 +477,8 @@ class RhinoSourceReader {
                 this.next();
             }
             this.take('}');
-            return { source: properties.length ? `{\n  ${properties.join(', \n  ')}}` : '{}' };
+            const source = properties.length ? `{\n  ${properties.join(', \n  ')}}` : '{}';
+            return { source, parameters: { items: [source] } };
         }
         if (token.value === '/' || token.value === '/=') {
             // A slash in operand position starts a RegExpLiteral. Brackets and
@@ -478,7 +510,8 @@ class RhinoSourceReader {
         if (token.value === '@' || (token.word && !token.keyword)) {
             const ref = this.propertyRef();
             path?.push(ref);
-            return { source: ref.source, reference: ref.kind === 'name' };
+            return ref.kind === 'name' ? { source: ref.source, reference: true, parameters: { items: [ref.source] } }
+                : { source: ref.source };
         }
         if (!token.literal && (!token.word || (token.keyword && !['true', 'false', 'null', 'this'].includes(token.value)))) throw new Error('Expected expression');
         if (/^['"]/.test(token.value)) path?.push({ kind: 'string', source: token.value });
@@ -494,45 +527,30 @@ class RhinoSourceReader {
         return value;
     }
 
-    // Rhino accepts explicit array/object destructuring in bindings, but its
-    // default parser does not accept ES6 shorthand properties or defaults.
+    // Rhino reads array and object binding patterns with its literal grammar,
+    // with assignment operators disabled inside the pattern.
     private binding(): string {
-        if (this.at('[')) {
-            this.next(); const values: string[] = [];
-            let trailingHole = false;
-            while (!this.at(']')) {
-                trailingHole = this.at(',');
-                values.push(trailingHole ? '' : this.binding());
-                if (!this.at(',')) break;
-                this.next();
-            }
-            this.take(']'); return `[${values.join(', ')}${trailingHole ? ',' : ''}]`;
-        }
-        if (this.at('{')) {
-            this.next(); const properties: string[] = [];
-            while (!this.at('}')) {
-                const key = this.objectKey();
-                this.take(':');
-                properties.push(`${key}: ${this.binding()}`);
-                if (!this.at(',')) break;
-                this.next();
-            }
-            this.take('}'); return properties.length ? `{\n  ${properties.join(', \n  ')}}` : '{}';
-        }
-        return this.identifier();
+        if (!this.at('[') && !this.at('{')) return this.identifier();
+        const before = this.destructuring;
+        this.destructuring = true;
+        try { return this.primary().source; }
+        finally { this.destructuring = before; }
     }
 
-    private comprehension(allowEach: boolean): string {
+    private comprehension(array: boolean): string {
         let source = '';
         while (this.at('for')) {
             this.next(); const each = this.at('each');
             if (each) {
-                if (!allowEach) throw new Error('Generator cannot use for each');
+                if (!array) throw new Error('Generator cannot use for each');
                 this.next();
             }
-            this.take('('); const iterator = this.binding(); this.take('in');
+            this.take('(');
+            const iterator = this.binding();
+            const operator = array && !each && this.at('of') ? 'of' : 'in';
+            this.take(operator);
             const iterable = this.expression(); this.take(')');
-            source += ` for${each ? ' each' : ''} (${iterator} in ${iterable})`;
+            source += ` for${each ? ' each' : ''} (${iterator} ${operator} ${iterable})`;
         }
         if (this.at('if')) { this.next(); source += ` if (${this.condition()})`; }
         return source;
@@ -669,11 +687,15 @@ class RhinoSourceReader {
     }
 
     private functionBody(): Block {
+        return this.inFunction(() => this.block(true));
+    }
+
+    private inFunction<T>(parse: () => T): T {
         const { loopDepth, switchDepth, labels } = this;
         this.loopDepth = this.switchDepth = 0;
         this.labels = [];
         this.functionDepth++;
-        try { return this.block(true); }
+        try { return parse(); }
         finally {
             this.functionDepth--;
             this.loopDepth = loopDepth;
@@ -822,11 +844,10 @@ class RhinoSourceReader {
             this.take('(');
             const initializer = this.token.value === ';' ? ''
                 : this.at('var') ? this.declaration(false) : this.expression(1, false);
-            let head = `for${each ? ' each' : ''} (${initializer}`;
+            let head = `for (${initializer}`;
             if (this.token.value === 'in') {
-                this.next(); head += ` in ${this.expression()})`;
+                this.next(); head = `for${each ? ' each' : ''} (${initializer} in ${this.expression()})`;
             } else {
-                if (each) throw new Error('Expected in');
                 this.take(';'); head += `; ${this.token.value === ';' ? '' : this.expression()}`;
                 this.take(';'); head += `; ${this.token.value === ')' ? '' : this.expression()})`;
             }

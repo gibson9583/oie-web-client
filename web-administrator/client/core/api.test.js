@@ -179,6 +179,13 @@ ok(/engine cannot reload/.test(invalidSurrogate?.message) && lastInit === writes
 await api.channels.create(responseChannel('😀\r'));
 ok(lastInit.body.includes('<responseVariable>😀&#13;</responseVariable>'), 'valid supplementary characters remain supported');
 
+const scriptChannel = responseChannel('ordinary');
+const scriptType = 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep';
+scriptChannel.sourceConnector.transformer = { elements: { [scriptType]: [{ script: '// first\rvar n = 1;\r\n' }] } };
+await api.channels.update('response-channel', scriptChannel, false);
+ok(new Headers(lastInit.headers).get('Content-Type') === 'application/xml', 'editor source with CR uses the exact-text write');
+ok(lastInit.body.includes('<script>// first&#13;var n = 1;&#13;&#10;</script>'), 'original line endings survive in the script source');
+
 // The engine returns a bare Ports object for one listener and an array for many.
 const listenerPort = { id: 'listener', name: 'LISTENER', port: 6661 };
 for (const ports of [[], [listenerPort], [listenerPort, { id: 'second', name: 'SECOND', port: 8081 }]]) {

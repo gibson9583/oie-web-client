@@ -143,9 +143,9 @@ for (const predicate of ['true', "name().toString()==='OBX'"]) {
     });
 }
 
-async function openTreeEditor(page: Page, elements: Element[], id: string) {
+async function openTreeEditor(page: Page, elements: Element[], id: string, surface: 'filter' | 'transformer' = 'transformer') {
     let channel = makeChannel(id);
-    channel.sourceConnector.transformer.elements = wire(elements);
+    channel.sourceConnector[surface].elements = wire(elements);
     channel.sourceConnector.transformer.inboundTemplate = 'OBX|1|TX|||one\rOBX|2|TX|||two';
     const writes: any[] = [];
     await mockEngine(page, {
@@ -155,7 +155,7 @@ async function openTreeEditor(page: Page, elements: Element[], id: string) {
     await page.route('**/api/datatypes/_serialize*', route => route.fulfill({ json: {
         format: 'xml', data: '<HL7Message><OBX><OBX.5><OBX.5.1>one</OBX.5.1></OBX.5></OBX><OBX><OBX.5><OBX.5.1>two</OBX.5.1></OBX.5></OBX></HL7Message>', meta: {}
     } }));
-    await page.goto(`/channels/${id}/transformer/0`);
+    await page.goto(`/channels/${id}/${surface}/0`);
     return {
         async showTree() {
             await page.getByRole('tab', { name: 'Message Trees', exact: true }).click();
@@ -171,7 +171,7 @@ async function openTreeEditor(page: Page, elements: Element[], id: string) {
             const count = writes.length;
             await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
             await expect.poll(() => writes.length).toBe(count + 1);
-            return writes.at(-1).sourceConnector.transformer.elements;
+            return writes.at(-1).sourceConnector[surface].elements;
         }
     };
 }
@@ -207,7 +207,8 @@ test('reopened Mapper constants keep their exact source through assignment and s
     const mappers = constants.map((source, i) => ({ ...mapper('Constant ' + i), mapping: source, defaultValue: source,
         replacements: { [PAIR]: { left: { '@class': 'string', $: "'pattern'" },
             right: source ? { '@class': 'string', $: source } : { '@class': 'string' } } } }));
-    channel.sourceConnector.transformer.elements = wire([...mappers, iterator('Observations')]);
+    const script = { type: 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep', name: 'Literal script', script: 'null' };
+    channel.sourceConnector.transformer.elements = wire([...mappers, iterator('Observations', 'i', [script])]);
     let written: any;
     await mockEngine(page, {
         [`GET /channels/${id}`]: (request: any) => {
@@ -218,6 +219,7 @@ test('reopened Mapper constants keep their exact source through assignment and s
                 const right = el.replacements[PAIR].right;
                 if ('$' in right) right.$ = el.mapping;
             }
+            json.sourceConnector.transformer.elements[ITERATOR][0].properties.children[script.type][0].script = null;
             return { channel: json };
         },
         [`PUT /channels/${id}`]: (request: any) => { written = request.postDataJSON().channel; return true; }
@@ -231,6 +233,7 @@ test('reopened Mapper constants keep their exact source through assignment and s
     await expect.poll(() => !!written).toBe(true);
     const elements = written.sourceConnector.transformer.elements;
     const saved = [...elements[MAPPER], ...children(elements, 'Observations')[MAPPER]];
+    expect(children(elements, 'Observations')[script.type][0].script).toBe('null');
     for (const original of mappers) {
         expect(saved.find(el => el.name === original.name)).toMatchObject({
             mapping: original.mapping, defaultValue: original.defaultValue, replacements: original.replacements
@@ -576,6 +579,92 @@ test('message-tree mapping can create an Iterator before adding the indexed Mapp
     expect(elements[ITERATOR][0].properties.children[MAPPER][0].mapping).toBe(`${PREFIX}[i]['OBX.5']['OBX.5.1'].toString()`);
 });
 
+for (const action of ['menu', 'grid drop']) {
+    test(`filter tree ${action} creates a Rule Builder through the iterator chooser`, async ({ page }) => {
+        const editor = await openTreeEditor(page, [], 'iterator-filter-tree', 'filter');
+        await editor.showTree();
+        const template = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+        const source = template.getByRole('row').filter({ has: page.getByText('OBX.5', { exact: true }) });
+        if (action === 'menu') {
+            await source.click({ button: 'right' });
+            await page.getByRole('menuitem', { name: 'Filter by Value' }).click();
+        } else {
+            const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+            await source.dispatchEvent('dragstart', { dataTransfer });
+            await page.locator('.element-list-pane .panel').dispatchEvent('drop', { dataTransfer });
+        }
+        await treePrompt(page).getByRole('button', { name: 'Yes', exact: true }).click();
+        const dialog = page.getByRole('dialog', { name: 'Select Iterator' });
+        await expect(dialog.getByRole('combobox', { name: 'Iterate On', exact: true })).toHaveValue(PREFIX);
+        await dialog.getByRole('button', { name: 'Use Iterator', exact: true }).click();
+        const expression = `${PREFIX}[i]['OBX.5']['OBX.5.1'].toString()`;
+        await expect(field(page, 'Field')).toHaveValue(expression);
+        expect((await editor.save())[FILTER_ITERATOR][0].properties.children[RULE][0]).toMatchObject({
+            field: expression, condition: 'EXISTS', name: `Accept message if "${expression}" exists`
+        });
+    });
+}
+
+test('transformer grid drops honor the modifier held at release and the selected Iterator', async ({ page }) => {
+    const editor = await openTreeEditor(page, [iterator('Observations')], 'iterator-grid-drop');
+    await editor.showTree();
+    const template = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+    const source = template.getByRole('row').filter({ has: page.getByText('OBX.5', { exact: true }) });
+    const grid = page.locator('.element-list-pane .panel');
+    const modifier = await page.evaluate(() => /Mac/.test(navigator.platform) ? 'metaKey' : 'ctrlKey');
+    for (const asMessage of [false, true]) {
+        await row(page, 'Observations').locator('td.num').click();
+        const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+        await source.dispatchEvent('dragstart', { dataTransfer });
+        await grid.dispatchEvent('drop', { dataTransfer, [modifier]: asMessage });
+        await treePrompt(page).getByRole('button', { name: 'No', exact: true }).click();
+    }
+    const steps = children(await editor.save(), 'Observations');
+    const expression = `${PREFIX}[i]['OBX.5']['OBX.5.1']`;
+    expect(steps[MAPPER][0].mapping).toBe(expression + '.toString()');
+    expect(steps[BUILDER][0].messageSegment).toBe(expression);
+});
+
+test('filter trees stay readable when channel editing is denied', async ({ page }) => {
+    await page.route('**/vendor/monaco/**', route => route.abort());
+    const editor = await openTreeEditor(page, [], 'iterator-filter-readonly', 'filter');
+    await page.evaluate(async () => {
+        const { platform } = await import(String('@oie/web-shell'));
+        platform.setAuthorizationController({ checkTask: (group: string, task: string) =>
+            group !== 'channelEdit' || task !== 'doSaveChannel' });
+    });
+    await page.getByRole('tab', { name: 'Message Templates', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Inbound Template', exact: true })).toHaveJSProperty('readOnly', true);
+    await expect(page.getByRole('button', { name: 'Open File…', exact: true })).toBeDisabled();
+    await editor.showTree();
+    const source = page.getByRole('region', { name: 'Inbound message tree (msg)' })
+        .getByRole('row').filter({ has: page.getByText('OBX.5', { exact: true }) });
+    await source.click({ button: 'right' });
+    await expect(page.getByRole('menuitem', { name: 'Copy Accessor' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Filter by Value' })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+    await source.dispatchEvent('dragstart', { dataTransfer });
+    await page.locator('.element-list-pane .panel').dispatchEvent('drop', { dataTransfer });
+    await expect(treePrompt(page)).toHaveCount(0);
+    await expect(page.locator('table.dt tbody tr[data-path]')).toHaveCount(0);
+});
+
+test('Iterator names follow the target and multiple manually entered prefixes retain their spelling', async ({ page }) => {
+    const save = await openEditor(page, [iterator('Observations')]);
+    const prefixes = page.getByRole('textbox', { name: 'Prefix Substitutions' });
+    await prefixes.evaluate((input: HTMLTextAreaElement) => {
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+    });
+    await prefixes.press('Enter');
+    await expect(prefixes).toHaveValue(PREFIX + '\n');
+    await prefixes.fill(PREFIX + "\n  tmp['OBX'] \n\n");
+    await page.getByRole('textbox', { name: 'Iterate On (target)', exact: true }).fill('msg.OBX');
+    await expect(row(page, 'For each msg.OBX').locator('input.grid-name')).toHaveJSProperty('readOnly', true);
+    expect((await save())[ITERATOR][0].properties.prefixSubstitutions.string).toEqual([PREFIX, "  tmp['OBX'] "]);
+});
+
 test('message-tree Iterator cancellation is a no-op and adding without one retains the selected repetition', async ({ page }) => {
     const id = 'iterator-tree-without';
     const channel = makeChannel(id);
@@ -759,9 +848,11 @@ for (const nested of [false, true]) {
         expect(children(elements, 'Original')).toBe('');
         const destination = children(elements, 'Destination');
         const mapping = `${innerPrefix}${nested ? '[k]' : ''}['OBX.5.1'].toString()`;
-        expect((nested ? children(destination, 'Values') : destination)[MAPPER][0].mapping).toBe(mapping);
+        expect((nested ? children(destination, 'Values') : destination)[MAPPER][0]).toMatchObject({
+            name: 'obx1_obx5', variable: 'obx1_obx5', mapping
+        });
         await page.reload();
-        await row(page, 'OBX.5').locator('td.num').click();
+        await row(page, 'obx1_obx5').locator('td.num').click();
         await expect(field(page, 'Mapping')).toHaveValue(mapping);
     });
 }

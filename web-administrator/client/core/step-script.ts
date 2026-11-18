@@ -41,7 +41,8 @@ function buildRegexArray(el: any): string {
    are identical except EXISTS/NOT_EXIST (`.length` vs getArrayOrXmlLength) — the
    Java emits the same operator/join logic otherwise. `field`/`values` are raw. */
 function conditionClause(field: any, condition: any, values: any, existsStyle: 'xml' | 'length'): string {
-    const vals = Array.isArray(values) ? values : (values && values.string ? (Array.isArray(values.string) ? values.string : [values.string]) : []);
+    const strings = Array.isArray(values) ? values : values?.string;
+    const vals = Array.isArray(strings) ? strings : strings === undefined ? [] : [strings ?? ''];
     const exists = existsStyle === 'xml'
         ? { yes: `getArrayOrXmlLength(${field}) > 0) `, no: `getArrayOrXmlLength(${field}) == 0) ` }
         : { yes: `${field}.length > 0) `, no: `${field}.length == 0) ` };
@@ -80,7 +81,7 @@ function messageBuilderScript(el: any): string {
 }
 
 function xsltScript(el: any, iterating = false): string {
-    const factory = (el.useCustomFactory && el.customFactory)
+    const factory = (String(el.useCustomFactory) === 'true' && el.customFactory)
         ? `Packages.javax.xml.transform.TransformerFactory.newInstance("${el.customFactory}", null)`
         : 'Packages.javax.xml.transform.TransformerFactory.newInstance()';
     return `tFactory = ${factory};\n`
@@ -188,7 +189,7 @@ function iteratorPhase(element: any, phase: 'pre' | 'iteration' | 'post', getChi
     if (element.__type === 'com.mirth.connect.model.IteratorRule') {
         const flag = `_iterator_flag_${ancestors.length}`;
         const all = String(props.intersectIterations) === 'true';
-        const stop = String(props.breakEarly ?? true) === 'true' ? 'break; ' : '';
+        const stop = String(props.breakEarly) === 'true' ? 'break; ' : '';
         const clauses = enabled.map((rule, i) => {
             const operator = i === 0 ? '' : rule.operator === 'AND' ? '&&' : '||';
             return `${operator}\n(function() {\n${childScript(rule) ?? ''}\n}() == true)\n`;

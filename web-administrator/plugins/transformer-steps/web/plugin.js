@@ -2,6 +2,7 @@
 import { platform } from "@oie/web-shell";
 import { replacementPairs, replacementsToWire } from "/core/step-replacements.js";
 import { iteratorName } from "/core/iterator-substitutions.js";
+import { isJavaBlank } from "/core/rhino-key-source.js";
 var React = platform.React;
 var SCOPES = [
   { value: "CHANNEL", label: "Channel Map" },
@@ -24,16 +25,12 @@ var BEHAVIORS = [
   { value: "REMOVE_ALL", label: "Remove all" }
 ];
 var CONDITION_USES_VALUES = /* @__PURE__ */ new Set(["EQUALS", "NOT_EQUAL", "CONTAINS", "NOT_CONTAIN"]);
-var isBlank = (v) => v == null || String(v).trim() === "";
+var isBlank = (value) => isJavaBlank(value == null ? null : String(value));
 function stringListToLines(value) {
   if (!value || typeof value !== "object") return [];
   const list = value.string;
   if (list === null || list === void 0) return [];
   return (Array.isArray(list) ? list : [list]).map((v) => String(v ?? ""));
-}
-function linesToStringList(text) {
-  const lines = String(text || "").split("\n").map((s) => s.trim()).filter(Boolean);
-  return lines.length ? { string: lines } : "";
 }
 function checkedIdSet(value) {
   if (!value || typeof value !== "object") return /* @__PURE__ */ new Set();
@@ -46,8 +43,8 @@ function idSetToMetaData(set, destinations) {
   for (const id of set) if (!ordered.includes(id)) ordered.push(id);
   return ordered.length ? { int: ordered } : "";
 }
-function stringArrayToList(arr) {
-  return arr.length ? { string: arr.map((s) => String(s ?? "")) } : "";
+function stringsToWire(values) {
+  return values.length ? { string: values } : "";
 }
 function Field({ label, hint, children }) {
   return /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, label), children, hint ? /* @__PURE__ */ React.createElement("div", { className: "hint" }, hint) : null);
@@ -143,6 +140,7 @@ function makeIteratorEditor(isRule) {
       element.properties = emptyIteratorProperties(isRule);
     }
     const props = element.properties;
+    const [prefixText, setPrefixText] = React.useState(() => stringListToLines(props.prefixSubstitutions).join("\n"));
     const updateName = () => {
       element.name = iteratorName(element, isBlank(props.target) ? "..." : props.target);
       onChange();
@@ -158,6 +156,7 @@ function makeIteratorEditor(isRule) {
         "input",
         {
           type: "text",
+          "aria-label": "Iterate On (target)",
           placeholder: "msg['OBX']",
           value: props.target ?? "",
           onChange: (e) => {
@@ -170,6 +169,7 @@ function makeIteratorEditor(isRule) {
       "input",
       {
         type: "text",
+        "aria-label": "Index Variable",
         value: props.indexVariable ?? "i",
         onChange: (e) => {
           props.indexVariable = e.target.value;
@@ -193,7 +193,7 @@ function makeIteratorEditor(isRule) {
       "select",
       {
         "aria-label": "Break Early",
-        value: String(props.breakEarly ?? true),
+        value: String(props.breakEarly === true || props.breakEarly === "true"),
         onChange: (e) => {
           props.breakEarly = e.target.value === "true";
           onChange();
@@ -212,12 +212,14 @@ function makeIteratorEditor(isRule) {
         "textarea",
         {
           rows: 3,
+          "aria-label": "Prefix Substitutions",
           placeholder: "msg['OBX']",
-          value: stringListToLines(props.prefixSubstitutions).join("\n"),
+          value: prefixText,
           onChange: (e) => {
-            props.prefixSubstitutions = linesToStringList(e.target.value);
+            const text = e.target.value;
+            setPrefixText(text);
+            props.prefixSubstitutions = stringsToWire(text.split("\n").filter((prefix) => !isJavaBlank(prefix)));
             onChange();
-            force();
           }
         }
       )
@@ -401,12 +403,12 @@ var dsfUid = 0;
 function DestinationSetFilterEditor({ element, onChange, destinations }) {
   const force = useRerender();
   const [selValue, setSelValue] = React.useState(-1);
+  const [values, setValueRows] = React.useState(() => stringListToLines(element.values));
   const uid = React.useMemo(() => ++dsfUid, []);
   const dests = Array.isArray(destinations) ? destinations : [];
   const behavior = element.behavior || "REMOVE";
   const condition = element.condition || "EXISTS";
   const checked = checkedIdSet(element.metaDataIds);
-  const values = stringListToLines(element.values);
   const listDisabled = behavior === "REMOVE_ALL";
   const valuesEnabled = CONDITION_USES_VALUES.has(condition);
   const setChecked = (next) => {
@@ -422,10 +424,10 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
   };
   const selectAll = () => setChecked(new Set(dests.map((d) => String(d.metaDataId))));
   const deselectAll = () => setChecked(/* @__PURE__ */ new Set());
-  const setValues = (arr) => {
-    element.values = stringArrayToList(arr);
+  const setValues = (rows) => {
+    setValueRows(rows);
+    element.values = stringsToWire(rows.filter(Boolean));
     onChange();
-    force();
   };
   const newValue = () => {
     setValues([...values, ""]);
@@ -533,6 +535,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
 }
 function RuleBuilderEditor({ element, onChange }) {
   const force = useRerender();
+  const [valueText, setValueText] = React.useState(() => stringListToLines(element.values).join("\n"));
   return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: "Field" }, /* @__PURE__ */ React.createElement(
     "input",
     {
@@ -562,11 +565,12 @@ function RuleBuilderEditor({ element, onChange }) {
       rows: 4,
       placeholder: "One value per line",
       title: "Only used by Equals / Not Equal / Contains / Not Contain",
-      value: stringListToLines(element.values).join("\n"),
+      value: valueText,
       onChange: (e) => {
-        element.values = linesToStringList(e.target.value);
+        const text = e.target.value;
+        setValueText(text);
+        element.values = stringsToWire(text.split("\n").filter(Boolean));
         onChange();
-        force();
       }
     }
   ))));

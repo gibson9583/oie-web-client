@@ -131,6 +131,40 @@ test('full transformer XML replacement imports data types, properties and templa
     expect(sent.destinationConnectors.connector[0].transformer.inboundDataType).toBe('XML');
 });
 
+test('replacing a transformer refreshes the open message tree even if its old template finishes last', async ({ page }) => {
+    const channel = makeChannel('replace-open-tree');
+    const original = '<message><before>old</before></message>';
+    const replacement = '<message xmlns:n="urn:new"><n:after>new</n:after></message>';
+    Object.assign(channel.sourceConnector.transformer, {
+        inboundDataType: 'XML', inboundTemplate: original, outboundTemplate: '', elements: { [stepType]: step('Existing') }
+    });
+    await setup(page, channel, 'transformer/0');
+    let release!: () => void;
+    const oldRequest = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/api/datatypes/_serialize*', async route => {
+        const text = route.request().postData();
+        if (text === original) await oldRequest;
+        await route.fulfill({ json: { format: 'xml', data: text, meta: {} } });
+    });
+    const pending = page.waitForRequest(request => request.postData() === original);
+    await page.getByRole('tab', { name: 'Message Trees', exact: true }).click();
+    await pending;
+    const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+    const oldResponse = page.waitForResponse(response => response.request().postData() === original);
+    try {
+        const transformer = { ...channel.sourceConnector.transformer, inboundTemplate: replacement };
+        await upload(page, 'Import Transformer', JSON.stringify({ transformer }), 'transformer.json');
+        await page.getByRole('button', { name: 'Replace', exact: true }).click();
+        await expect(tree.getByText('n:after', { exact: true })).toBeVisible();
+    } finally {
+        release();
+        await (await oldResponse).finished();
+    }
+    await tree.getByText('n:after', { exact: true }).click();
+    await expect(tree.locator('.mt-foot')).toContainText("msg.*::['after'].toString()");
+    await expect(tree.getByText('before', { exact: true })).toHaveCount(0);
+});
+
 test('cancelled replacement and malformed XML preserve the edited draft', async ({ page }) => {
     const channel = makeChannel('cancel-transformer');
     channel.sourceConnector.transformer.elements = { [stepType]: step('Existing') };
@@ -198,6 +232,27 @@ test('empty modern filter XML can replace all rules and legacy layouts fail with
     await expect(page.locator('input.grid-name')).toHaveCount(0);
     const sent = await save(page, writes);
     expect(sent.sourceConnector.filter.elements).toBeNull();
+});
+
+test('a filter imported without Break Early shows the 4.6.0 default and visits every iteration', async ({ page }) => {
+    const iterator = 'com.mirth.connect.model.IteratorRule';
+    const channel = makeChannel('filter-break-early');
+    channel.sourceConnector.filter.elements = { [ruleType]: step('Existing') };
+    await page.route('**/vendor/monaco/**', route => route.abort());
+    const writes = await setup(page, channel, 'filter/0');
+    const properties = {
+        target: "msg['row']", indexVariable: 'i', prefixSubstitutions: '', children: { [ruleType]: step('Accept') }
+    };
+    const filter = { elements: { [iterator]: { '@version': '4.6.0', name: 'Rows', sequenceNumber: 0, enabled: true, operator: 'NONE', properties } } };
+    await upload(page, 'Import Filter', JSON.stringify({ filter }), 'filter.json');
+    await page.getByRole('button', { name: 'Replace', exact: true }).click();
+    await expect(page.getByRole('combobox', { name: 'Break Early' })).toHaveValue('false');
+    await page.getByRole('tab', { name: 'Generated Script', exact: true }).click();
+    const preview = page.getByRole('tabpanel', { name: 'Generated Script' }).locator('textarea.ce-area');
+    await expect(preview).toHaveValue(/for \(var i = 0/);
+    await expect(preview).not.toHaveValue(/break;/);
+    const saved = await save(page, writes);
+    expect(saved.sourceConnector.filter.elements[iterator][0].properties).not.toHaveProperty('breakEarly');
 });
 
 test('connector import stops when the engine session expires during resource lookup', async ({ page }) => {

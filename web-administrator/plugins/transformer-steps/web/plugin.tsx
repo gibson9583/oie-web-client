@@ -34,6 +34,7 @@ import type { Platform } from '@oie/web-shell';
 import { replacementPairs, replacementsToWire } from '/core/step-replacements.js';
 import type { Replacement } from '/core/step-replacements.js';
 import { iteratorName } from '/core/iterator-substitutions.js';
+import { isJavaBlank } from '/core/rhino-key-source.js';
 const React = platform.React;
 
 const SCOPES = [
@@ -69,7 +70,7 @@ const CONDITION_USES_VALUES = new Set(['EQUALS', 'NOT_EQUAL', 'CONTAINS', 'NOT_C
    client. The editor's validateAll runs these before returning to the channel.
    (JavaScript step/rule have no field check — their script is syntax-validated
    through the engine's Rhino compiler instead.) */
-const isBlank = (v: any) => v == null || String(v).trim() === '';
+const isBlank = (value: unknown) => isJavaBlank(value == null ? null : String(value));
 
 /* ---- XStream list helpers ----------------------------------------------------
  * List<String>  round-trips as { string: [...] }  ('' when empty — an empty
@@ -82,11 +83,6 @@ function stringListToLines(value: any) {
     const list = value.string;
     if (list === null || list === undefined) return [];
     return (Array.isArray(list) ? list : [list]).map(v => String(v ?? ''));
-}
-
-function linesToStringList(text: any) {
-    const lines = String(text || '').split('\n').map(s => s.trim()).filter(Boolean);
-    return lines.length ? { string: lines } : '';
 }
 
 /* DestinationSetFilter metaDataIds <-> the set of checked destination ids.
@@ -107,11 +103,8 @@ function idSetToMetaData(set: any, destinations: any) {
     return ordered.length ? { int: ordered } : '';
 }
 
-/* DestinationSetFilter values <-> an array of strings (List<String>). Unlike
-   linesToStringList this does NOT drop blanks — the values table keeps empty
-   rows the user is still typing into; '' stands in for an empty list. */
-function stringArrayToList(arr: any) {
-    return arr.length ? { string: arr.map((s: any) => String(s ?? '')) } : '';
+function stringsToWire(values: string[]) {
+    return values.length ? { string: values } : '';
 }
 
 /* ---- JSX form helpers --------------------------------------------------------
@@ -237,6 +230,7 @@ function makeIteratorEditor(isRule: boolean) {
             element.properties = emptyIteratorProperties(isRule);
         }
         const props = element.properties;
+        const [prefixText, setPrefixText] = React.useState(() => stringListToLines(props.prefixSubstitutions).join('\n'));
         const updateName = () => {
             element.name = iteratorName(element, isBlank(props.target) ? '...' : props.target);
             onChange();
@@ -252,6 +246,7 @@ function makeIteratorEditor(isRule: boolean) {
                     >
                         <input
                             type="text"
+                            aria-label="Iterate On (target)"
                             placeholder="msg['OBX']"
                             value={props.target ?? ''}
                             onChange={(e: any) => { props.target = e.target.value; updateName(); }}
@@ -260,6 +255,7 @@ function makeIteratorEditor(isRule: boolean) {
                     <Field label="Index Variable">
                         <input
                             type="text"
+                            aria-label="Index Variable"
                             value={props.indexVariable ?? 'i'}
                             onChange={(e: any) => { props.indexVariable = e.target.value; onChange(); force(); }}
                         />
@@ -273,7 +269,7 @@ function makeIteratorEditor(isRule: boolean) {
                             </select>
                         </Field>
                         <Field label="Break Early">
-                            <select aria-label="Break Early" value={String(props.breakEarly ?? true)}
+                            <select aria-label="Break Early" value={String(props.breakEarly === true || props.breakEarly === 'true')}
                                 onChange={e => { props.breakEarly = e.target.value === 'true'; onChange(); force(); }}>
                                 <option value="true">Yes</option><option value="false">No</option>
                             </select>
@@ -286,12 +282,14 @@ function makeIteratorEditor(isRule: boolean) {
                         >
                             <textarea
                                 rows={3}
+                                aria-label="Prefix Substitutions"
                                 placeholder="msg['OBX']"
-                                value={stringListToLines(props.prefixSubstitutions).join('\n')}
-                                onChange={(e: any) => {
-                                    props.prefixSubstitutions = linesToStringList(e.target.value);
+                                value={prefixText}
+                                onChange={e => {
+                                    const text = e.target.value;
+                                    setPrefixText(text);
+                                    props.prefixSubstitutions = stringsToWire(text.split('\n').filter(prefix => !isJavaBlank(prefix)));
                                     onChange();
-                                    force();
                                 }}
                             />
                         </Field>
@@ -500,6 +498,7 @@ let dsfUid = 0;
 function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
     const force = useRerender();
     const [selValue, setSelValue] = React.useState(-1);
+    const [values, setValueRows] = React.useState(() => stringListToLines(element.values));
     // Per-INSTANCE radio-group name: keying on the element class collides when
     // two Destination Set Filter steps are on screen at once (same class), and
     // colliding names let one step's Condition radios uncheck the other's.
@@ -509,7 +508,6 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
     const behavior = element.behavior || 'REMOVE';
     const condition = element.condition || 'EXISTS';
     const checked = checkedIdSet(element.metaDataIds);
-    const values = stringListToLines(element.values);
 
     const listDisabled = behavior === 'REMOVE_ALL';   // REMOVE_ALL takes no ids
     const valuesEnabled = CONDITION_USES_VALUES.has(condition);
@@ -525,7 +523,11 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
     const deselectAll = () => setChecked(new Set());
 
     // ---- values table ----
-    const setValues = (arr: any) => { element.values = stringArrayToList(arr); onChange(); force(); };
+    const setValues = (rows: string[]) => {
+        setValueRows(rows);
+        element.values = stringsToWire(rows.filter(Boolean));
+        onChange();
+    };
     const newValue = () => { setValues([...values, '']); setSelValue(values.length); };
     const editValue = (i: any, v: any) => { const next = values.slice(); next[i] = v; setValues(next); };
     const deleteSelected = () => {
@@ -664,6 +666,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
 
 function RuleBuilderEditor({ element, onChange }: any) {
     const force = useRerender();
+    const [valueText, setValueText] = React.useState(() => stringListToLines(element.values).join('\n'));
     return (
         <div className="form-grid">
             <Field label="Field">
@@ -687,8 +690,13 @@ function RuleBuilderEditor({ element, onChange }: any) {
                         rows={4}
                         placeholder="One value per line"
                         title="Only used by Equals / Not Equal / Contains / Not Contain"
-                        value={stringListToLines(element.values).join('\n')}
-                        onChange={(e: any) => { element.values = linesToStringList(e.target.value); onChange(); force(); }}
+                        value={valueText}
+                        onChange={e => {
+                            const text = e.target.value;
+                            setValueText(text);
+                            element.values = stringsToWire(text.split('\n').filter(Boolean));
+                            onChange();
+                        }}
                     />
                 </Field>
             </div>

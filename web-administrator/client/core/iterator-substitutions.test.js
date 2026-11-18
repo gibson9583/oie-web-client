@@ -366,8 +366,19 @@ for (const statement of ["'unfinished\\'", 'var s = "unfinished\\"']) {
     assert.equal(removeNumberLiterals(draft), draft, 'an escaped quote at EOF leaves the whole draft intact');
 }
 for (const statement of ["var s = 'quoted\\''", 'var s = "quoted\\""',
-    "default xml namespace = 'urn:hl7-org:v3'", 'function read() { default xml namespace = ns; return msg; }']) {
+    "default xml namespace = 'urn:hl7-org:v3'", 'function read() { default xml namespace = ns; return msg; }',
+    'var f = () => 1', 'var f = (x, y) => x + y', 'var [a+b] = [1]',
+    'for each (x; x; x) {}', 'var x = [foo for (foo of rows)]']) {
     assert.equal(removeNumberLiterals(firstPath + '; ' + statement), "msg['OBX'].value");
+}
+assert.equal(removeNumberLiterals(String.raw`msg['OBX']['\xQx'][0]`), "msg['OBX']['xQx']");
+assert.equal(removeNumberLiterals(String.raw`msg['OBX']['\uABxZ'][0]`), "msg['OBX']['uABxZ']");
+assert.equal(removeNumberLiterals(String.raw`msg['OBX']['\u{41}'][0]`), "msg['OBX']['u{41}']");
+assert.equal(removeNumberLiterals(`${firstPath}.*::[(function(){var f = (x,y)=>x+y;return f('val','ue');})()][0]`),
+    "msg['OBX'].value.*::[(function() {\n  var f = (x, y) => x + y;\n  return f('val', 'ue');\n})()]");
+for (const statement of ['var f = (x=1) => x', 'var f = x\n=> x', 'var x = [foo for each (foo of rows)]']) {
+    const draft = `${firstPath}; ${statement};`;
+    assert.equal(removeNumberLiterals(draft), draft);
 }
 const namespaceKey = "msg['OBX'][0].*::[(function(){default xml namespace = ns; return 'value';})()][0]";
 assert.equal(removeNumberLiterals(namespaceKey), namespaceKey, 'Rhino cannot print the visited default namespace statement');
@@ -437,6 +448,13 @@ for (const all of [true, false]) {
         const empty = new Function('rows', 'getArrayOrXmlLength', generateElementScript(filterLoop(all, stop, [])));
         assert.equal(empty([true], rows => rows.length), all);
     }
+}
+const legacyFilter = filterLoop(false, true, [scriptRule('return true;', 'NONE')]);
+delete legacyFilter.properties.breakEarly;
+assert.ok(!generateElementScript(legacyFilter).includes('break;'), 'XStream loads a missing primitive breakEarly as false');
+for (const [wire, source] of [[false, 'false'], [0, '0'], ['', '']]) {
+    const comparison = { __type: plugin('rulebuilder.RuleBuilderRule'), field: 'rows[i]', condition: 'EQUALS', values: { string: wire } };
+    assert.ok(generateElementScript(filterLoop(false, false, [comparison])).includes(`if(rows[i] == ${source})`));
 }
 const builder = { __type: plugin('messagebuilder.MessageBuilderStep'), messageSegment: "tmp['OBX'][i]['OBX.5']",
     mapping: 'rows[i]', defaultValue: '', replacements: '' };

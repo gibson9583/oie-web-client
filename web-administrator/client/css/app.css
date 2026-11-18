@@ -2244,7 +2244,7 @@ input.grid-name {
     padding: 2px 4px;
     border-radius: 4px;
 }
-input.grid-name:hover { border-color: var(--line); }
+input.grid-name:not(:read-only):hover { border-color: var(--line); }
 input.grid-name:focus {
     border-color: var(--accent);
     background: var(--bg0);

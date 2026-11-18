@@ -41,7 +41,7 @@ import { parseFilterTransformerImport, normalizeImportTypes, alignDestinationTyp
  * banner) but keep the code-template completion scope in both modes.
  */
 
-import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import { h, modal, detailModal, toast, loading, saveFile, pickFile, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
@@ -218,6 +218,15 @@ function collectStepVariables(elements: any) {
    releases it so the selected step and accelerator key are current. */
 
 const ACCESSOR_FLAVOR = 'application/x-oie-accessor';
+type TreeSide = 'inbound' | 'outbound';
+type TreeNameNode = { name: string; desc?: string; index?: number; arrayIndex?: number };
+type TreeNamePath = { node: TreeNameNode; parent: TreeNamePath | null };
+type TreeField = { side: TreeSide; variable: string; description: string; accessor: string };
+type AccessorDrag = { getText: (event: DragEvent) => string; field?: TreeField };
+type AccessorDragRef = { current: AccessorDrag | null };
+
+const acceleratorPressed = (event: DragEvent) => /Mac/.test(navigator.platform) ? event.metaKey : event.ctrlKey;
+const withoutTreeStringSuffix = (accessor: string) => accessor.replace(/\.toString\(\)$/, '');
 
 function resolveEditorAt(target: any) {
     if (!target || !(target instanceof Element)) return null;
@@ -239,14 +248,14 @@ function resolveEditorAt(target: any) {
     return null;
 }
 
-function hasAccessorDrag(dragRef: any, e: any) {
+function hasAccessorDrag(dragRef: AccessorDragRef, e: DragEvent) {
     if (dragRef.current) return true;
     return !!(e.dataTransfer && Array.from(e.dataTransfer.types || []).includes(ACCESSOR_FLAVOR));
 }
 
 // Allow dropping onto editors/fields anywhere in the view (the tree lives in
 // the side panel; the editors are in the bottom panel — same document).
-function makeAccessorDragOver(dragRef: any) {
+function makeAccessorDragOver(dragRef: AccessorDragRef) {
     return (e: any) => {
         if (!hasAccessorDrag(dragRef, e)) return;
         if (resolveEditorAt(e.target)) {
@@ -256,12 +265,12 @@ function makeAccessorDragOver(dragRef: any) {
     };
 }
 
-function makeAccessorDrop(dragRef: any) {
+function makeAccessorDrop(dragRef: AccessorDragRef) {
     return (e: any) => {
         if (!hasAccessorDrag(dragRef, e)) return;
         const editor = resolveEditorAt(e.target);
         if (!editor) return;
-        const token = dragRef.current?.(e) ||
+        const token = dragRef.current?.getText(e) ||
             (e.dataTransfer && (e.dataTransfer.getData(ACCESSOR_FLAVOR) || e.dataTransfer.getData('text/plain')));
         dragRef.current = null;
         if (!token) return;
@@ -298,12 +307,12 @@ function makeAccessorDrop(dragRef: any) {
 }
 
 // Shared dragstart props for accessor sources (reference rows, tree nodes).
-function accessorDragProps(dragRef: any, getText: (event: DragEvent) => string) {
+function accessorDragProps(dragRef: AccessorDragRef, drag: AccessorDrag) {
     return {
         draggable: true,
         onDragStart: (e: any) => {
-            dragRef.current = getText;
-            const token = getText(e);
+            dragRef.current = drag;
+            const token = drag.getText(e);
             e.dataTransfer.effectAllowed = 'copy';
             e.dataTransfer.setData('text/plain', token);
             e.dataTransfer.setData(ACCESSOR_FLAVOR, token);
@@ -318,31 +327,45 @@ function escapeKey(key: any) {
     return String(key).replace(/\\/g, '\\\\').replace(/'/g, '\\\'');
 }
 
-function xmlElementNode(element: any, accessor: any, descriptions: any) {
+function xmlAttributePart(attribute: Attr, implicitNamespace: boolean): string {
+    if (attribute.name === 'xmlns') return ".namespace('')";
+    if (attribute.prefix === 'xmlns') return `.namespace('${escapeKey(attribute.localName)}')`;
+    if (attribute.prefix) {
+        // MirthTree uses the element wildcard for a prefixed attribute after a nested default namespace.
+        const axis = implicitNamespace ? '.*::' : '.@*::';
+        return `${axis}['${escapeKey(attribute.localName)}']`;
+    }
+    return `['@${escapeKey(attribute.name)}']`;
+}
+
+function xmlElementNode(element: Element, accessor: string, descriptions: Record<string, string> | null, implicitNamespace = false) {
     const children: any[] = [];
     for (const attr of element.attributes) {
         children.push({
             label: `@${attr.name}`, name: `@${attr.name}`, desc: '', value: attr.value,
-            accessor: `${accessor}['@${escapeKey(attr.name)}'].toString()`, children: []
+            accessor: `${accessor}${xmlAttributePart(attr, implicitNamespace)}.toString()`, children: []
         });
     }
     const childElements = [...element.children];
-    const counts: any = {};
-    for (const child of childElements) counts[child.tagName] = (counts[child.tagName] || 0) + 1;
-    const seen: any = {};
+    const counts = new Map<string, number>();
+    for (const child of childElements) counts.set(child.tagName, (counts.get(child.tagName) ?? 0) + 1);
+    const seen = new Map<string, number>();
     for (const child of childElements) {
-        const index = seen[child.tagName] || 0;
-        seen[child.tagName] = index + 1;
-        let childAcc = `${accessor}['${escapeKey(child.tagName)}']`;
-        if (counts[child.tagName] > 1) childAcc += `[${index}]`;
-        const node = xmlElementNode(child, childAcc, descriptions);
-        if (counts[child.tagName] > 1) node.index = index;
+        const index = seen.get(child.tagName) ?? 0;
+        seen.set(child.tagName, index + 1);
+        // The engine sets the root's default namespace. A declaration deeper
+        // in the template makes Swing wildcard that branch's element names.
+        const wildcardBranch = implicitNamespace || child.hasAttribute('xmlns');
+        const part = child.prefix || wildcardBranch ? `.*::['${escapeKey(child.localName)}']` : `['${escapeKey(child.tagName)}']`;
+        const repeated = (counts.get(child.tagName) ?? 0) > 1;
+        const node = xmlElementNode(child, accessor + part + (repeated ? `[${index}]` : ''), descriptions, wildcardBranch);
+        if (repeated) node.index = index;
         children.push(node);
     }
     const text = childElements.length ? null : (element.textContent ?? '');
     // Overlay the engine vocabulary description on the display label only;
     // the accessor stays the raw node name (matches the Swing tree).
-    const desc = (descriptions && descriptions[element.tagName]) || '';
+    const desc = descriptions && Object.hasOwn(descriptions, element.tagName) ? descriptions[element.tagName] : '';
     const label = desc ? `${element.tagName} (${desc})` : element.tagName;
     return { label, name: element.tagName, desc, value: text, accessor: `${accessor}.toString()`, children } as any;
 }
@@ -363,7 +386,9 @@ function jsonValueNode(label: any, value: any, accessor: any): any {
     if (Array.isArray(value)) {
         return {
             label, name: label, desc: '', value: null, accessor,
-            children: value.map((item: any, i: any) => jsonValueNode(`[${i}]`, item, `${accessor}[${i}]`))
+            children: value.map((item: any, i: number) => ({
+                ...jsonValueNode(`[${i}]`, item, `${accessor}[${i}]`), arrayIndex: i
+            }))
         };
     }
     if (value && typeof value === 'object') {
@@ -384,6 +409,31 @@ function jsonTree(text: any, varName: any) {
    ("Map to Variable" → Mapper, "Map to Message" → Message Builder). */
 const MAPPER_TYPE = 'com.mirth.connect.plugins.mapper.MapperStep';
 const MSGBUILDER_TYPE = 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep';
+const RULEBUILDER_TYPE = 'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule';
+
+// Swing derives map keys and Message Builder names from the selected node's
+// ancestry. A folded HL7 row supplies its displayed field and its component's accessor.
+function treeField(side: TreeSide, accessor: string, path: TreeNamePath | null): TreeField {
+    let variable = '', description = '', wasArrayElement = false;
+    for (let part = path; part; part = part.parent) {
+        const { name, desc, index, arrayIndex } = part.node;
+        if (arrayIndex != null) {
+            variable = String(arrayIndex) + (variable ? '_' : '') + variable;
+            description = ` [${arrayIndex}]` + (wasArrayElement ? '' : ' - ') + description;
+        } else {
+            const vocab = desc || / \((.*)\)/.exec(name)?.[1];
+            const raw = name.replace(/ \(.*\)/, '');
+            const key = (vocab || raw).toLowerCase().replace(/\//g, ' or ').replace(/ - /g, '_')
+                .replace(/&/g, ' and ').replace(/@/g, 'att ').replace(/[^\w \t\n\v\f\r]/g, '').trim()
+                .replace(/ +([^ ]?)/g, (_, c: string) => c.toUpperCase());
+            variable = (key || raw) + (index ?? '') + (variable && !wasArrayElement ? '_' : '') + variable;
+            const separator = vocab ? (description ? ' - ' : ` (${raw})`) : (description && !wasArrayElement ? ' - ' : '');
+            description = (vocab || name) + (index == null ? '' : ` [${index}]`) + separator + description;
+        }
+        wasArrayElement = arrayIndex != null;
+    }
+    return { side, variable, description, accessor };
+}
 
 /* ---- element grid (top pane, classic grid) ------------------------------------ */
 
@@ -403,6 +453,7 @@ function elementNameOf(isFilter: any, el: any) {
 function GridRow({ el, path, depth, isFilter, selected, typeOptions, onSelect, onCommit, onChangeType }: any) {
     const idx = path[path.length - 1];
     const def = typeDefFor(isFilter, el.__type);
+    const nameEditable = !isIteratorType(el.__type);
     const stop = (e: any) => e.stopPropagation();
     const options = typeOptions.some((o: any) => o.value === el.__type)
         ? typeOptions
@@ -431,8 +482,10 @@ function GridRow({ el, path, depth, isFilter, selected, typeOptions, onSelect, o
                 <input className="grid-name" type="text" value={el.name || ''}
                     placeholder={def ? def.label : oie.elementTypeLabel(el.__type)}
                     style={{ marginLeft: `${depth * 18}px` }}
-                    onClick={stop} onMouseDown={stop} onDoubleClick={stop}
-                    onChange={(e: any) => { el.name = e.target.value; onCommit(); }} />
+                    readOnly={!nameEditable} tabIndex={nameEditable ? undefined : -1}
+                    onClick={nameEditable ? stop : undefined} onMouseDown={nameEditable ? stop : undefined}
+                    onDoubleClick={nameEditable ? stop : undefined}
+                    onChange={nameEditable ? e => { el.name = e.target.value; onCommit(); } : undefined} />
             </td>
             <td>
                 <select className="w-full" value={el.__type} onClick={stop} onMouseDown={stop}
@@ -655,7 +708,7 @@ function GeneratedScriptPane({ kind, element, rev }: any) {
 function ReferenceRow({ dragRef, name, subtitle, dropText, title }: any) {
     return (
         <div className="step-item cursor-grab" title={title || undefined}
-            {...accessorDragProps(dragRef, () => dropText)}>
+            {...accessorDragProps(dragRef, { getText: () => dropText })}>
             <div className="flex-1 min-w-0">
                 <div className="truncate">{name || '(unnamed)'}</div>
                 {subtitle ? <div className="step-type">{subtitle}</div> : null}
@@ -764,9 +817,9 @@ function ReferenceTab({ dragRef, channelId, context, getElements }: any) {
     );
 }
 
-/* ---- right panel: Message Templates (transformer routes only) ------------------ */
+/* ---- right panel: Message Templates ------------------------------------------- */
 
-function TemplatesSide({ side, title, templateKey, target, version, connectorType, channel, commit }: any) {
+function TemplatesSide({ side, title, templateKey, target, version, connectorType, channel, commit, canEdit }: any) {
     // The section renders from the mutable target; bump repaints after each
     // model write (type change / template edit / file load).
     const [, bump] = useReducer((x: any) => x + 1, 0);
@@ -777,18 +830,10 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
         const def = dataTypeDef(typeName);
         return def ? def.defaults(version) : { '@version': version };
     };
-    // Seed a properties object for a side, matching the engine's structure.
-    const ensureProps = () => {
-        let props = target[`${side}Properties`];
-        if (!props || typeof props !== 'object') {
-            props = makeDefaultProps(target[`${side}DataType`]);
-            target[`${side}Properties`] = props;
-        }
-        return props;
-    };
     const dtLabel = (name: any) => (dataTypeDef(name) || { label: name }).label;
     const typeName = target[`${side}DataType`] || 'RAW';
-    ensureProps();
+    const editable = canEdit();
+    const typeEditable = editable && !(connectorType === 'DESTINATION' && side === 'inbound');
     const language = typeName === 'HL7V2' ? 'hl7v2' : typeName === 'JSON' ? 'json' : ['XML', 'HL7V3', 'DICOM'].includes(typeName) ? 'xml' : 'text';
     const editorHostRef = useRef<HTMLDivElement>(null);
     const editorRef = useRef<ReturnType<typeof createCodeEditor> | null>(null);
@@ -800,9 +845,10 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
         const host = editorHostRef.current!;
         const editor = createCodeEditor({
             value: String(target[templateKey] ?? ''), language, literalInput: true,
+            readOnly: !editable,
             ariaLabel: `${title} Template`, placeholder: '(none)', minHeight: '160px',
             onChange: value => {
-                if (syncing.current) return;
+                if (syncing.current || !canEdit()) return;
                 target[templateKey] = value === '' ? null : value;
                 commitRef.current();
                 bump();
@@ -813,7 +859,7 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
         editorRef.current = editor;
         host.appendChild(editor.el);
         return () => { editor.dispose(); editorRef.current = null; host.replaceChildren(); };
-    }, [target, templateKey, language, title]);
+    }, [target, templateKey, language, title, editable, canEdit]);
     useEffect(() => {
         // A newer keystroke may have updated the model since this render.
         if (template !== String(target[templateKey] ?? '')) return;
@@ -828,7 +874,9 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
     // properties dialog). Edits go to a draft and apply on OK; the modal is
     // imperative, so the editor mounts through its own root.
     const openPropsModal = () => {
-        let draft = JSON.parse(JSON.stringify(ensureProps()));
+        if (!canEdit()) return;
+        const current = target[`${side}Properties`];
+        let draft = current && typeof current === 'object' ? structuredClone(current) : makeDefaultProps(typeName);
         const editorHost = h('div');
         const validationErrors = h('div', { role: 'alert', class: 'hint whitespace-pre-line', style: { color: 'var(--err)' } });
         const root = mountReact(editorHost, <DataTypePropertiesEditor
@@ -846,6 +894,7 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
                 {
                     label: 'OK', primary: true,
                     onClick: () => {
+                        if (!canEdit() || (target[`${side}DataType`] || 'RAW') !== typeName) return;
                         const errors = normalizeDataTypeProperties(typeName, draft);
                         validationErrors.textContent = errors.join('\n');
                         if (errors.length) return false;
@@ -858,6 +907,7 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
     };
 
     const onTypeChange = (value: any) => {
+        if (!canEdit() || !typeEditable) return;
         target[`${side}DataType`] = value;
         target[`${side}Properties`] = makeDefaultProps(value);
         // Swing parity (DataTypesDialog.updateSingleDataType): a destination's
@@ -878,11 +928,12 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
     };
 
     const openFile = async () => {
+        if (!canEdit()) return;
         const isDicom = typeName === 'DICOM';
         // DICOM is binary; read it as base64 so it isn't mangled, then
         // serialize to the XML template.
         const file = await pickFile(undefined, { binary: isDicom });
-        if (!file) return;
+        if (!file || !canEdit()) return;
         let text = String(file.content ?? '');
         if (isDicom) {
             // Serialize the binary DICOM to its XML form via the engine's
@@ -892,6 +943,7 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
             if (ser && ser.text) { text = ser.text; }
             else { toast('Could not serialize the DICOM file — the serialize endpoint may be unavailable.', 'warn'); return; }
         }
+        if (!canEdit() || (target[`${side}DataType`] || 'RAW') !== typeName) return;
         target[templateKey] = text === '' ? null : text;
         commit();
         bump();
@@ -902,12 +954,12 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
             <div className="field">
                 <label>{`${title} Data Type`}</label>
                 <div className="flex gap-2 items-center">
-                    <select value={typeName} onChange={(e: any) => onTypeChange(e.target.value)}>
+                    <select value={typeName} disabled={!typeEditable} onChange={e => onTypeChange(e.target.value)}>
                         {dtOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
-                    <button className="btn btn-sm" onClick={openPropsModal}
+                    <button className="btn btn-sm" disabled={!editable} onClick={openPropsModal}
                         title="Edit this data type’s serialization properties">Properties…</button>
-                    <button className="btn btn-sm" title="Load a message file into this template"
+                    <button className="btn btn-sm" disabled={!editable} title="Load a message file into this template"
                         onClick={openFile}>Open File…</button>
                 </div>
             </div>
@@ -919,20 +971,22 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
     );
 }
 
-function TemplatesTab({ target, version, connectorType, channel, commit }: any) {
+function TemplatesTab({ target, version, connectorType, channel, commit, canEdit, isFilter }: any) {
     return (
         <div className="p-3">
             <p className="hint mb-2">Tab inserts a tab. {navigator.userAgent.includes('Macintosh') ? 'Ctrl+Shift+M' : 'Ctrl+M'} toggles Tab to move focus.</p>
             <TemplatesSide side="inbound" title="Inbound" templateKey="inboundTemplate"
-                target={target} version={version} connectorType={connectorType} channel={channel} commit={commit} />
-            <div className="h-3.5" />
-            <TemplatesSide side="outbound" title="Outbound" templateKey="outboundTemplate"
-                target={target} version={version} connectorType={connectorType} channel={channel} commit={commit} />
+                target={target} version={version} connectorType={connectorType} channel={channel} commit={commit} canEdit={canEdit} />
+            {!isFilter && <>
+                <div className="h-3.5" />
+                <TemplatesSide side="outbound" title="Outbound" templateKey="outboundTemplate"
+                    target={target} version={version} connectorType={connectorType} channel={channel} commit={commit} canEdit={canEdit} />
+            </>}
         </div>
     );
 }
 
-/* ---- right panel: Message Trees (transformer routes only) ---------------------
+/* ---- right panel: Message Trees ----------------------------------------------
    Renders the inbound or outbound template as a tree-table: Field (indented),
    Name (the engine vocabulary description) and Sample value. Every row is
    draggable (accessor flavors) and has the tree actions (Expand/Collapse All,
@@ -968,13 +1022,14 @@ function joinedValue(node: any, seps: any): string | null {
 // The non-strict HL7 v2 serializer stores every simple field as a lone `.1`
 // component. Such a field is one row that reads, drags and maps that component.
 // Segments (no dot) and strict-parser components (HD.1) keep their own rows.
-function treeRow(node: any, key: string, seps: any, top: boolean): any {
+function treeRow(node: any, key: string, seps: any, top: boolean, path: TreeNamePath | null): any {
     const only = seps && node.name.includes('.') && node.children.length === 1 ? node.children[0] : null;
     const source = only && !only.children.length && only.name === `${node.name}.1` ? only : node;
-    const children = source === node ? node.children.map((c: any, i: number) => treeRow(c, `${key}/${i}`, seps, false)) : [];
+    const children = source === node ? node.children.map((c: any, i: number) =>
+        treeRow(c, `${key}/${i}`, seps, false, { node: c, parent: path })) : [];
     const joined = source.value == null && source.children.length ? joinedValue(source, seps) : null;
     const row: any = {
-        key, node, source, children,
+        key, node, source, children, path,
         field: node.index == null ? node.name : `${node.name}[${node.index}]`,
         desc: node.desc || source.desc || '',
         value: joined ?? source.value,
@@ -989,7 +1044,8 @@ function treeRow(node: any, key: string, seps: any, top: boolean): any {
 function messageRows(root: any, side: string, hl7: boolean) {
     const seps = hl7 ? hl7Separators(root) : null;
     const nodes = root.children.length && root.value == null ? root.children : [root];
-    return nodes.map((n: any, i: number) => treeRow(n, `${side}/${i}`, seps, true));
+    return nodes.map((n: any, i: number) =>
+        treeRow(n, `${side}/${i}`, seps, true, n === root ? null : { node: n, parent: null }));
 }
 
 function branchKeys(rows: any[], out = new Set<string>()) {
@@ -1008,20 +1064,28 @@ function copyAccessor(text: string) {
     navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard'), () => toast('Clipboard unavailable', 'warn'));
 }
 
-function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef, treeAccessor, onAddStep }: any) {
+const subscribeToChannelEdit = (notify: () => void) => store.subscribe('editingChannel', notify);
+
+function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef, treeAccessor, onAddTreeField, isFilter }: any) {
     const [parse, setParse] = useState<any>({ status: 'idle' });   // idle | parsing | ready | failed | empty
     const [collapsed, setCollapsed] = useState<Set<string>>(NO_KEYS);
     const [filterCollapsed, setFilterCollapsed] = useState<any>({ q: '', keys: NO_KEYS });
     const [selected, setSelected] = useState<any>(null);
 
-    const template = target[`${side}Template`];
-    const dataType = target[`${side}DataType`] || 'RAW';
-    const props = target[`${side}Properties`] || {};
+    // Import can replace the template while this separate React root is open.
+    const template = useSyncExternalStore(subscribeToChannelEdit, () => target[`${side}Template`]);
+    const dataType = useSyncExternalStore(subscribeToChannelEdit, () => target[`${side}DataType`] || 'RAW');
+    const serialization = useSyncExternalStore(subscribeToChannelEdit, () => target[`${side}Properties`]?.serializationProperties);
     const dtLabel = (dataTypeDef(dataType) || { label: dataType }).label;
     const regionLabel = `${side === 'inbound' ? 'Inbound' : 'Outbound'} message tree (${varName})`;
-    const dragProps = (text: string) => accessorDragProps(dragRef, event => treeAccessor(text, event));
+    const dragProps = (source: any, path: TreeNamePath | null) => {
+        const field = treeField(side, source.accessor, path);
+        return accessorDragProps(dragRef, { field, getText: event => treeAccessor(field.accessor, event) });
+    };
 
     useEffect(() => {
+        setSelected(null);
+        setFilterCollapsed({ q: '', keys: NO_KEYS });
         if (template == null || String(template).trim() === '') { setParse({ status: 'empty' }); return undefined; }
         let stale = false;
         setParse({ status: 'parsing' });
@@ -1038,7 +1102,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
                 // raw binary, not the XML form.
                 try { nodes = xmlTree(tmpl, varName); } catch { nodes = null; }
             } else {
-                const ser = await serializeTemplate(dataType, props.serializationProperties || {}, tmpl).catch(() => null);
+                const ser = await serializeTemplate(dataType, serialization || {}, tmpl).catch(() => null);
                 if (ser && ser.text != null) {
                     try {
                         nodes = ser.format === 'json' ? jsonTree(ser.text, varName) : xmlTree(ser.text, varName, ser.meta);
@@ -1055,10 +1119,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
             setParse({ status: 'ready', root: nodes[0], rows });
         })();
         return () => { stale = true; };
-        // The template/type/props live on the mutable target; the section mounts
-        // fresh per side-tab activation, which is when the tree re-reads them.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [template, dataType, serialization, side, varName]);
 
     // A filter expands every match; twisties then fold that filtered view only.
     const q = query.trim().toLowerCase();
@@ -1072,29 +1133,27 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
         for (const key of branchKeys(rows)) { if (open) keys.delete(key); else keys.add(key); }
     });
 
-    const menuItems = (node: any, source: any, rows: any[]) => {
+    const menuItems = (field: TreeField, rows: any[]) => {
         const items: any[] = [];
         if (branchKeys(rows).size) {
             items.push({ label: 'Expand All', onClick: () => setBranches(rows, true) },
                 { label: 'Collapse All', onClick: () => setBranches(rows, false) }, '-');
         }
-        const name = String(node.label || 'value');
-        const lval = source.accessor.replace(/\.toString\(\)\s*$/, '');   // assignment target, not a read
-        if (side === 'inbound') {
-            items.push({
-                label: 'Map to Variable', icon: 'transform', task: 'doSaveChannel', group: 'channelEdit',
-                onClick: () => onAddStep(MAPPER_TYPE, 'Mapper', name, (el: any) => { el.mapping = source.accessor; el.variable = name; })
-            });
+        const mappingAction = (label: string, asMessage: boolean) => ({
+            label, icon: 'transform', task: 'doSaveChannel', group: 'channelEdit',
+            onClick: () => onAddTreeField(field, asMessage)
+        });
+        if (isFilter) items.push(mappingAction('Filter by Value', false));
+        else {
+            if (side === 'inbound') items.push(mappingAction('Map to Variable', false));
+            items.push(mappingAction('Map to Message', true));
         }
-        items.push({
-            label: 'Map to Message', icon: 'transform', task: 'doSaveChannel', group: 'channelEdit',
-            onClick: () => onAddStep(MSGBUILDER_TYPE, 'Message Builder', name, (el: any) => { el.messageSegment = lval; })
-        }, '-', { label: 'Copy Accessor', icon: 'copy', onClick: () => copyAccessor(source.accessor) });
+        items.push('-', { label: 'Copy Accessor', icon: 'copy', onClick: () => copyAccessor(field.accessor) });
         return items;
     };
     const rowMenu = (row: any, x: number, y: number) => {
         setSelected(row);
-        contextMenu(x, y, menuItems(row.node, row.source, [row]));
+        contextMenu(x, y, menuItems(treeField(side, row.source.accessor, row.path), [row]));
     };
 
     if (parse.status !== 'ready') {
@@ -1149,14 +1208,14 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
     ];
     const rootMenu = (e: any) => {
         e.preventDefault();
-        contextMenu(e.clientX, e.clientY, menuItems(root, root, rows));
+        contextMenu(e.clientX, e.clientY, menuItems(treeField(side, root.accessor, null), rows));
     };
 
     return (
         <section className="mt-section" style={{ display: hidden ? 'none' : undefined }} aria-label={regionLabel}>
             <div className="mt-root">
                 <span className="mt-root-label" title={`Drag into a script editor: ${root.accessor}`}
-                    {...dragProps(root.accessor)} onContextMenu={rootMenu}>
+                    {...dragProps(root, null)} onContextMenu={rootMenu}>
                     {root.label !== varName ? root.label : dtLabel}
                 </span>
                 <button type="button" className="icon-btn" title="Expand All" aria-label="Expand all"
@@ -1176,7 +1235,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
                     onSelect={(row: any) => setSelected(row)}
                     onRowContextMenu={(row: any, e: any) => { e.preventDefault(); rowMenu(row, e.clientX, e.clientY); }}
                     rowDraggable={() => true}
-                    onRowDragStart={(row: any, e: any) => dragProps(row.source.accessor).onDragStart(e)}
+                    onRowDragStart={(row: any, e: any) => dragProps(row.source, row.path).onDragStart(e)}
                     onRowDragEnd={() => { dragRef.current = null; }}
                     matches={matches}
                     collapsedKeys={openKeys}
@@ -1198,17 +1257,17 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
     );
 }
 
-function TreesTab({ target, dragRef, treeAccessor, onAddStep }: any) {
+function TreesTab({ target, dragRef, treeAccessor, onAddTreeField, isFilter }: any) {
     const [side, setSide] = useState('inbound');
     const [query, setQuery] = useState('');
     const [hideEmpty, setHideEmpty] = useState(false);
     return (
         <div className="mtree">
             <div className="mt-bar">
-                <SegPill label="Message template" value={side} onChange={setSide} options={[
+                {!isFilter && <SegPill label="Message template" value={side} onChange={setSide} options={[
                     { value: 'inbound', label: 'Inbound', title: 'Inbound message template (msg)' },
                     { value: 'outbound', label: 'Outbound', title: 'Outbound message template (tmp)' }
-                ]} />
+                ]} />}
                 <input type="text" placeholder="Filter fields…" aria-label="Filter fields" value={query}
                     onChange={(e: any) => setQuery(e.target.value)} />
                 <button type="button" className="icon-btn" aria-pressed={hideEmpty}
@@ -1216,9 +1275,9 @@ function TreesTab({ target, dragRef, treeAccessor, onAddStep }: any) {
                     onClick={() => setHideEmpty(v => !v)}><Icon name={hideEmpty ? 'eyeOff' : 'eye'} size={14} /></button>
             </div>
             <TreeSection side="inbound" varName="msg" hidden={side !== 'inbound'} query={query} hideEmpty={hideEmpty}
-                target={target} dragRef={dragRef} treeAccessor={treeAccessor} onAddStep={onAddStep} />
-            <TreeSection side="outbound" varName="tmp" hidden={side !== 'outbound'} query={query} hideEmpty={hideEmpty}
-                target={target} dragRef={dragRef} treeAccessor={treeAccessor} onAddStep={onAddStep} />
+                target={target} dragRef={dragRef} treeAccessor={treeAccessor} onAddTreeField={onAddTreeField} isFilter={isFilter} />
+            {!isFilter && <TreeSection side="outbound" varName="tmp" hidden={side !== 'outbound'} query={query} hideEmpty={hideEmpty}
+                target={target} dragRef={dragRef} treeAccessor={treeAccessor} onAddTreeField={onAddTreeField} />}
         </div>
     );
 }
@@ -1234,7 +1293,7 @@ function SidePanel({ ctx }: any) {
     const [active, setActive] = useState(0);
     const [collapsed, setCollapsed] = useSideCollapse('ft-reference');
     const { isFilter } = ctx;
-    const labels = isFilter ? ['Reference'] : ['Reference', 'Message Trees', 'Message Templates'];
+    const labels = ['Reference', 'Message Trees', 'Message Templates'];
 
     useLayoutEffect(() => {
         if (ctx.onSideCollapsed) ctx.onSideCollapsed(collapsed);
@@ -1254,10 +1313,11 @@ function SidePanel({ ctx }: any) {
         body = <ReferenceTab key="ref" dragRef={ctx.dragRef} channelId={ctx.channelId}
             context={scriptContext(ctx.connectorType)} getElements={ctx.getElements} />;
     } else if (label === 'Message Trees') {
-        body = <TreesTab key="trees" target={ctx.target} dragRef={ctx.dragRef} treeAccessor={ctx.treeAccessor} onAddStep={ctx.onAddStep} />;
+        body = <TreesTab key="trees" target={ctx.templateTarget} dragRef={ctx.dragRef}
+            treeAccessor={ctx.treeAccessor} onAddTreeField={ctx.onAddTreeField} isFilter={isFilter} />;
     } else if (label === 'Message Templates') {
-        body = <TemplatesTab key="templates" target={ctx.target} version={ctx.version}
-            connectorType={ctx.connectorType} channel={ctx.channel} commit={ctx.commit} />;
+        body = <TemplatesTab key="templates" target={ctx.templateTarget} version={ctx.version}
+            connectorType={ctx.connectorType} channel={ctx.channel} commit={ctx.commit} canEdit={ctx.canEdit} isFilter={isFilter} />;
     }
     return (
         <TabsPrimitive.Root value={String(Math.min(active, labels.length - 1))}
@@ -1314,6 +1374,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             if (!connector[kind.targetKey]) {
                 connector[kind.targetKey] = isFilter ? oie.emptyFilter(version) : oie.emptyTransformer(version);
             }
+            if (isFilter && !connector.transformer) connector.transformer = oie.emptyTransformer(version);
             target = connector[kind.targetKey];
             elements = oie.elementsToArray(target.elements);
             hydrateChildren(elements);
@@ -1347,7 +1408,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // True only while a step plugin's flushSync mount runs (see StepEditorPanel).
     const settlingRef = useRef(false);
     // Live accessor-drag token (reference rows / tree nodes → editors).
-    const dragRef = useRef<((event: DragEvent) => string) | null>(null);
+    const dragRef = useRef<AccessorDrag | null>(null);
     const rootRef = useRef<any>(null);
     const guardImplRef = useRef<any>(null);
 
@@ -2001,16 +2062,25 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         relocateElement(selPath, elementAtPath(elements, selPath.slice(0, -2)));
     }
 
-    // Steps created from a message-tree node (Map to Variable / Map to Message).
-    function addTreeStep(typeId: any, label: any, baseName: any, setup: any) {
+    function addTreeField(field: TreeField, asMessage = false) {
         if (!canEditElements()) return;
-        const def = platform.stepTypes().get(typeId);
+        const messageBuilder = asMessage || field.side === 'outbound';
+        const typeId = isFilter ? RULEBUILDER_TYPE : messageBuilder ? MSGBUILDER_TYPE : MAPPER_TYPE;
+        const label = isFilter ? 'Rule Builder' : messageBuilder ? 'Message Builder' : 'Mapper';
+        const def = typeDef(typeId);
         if (!def) { toast(`${label} is not available`, 'warn'); return; }
         const el = def.create ? def.create() : { __type: typeId };
         el.__type = typeId;
-        el.name = baseName || label;
         el.enabled = true;
-        setup(el);
+        if (isFilter) el.field = field.accessor;
+        else if (messageBuilder) {
+            el.name = `${field.description} (out)`;
+            el.messageSegment = withoutTreeStringSuffix(field.accessor);
+        } else {
+            el.name = field.variable;
+            el.variable = field.variable;
+            el.mapping = field.accessor;
+        }
         const selected = elementAtPath(elementsRef.current, selectedPathRef.current);
         const parent = selected && isIteratorType(selected.__type) ? selected
             : selectedPathRef.current && selectedPathRef.current.length > 1
@@ -2049,6 +2119,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 normalizeIteratorTarget(el);
                 rewriteElementIteratorVariables(el, iteratorAncestors(path), true);
             }
+            if (isFilter) el.name = `Accept message if "${el.field}" exists`;
             setSelected(path);
             commitRef.current();
             toast(`Added ${label} "${el.name}"`);
@@ -2069,8 +2140,24 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             });
         }
     }
-    const addTreeStepRef = useRef(addTreeStep);
-    addTreeStepRef.current = addTreeStep;
+    const addTreeFieldRef = useRef(addTreeField);
+    addTreeFieldRef.current = addTreeField;
+
+    function onTreeGridDragOver(event: React.DragEvent) {
+        if (!dragRef.current?.field || !canEditElements()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = 'copy';
+    }
+
+    function onTreeGridDrop(event: React.DragEvent) {
+        const field = dragRef.current?.field;
+        if (!field || !canEditElements()) return;
+        event.preventDefault();
+        event.stopPropagation();
+        dragRef.current = null;
+        addTreeField(field, acceleratorPressed(event.nativeEvent));
+    }
 
     async function backToChannel() {
         // Match the Swing editor: "Back to Channel" runs the same validation as the
@@ -2174,16 +2261,17 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const sideCtx = {
             isFilter,
             channelId: params.channelId,
-            target, version, connectorType, channel,
+            templateTarget: isFilter ? connector.transformer : target,
+            version, connectorType, channel,
+            canEdit: canEditElements,
             dragRef,
             treeAccessor: (text: string, event: DragEvent) => {
-                const accelerator = /Mac/.test(navigator.platform) ? event.metaKey : event.ctrlKey;
-                const expression = accelerator ? text.replace(/\.toString\(\)$/, '') : text;
+                const expression = acceleratorPressed(event) ? withoutTreeStringSuffix(text) : text;
                 return rewriteIteratorExpression(expression, iteratorAncestors(selectedPathRef.current || []), true);
             },
             getElements: () => elementsRef.current,
             commit: () => commitRef.current(),
-            onAddStep: (typeId: any, label: any, baseName: any, setup: any) => addTreeStepRef.current(typeId, label, baseName, setup),
+            onAddTreeField: (field: TreeField, asMessage: boolean) => addTreeFieldRef.current(field, asMessage),
             // The panel's collapse flag, mirrored onto the wrapper the MAIN tree
             // renders: .side-collapsed squeezes the fixed width down to the strip
             // (its splitter hides via CSS :has — nothing left to drag). Class
@@ -2217,7 +2305,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             const host = sideHostRef.current;
             if (d.open && d.origin && rootEl && rootEl.contains(d.origin) && !sidePlaceholderRef.current && host) {
                 const getDropText = d.getDropText;
-                d.getDropText = (event: DragEvent) => dragRef.current?.(event) || getDropText(event);
+                d.getDropText = (event: DragEvent) => dragRef.current?.getText(event) || getDropText(event);
                 const flat = d.body.querySelector('.ce-popout-vars');
                 if (flat) flat.remove();
                 sidePlaceholderRef.current = document.createComment('ft-side-panel');
@@ -2258,7 +2346,8 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                     <div className="split-a element-list-pane flex-none p-[13px] pb-2" data-editor-overtake="">
                         {/* Fills the pane so right-clicking anywhere in the step
                             area (not just on a row) opens the context menu. */}
-                        <div className="min-h-full panel overflow-auto" onContextMenu={gridContextMenu}>
+                        <div className="min-h-full panel overflow-auto" onContextMenu={gridContextMenu}
+                            onDragOver={onTreeGridDragOver} onDrop={onTreeGridDrop}>
                             <ElementsGrid kind={kind} isFilter={isFilter} elements={elements}
                                 selectedPath={selectedPath} typeOptions={typeOptions} canEdit={canEdit}
                                 onSelect={selectElement}

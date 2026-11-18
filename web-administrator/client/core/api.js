@@ -483,7 +483,13 @@ function editorText(name, parent, owner, holder) {
         case 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep':
             return name === 'mapping' || name === 'messageSegment' || name === 'defaultValue';
         case 'com.mirth.connect.plugins.xsltstep.XsltStep':
-            return name === 'sourceXml';
+            return name === 'sourceXml' || name === 'template' || name === 'resultVariable' || name === 'customFactory';
+        case 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep':
+        case 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule':
+            return name === 'script';
+        case 'com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep':
+        case 'com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule':
+            return name === 'scriptPath';
         case 'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule':
         case 'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep':
             return name === 'field';
@@ -569,10 +575,10 @@ function channelWire(channel) {
     if (someChannelText(body, responseName, value => typeof value === 'string' && /[\x00-\x08\x0B\x0C\x0E-\x1F\uD800-\uDFFF\uFFFE\uFFFF]/u.test(value))) {
         throw new Error('This response name contains a character the engine cannot reload. Choose a different response name.');
     }
-    if (!someChannelText(body, responseName, value => typeof value === 'string' && value.includes('\r')))
+    if (!someChannelText(body, editorText, value => typeof value === 'string' && value.includes('\r')))
         return { body, options: { wrapKey: 'channel' } };
-    // JSON -> XML normalizes raw CR. Only these uncommon response names need
-    // an XML write; other writes stay JSON.
+    // JSON -> XML normalizes raw CR. Write the affected channel as XML so
+    // numeric references preserve the exact source and response names.
     const escape = (value) => {
         const text = String(value ?? '');
         if (/[\x00-\x08\x0B\x0C\x0E-\x1F\uD800-\uDFFF\uFFFE\uFFFF]/u.test(text))
