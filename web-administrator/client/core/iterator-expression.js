@@ -109,6 +109,7 @@ class RhinoSourceReader {
     position = 0;
     previousEnd = 0;
     rootPath = [];
+    members;
     linePosition = 0;
     line = 1;
     xmlLiteralDepth = 0;
@@ -357,10 +358,13 @@ class RhinoSourceReader {
         }
         else {
             node = this.primary(path);
+            if (this.members && path === this.rootPath)
+                this.members.push({ end: this.previousEnd });
         }
         return this.memberTail(node, calls, path);
     }
     memberTail(node, calls, path) {
+        const members = path === this.rootPath ? this.members : undefined;
         let receiver = path?.[0];
         const messageRoot = receiver?.kind === 'name' && (receiver.source === 'msg' || receiver.source === 'tmp');
         let memberStart = 0, receiverSize = 0;
@@ -373,7 +377,8 @@ class RhinoSourceReader {
             }
             if (this.at('(') && calls) {
                 node = { source: node.source + this.arguments(), reference: true };
-                if (this.mode === 'substitution' && path === this.rootPath && ['.', '..', '.(', '[', '('].includes(this.token.value)) {
+                members?.push({ end: this.previousEnd, call: true });
+                if (!members && this.mode === 'substitution' && path === this.rootPath && ['.', '..', '.(', '[', '('].includes(this.token.value)) {
                     // A property of a call result cannot stand on its own. Keep the
                     // call and its remaining accesses together. Only ordinary message
                     // selectors before the call can have their repetitions normalized.
@@ -400,6 +405,12 @@ class RhinoSourceReader {
                     preserveTail = true;
                 node = { source: node.source + open + key + close, reference: open === '[' };
                 this.take(close);
+                if (members) {
+                    const simple = open === '[' && key === first.value;
+                    members.push({ end: this.previousEnd,
+                        key: simple && first.word && !first.keyword ? key : undefined,
+                        numeric: simple && first.literal && number.test(key) });
+                }
                 if (path && child)
                     path.push(...child);
             }
@@ -416,6 +427,7 @@ class RhinoSourceReader {
                 }
                 path?.push(property);
                 node = { source: node.source + separator + property.source, reference: property.kind === 'property' };
+                members?.push({ end: this.previousEnd });
             }
             else
                 break;
@@ -678,6 +690,29 @@ class RhinoSourceReader {
             return [{ value, propertyName: value }];
         }
         return parts;
+    }
+    memberBoundaries() {
+        if (!this.token.word || this.token.keyword)
+            return [];
+        this.members = [];
+        this.memberExpression(true, this.rootPath);
+        return this.members;
+    }
+    referencesIdentifier(name) {
+        let previous = '';
+        while (this.token.value) {
+            const { value, word, literal } = this.token;
+            if (word && value === name && previous !== '.' && previous !== '..' && previous !== '::' && previous !== '@')
+                return true;
+            // The authoring parser accepts backticks as quoted path keys.
+            // Interpolation in saved ES6 scripts can still reference an index.
+            const interpolation = literal && value.startsWith('`') ? value.indexOf('${') : -1;
+            if (interpolation >= 0 && value.slice(interpolation).match(/[$_\p{ID_Continue}]+/gu)?.includes(name))
+                return true;
+            previous = value;
+            this.next();
+        }
+        return false;
     }
     // XML text is not JavaScript trivia: quotes, brackets, comments and CDATA
     // stay literal. Only {...} substitutions re-enter the expression grammar.
@@ -1269,4 +1304,22 @@ export function readExpressionParts(text, mode = 'substitution') {
     }
     catch { /* Rhino also preserves the original expression on a parse error. */ }
     return isJavaBlank(text) ? [] : [{ value: text, propertyName: text }];
+}
+/** Source offsets in the leading member chain, including complete computed keys. */
+export function readMemberBoundaries(text) {
+    try {
+        return new RhinoSourceReader(text, 'substitution').memberBoundaries();
+    }
+    catch {
+        return [];
+    }
+}
+/** Conservatively detect an index reference outside ordinary strings and comments. */
+export function referencesIteratorIdentifier(text, name) {
+    try {
+        return new RhinoSourceReader(text, 'substitution').referencesIdentifier(name);
+    }
+    catch {
+        return text.includes(name);
+    }
 }

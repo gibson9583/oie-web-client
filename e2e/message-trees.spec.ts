@@ -6,6 +6,7 @@ import { makeChannel } from './connector-fixtures.js';
 
 const MAPPER = 'com.mirth.connect.plugins.mapper.MapperStep';
 const BUILDER = 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep';
+const RULE = 'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule';
 
 const INBOUND = [
     'MSH|^~\\&|EPIC|GENHOSP|LAB|GENHOSP|20261024101500||ADT^A01|MSG00001|P|2.5.1',
@@ -45,9 +46,10 @@ function hl7Xml(er7: string) {
     return `<HL7Message>${segments.join('')}</HL7Message>`;
 }
 
-async function openTrees(page: Page, { serialize = hl7Xml, dataType = 'HL7V2', template = INBOUND } = {}) {
+async function openTrees(page: Page, { serialize = hl7Xml, dataType = 'HL7V2', template = INBOUND, kind = 'transformer', connectorId = 0 } = {}) {
     let channel = makeChannel('mtree');
-    Object.assign(channel.sourceConnector.transformer, { inboundDataType: dataType, inboundTemplate: template, outboundTemplate: OUTBOUND });
+    const connector = connectorId === 0 ? channel.sourceConnector : channel.destinationConnectors.connector[0];
+    Object.assign(connector.transformer, { inboundDataType: dataType, inboundTemplate: template, outboundTemplate: OUTBOUND });
     const writes: any[] = [];
     await mockEngine(page, {
         'GET /channels/mtree': () => ({ channel }),
@@ -60,7 +62,7 @@ async function openTrees(page: Page, { serialize = hl7Xml, dataType = 'HL7V2', t
         const descriptions = text.startsWith('MSH|') ? DESCRIPTIONS : {};
         return route.fulfill({ json: { format: 'xml', data: serialize(text), meta: { root, descriptions } } });
     });
-    await page.goto('/channels/mtree/transformer/0');
+    await page.goto(`/channels/mtree/${kind}/${connectorId}`);
     await page.getByRole('tab', { name: 'Message Trees', exact: true }).click();
     return writes;
 }
@@ -149,13 +151,56 @@ test('message tree rows map, drag and copy their accessors', async ({ page, brow
         mapping: "msg['PID']['PID.5']['PID.5.1'].toString()",
         defaultValue: "msg['PID']['PID.8']['PID.8.1'].toString()"
     });
-    expect(elements[BUILDER][0]).toMatchObject({ name: 'PID.3 (Patient Identifier List)', messageSegment: "tmp['PID']['PID.3']" });
+    expect(elements[BUILDER][0]).toMatchObject({ name: 'Patient Identification - Patient Identifier List (PID.3) (out)', messageSegment: "tmp['PID']['PID.3']" });
 });
+
+test('dropping an inbound field onto the transformer grid creates a Mapper', async ({ page }) => {
+    const writes = await openTrees(page);
+    await row(page, 'PID').locator('.twisty').click();
+    const grid = page.locator('.element-list-pane .panel');
+    await row(page, 'PID.8').dragTo(grid);
+    await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
+    const accessor = "msg['PID']['PID.8']['PID.8.1'].toString()";
+    await expect(stepField(page, 'Mapping')).toHaveValue(accessor);
+    await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+    await expect.poll(() => writes.length).toBe(1);
+    expect(writes[0].sourceConnector.transformer.elements[MAPPER][0]).toMatchObject({ mapping: accessor, enabled: true });
+});
+
+for (const connectorId of [0, 1]) {
+    test(`${connectorId ? 'destination' : 'source'} filter uses its connector's inbound template and can create a rule`, async ({ page }) => {
+        await page.route('**/vendor/monaco/**', route => route.abort());
+        const writes = await openTrees(page, { kind: 'filter', connectorId });
+        await expect(tree(page, 'tmp')).toHaveCount(0);
+        await row(page, 'PID').locator('.twisty').click();
+        if (connectorId) {
+            await row(page, 'PID.8').dragTo(page.locator('.element-list-pane .panel'));
+        } else {
+            await row(page, 'PID.8').click({ button: 'right' });
+            await page.getByRole('menuitem', { name: 'Filter by Value' }).click();
+        }
+        await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
+        const accessor = "msg['PID']['PID.8']['PID.8.1'].toString()";
+        await expect(stepField(page, 'Field')).toHaveValue(accessor);
+
+        await page.getByRole('tab', { name: 'Message Templates', exact: true }).click();
+        await expect(page.getByText('Outbound Data Type', { exact: true })).toHaveCount(0);
+        const template = 'MSH|^~\\&|EDITED';
+        await page.getByRole('textbox', { name: 'Inbound Template', exact: true }).fill(template);
+        await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+        await expect.poll(() => writes.length).toBe(1);
+        const saved = connectorId ? writes[0].destinationConnectors.connector[0] : writes[0].sourceConnector;
+        expect(Buffer.from(saved.transformer.inboundTemplate.$, 'base64').toString('utf8')).toBe(template);
+        expect(Buffer.from(saved.transformer.outboundTemplate.$, 'base64').toString('utf8')).toBe(OUTBOUND);
+        expect(saved.filter.elements[RULE][0]).toMatchObject({ field: accessor, condition: 'EXISTS' });
+        expect(saved.filter.inboundTemplate).toBeUndefined();
+    });
+}
 
 test('message tree rows drop their accessor into a script editor', async ({ page }) => {
     await openTrees(page);
     await page.getByRole('button', { name: 'Add New Step' }).first().click();
-    await page.getByRole('dialog', { name: 'Add Step' }).getByText('JavaScript', { exact: true }).click();
+    await page.locator('tr[data-path].selected select').last().selectOption({ label: 'JavaScript' });
     await expect(page.locator('.step-editor-fill .ce-monaco')).toBeVisible();
     await page.getByRole('tab', { name: 'Message Trees', exact: true }).click();
     await row(page, 'PID').locator('.twisty').click();
@@ -174,7 +219,7 @@ for (const fallback of [false, true]) {
         if (fallback) await page.route('**/vendor/monaco/**', route => route.abort());
         const writes = await openTrees(page);
         await page.getByRole('button', { name: 'Add New Step' }).first().click();
-        await page.getByRole('dialog', { name: 'Add Step' }).getByText('JavaScript', { exact: true }).click();
+        await page.locator('tr[data-path].selected select').last().selectOption({ label: 'JavaScript' });
         const editor = page.locator('.step-editor-fill');
         const input = fallback ? 'textarea.ce-area' : '.ce-monaco .view-lines';
         await expect(editor.locator(input)).toBeVisible();
@@ -315,8 +360,45 @@ test('text on an attributed XML root stays visible and searchable', async ({ pag
     await row(page, 'value').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
     await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
-    await expect(stepField(page, 'Variable')).toHaveValue('value');
+    await expect(stepField(page, 'Variable')).toHaveValue('');
     await expect(stepField(page, 'Mapping')).toHaveValue('msg.toString()');
+});
+
+test('XML tree accessors distinguish namespaces, their aliases and namespaced attributes', async ({ page }) => {
+    const xml = '<message xmlns:a="urn:a" xmlns:b="urn:b" xmlns:same="urn:a">'
+        + '<a:id>A1</a:id><b:id>B</b:id><same:id>A2</same:id>'
+        + '<group xmlns="urn:group" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="numeric">'
+        + '<type>other</type><plain xmlns="">empty namespace</plain></group></message>';
+    await openTrees(page, { dataType: 'XML', template: xml, serialize: () => xml });
+    await row(page, 'group').locator('.twisty').click();
+    const expected = [
+        ['a:id[0]', "msg[new QName('urn:a', 'id')][0].toString()"],
+        ['b:id', "msg[new QName('urn:b', 'id')].toString()"],
+        ['same:id[1]', "msg[new QName('urn:a', 'id')][1].toString()"],
+        ['@xsi:type', "msg[new QName('urn:group', 'group')].@[new QName('http://www.w3.org/2001/XMLSchema-instance', 'type')].toString()"],
+        ['type', "msg[new QName('urn:group', 'group')][new QName('urn:group', 'type')].toString()"],
+        ['plain', "msg[new QName('urn:group', 'group')]['plain'].toString()"]
+    ];
+    for (const [field, accessor] of expected) {
+        await row(page, field).click();
+        await expect(tree(page).locator('.mt-foot code')).toHaveText(accessor);
+    }
+});
+
+test('Map to Variable gives colliding tree names distinct saved channel keys', async ({ page }) => {
+    const xml = '<message><patient-id>first</patient-id><patientId>second</patientId></message>';
+    const writes = await openTrees(page, { dataType: 'XML', template: xml, serialize: () => xml });
+    for (const field of ['patient-id', 'patientId']) {
+        await row(page, field).click({ button: 'right' });
+        await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
+        await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
+    }
+    await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+    await expect.poll(() => writes.length).toBe(1);
+    expect(writes[0].sourceConnector.transformer.elements[MAPPER]).toMatchObject([
+        { name: 'patientid', variable: 'patientid', mapping: "msg['patient-id'].toString()" },
+        { name: 'patientid_2', variable: 'patientid_2', mapping: "msg['patientId'].toString()" }
+    ]);
 });
 
 // axe reports these as incomplete (the page background is a dot gradient), so

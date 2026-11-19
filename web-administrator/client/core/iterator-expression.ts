@@ -21,6 +21,7 @@ type PathMode = 'substitution' | 'messageBuilder';
 // substitution wizard uses the same visitor with those literals removed.
 type PathLeaf = { kind: 'name' | 'property' | 'string' | 'xml' | 'number' | 'callTail'; source: string; propertyName?: string; unprintable?: boolean };
 type ExpressionPart = { value: string; propertyName: string; numberLiteral?: boolean };
+type MemberBoundary = { end: number; key?: string; numeric?: boolean; call?: boolean };
 type ParameterList = { items: string[]; names: string[]; parenthesized?: boolean };
 type Operand = { source: string; reference?: boolean; parameters?: ParameterList };
 type Block = { kind: 'block'; body: Statement[] };
@@ -123,6 +124,7 @@ class RhinoSourceReader {
     private position = 0;
     private previousEnd = 0;
     private readonly rootPath: PathLeaf[] = [];
+    private members?: MemberBoundary[];
     private linePosition = 0;
     private line = 1;
     private xmlLiteralDepth = 0;
@@ -345,11 +347,13 @@ class RhinoSourceReader {
             if (this.mode === 'substitution' && path === this.rootPath) path = undefined;
         } else {
             node = this.primary(path);
+            if (this.members && path === this.rootPath) this.members.push({ end: this.previousEnd });
         }
         return this.memberTail(node, calls, path);
     }
 
     private memberTail(node: Operand, calls: boolean, path?: PathLeaf[]): Operand {
+        const members = path === this.rootPath ? this.members : undefined;
         let receiver = path?.[0];
         const messageRoot = receiver?.kind === 'name' && (receiver.source === 'msg' || receiver.source === 'tmp');
         let memberStart = 0, receiverSize = 0;
@@ -362,7 +366,8 @@ class RhinoSourceReader {
             }
             if (this.at('(') && calls) {
                 node = { source: node.source + this.arguments(), reference: true };
-                if (this.mode === 'substitution' && path === this.rootPath && ['.', '..', '.(', '[', '('].includes(this.token.value)) {
+                members?.push({ end: this.previousEnd, call: true });
+                if (!members && this.mode === 'substitution' && path === this.rootPath && ['.', '..', '.(', '[', '('].includes(this.token.value)) {
                     // A property of a call result cannot stand on its own. Keep the
                     // call and its remaining accesses together. Only ordinary message
                     // selectors before the call can have their repetitions normalized.
@@ -385,6 +390,12 @@ class RhinoSourceReader {
                 if (open !== '[' || key !== first.value || !(first.literal || (first.word && !first.keyword))) preserveTail = true;
                 node = { source: node.source + open + key + close, reference: open === '[' };
                 this.take(close);
+                if (members) {
+                    const simple = open === '[' && key === first.value;
+                    members.push({ end: this.previousEnd,
+                        key: simple && first.word && !first.keyword ? key : undefined,
+                        numeric: simple && first.literal && number.test(key) });
+                }
                 if (path && child) path.push(...child);
             } else if (this.at('.') || this.at('..')) {
                 const separator = this.token.value;
@@ -397,6 +408,7 @@ class RhinoSourceReader {
                 }
                 path?.push(property);
                 node = { source: node.source + separator + property.source, reference: property.kind === 'property' };
+                members?.push({ end: this.previousEnd });
             } else break;
             receiver = undefined;
         }
@@ -621,6 +633,28 @@ class RhinoSourceReader {
             return [{ value, propertyName: value }];
         }
         return parts;
+    }
+
+    memberBoundaries(): MemberBoundary[] {
+        if (!this.token.word || this.token.keyword) return [];
+        this.members = [];
+        this.memberExpression(true, this.rootPath);
+        return this.members;
+    }
+
+    referencesIdentifier(name: string): boolean {
+        let previous = '';
+        while (this.token.value) {
+            const { value, word, literal } = this.token;
+            if (word && value === name && previous !== '.' && previous !== '..' && previous !== '::' && previous !== '@') return true;
+            // The authoring parser accepts backticks as quoted path keys.
+            // Interpolation in saved ES6 scripts can still reference an index.
+            const interpolation = literal && value.startsWith('`') ? value.indexOf('${') : -1;
+            if (interpolation >= 0 && value.slice(interpolation).match(/[$_\p{ID_Continue}]+/gu)?.includes(name)) return true;
+            previous = value;
+            this.next();
+        }
+        return false;
     }
 
     // XML text is not JavaScript trivia: quotes, brackets, comments and CDATA
@@ -1098,4 +1132,22 @@ export function readExpressionParts(text: string, mode: PathMode = 'substitution
         if (parts.length) return parts;
     } catch { /* Rhino also preserves the original expression on a parse error. */ }
     return isJavaBlank(text) ? [] : [{ value: text, propertyName: text }];
+}
+
+/** Source offsets in the leading member chain, including complete computed keys. */
+export function readMemberBoundaries(text: string): MemberBoundary[] {
+    try {
+        return new RhinoSourceReader(text, 'substitution').memberBoundaries();
+    } catch {
+        return [];
+    }
+}
+
+/** Conservatively detect an index reference outside ordinary strings and comments. */
+export function referencesIteratorIdentifier(text: string, name: string): boolean {
+    try {
+        return new RhinoSourceReader(text, 'substitution').referencesIdentifier(name);
+    } catch {
+        return text.includes(name);
+    }
 }

@@ -45,12 +45,12 @@ const SCOPES = [
 ];
 
 const CONDITIONS = [
-    { value: 'EXISTS', label: 'Exists' },
-    { value: 'NOT_EXIST', label: 'Not Exist' },
-    { value: 'EQUALS', label: 'Equals' },
-    { value: 'NOT_EQUAL', label: 'Not Equal' },
-    { value: 'CONTAINS', label: 'Contains' },
-    { value: 'NOT_CONTAIN', label: 'Not Contain' }
+    { value: 'EXISTS', label: 'Exists', presentTense: 'exists' },
+    { value: 'NOT_EXIST', label: 'Not Exist', presentTense: 'does not exist' },
+    { value: 'EQUALS', label: 'Equals', presentTense: 'equals' },
+    { value: 'NOT_EQUAL', label: 'Not Equal', presentTense: 'does not equal' },
+    { value: 'CONTAINS', label: 'Contains', presentTense: 'contains' },
+    { value: 'NOT_CONTAIN', label: 'Not Contain', presentTense: 'does not contain' }
 ];
 
 const BEHAVIORS = [
@@ -84,6 +84,17 @@ function stringListValues(value: unknown): string[] {
     const list = Array.isArray(value) ? value : 'string' in value ? value.string : null;
     if (list == null) return [];
     return (Array.isArray(list) ? list : [list]).map(item => String(item ?? ''));
+}
+
+function comparisonName(prefix: string, element: { field?: string; condition?: string; values?: unknown }): string {
+    const condition = CONDITIONS.find(option => option.value === element.condition) ?? CONDITIONS[0];
+    const field = `${prefix} "${element.field ?? ''}"`;
+    if (!CONDITION_USES_VALUES.has(condition.value)) return `${field} ${condition.presentTense}`;
+    const values = stringListValues(element.values).filter(value => !isJavaBlank(value));
+    if (values.length) return `${field} ${condition.presentTense} ${values.join(' or ')}`;
+    if (condition.value === 'EQUALS') return `${field} is blank`;
+    if (condition.value === 'NOT_EQUAL') return `${field} is not blank`;
+    return `${field} ${condition.presentTense} ""`;
 }
 
 /* DestinationSetFilter metaDataIds <-> the set of checked destination ids.
@@ -266,12 +277,14 @@ function makeIteratorEditor(isRule: boolean) {
     const type = isRule ? 'com.mirth.connect.model.IteratorRule' : 'com.mirth.connect.model.IteratorStep';
     const childNoun = isRule ? 'rule' : 'step';
 
-    function IteratorEditor({ element, onChange }: any) {
+    function IteratorEditor({ element, onChange, onRenameIteratorIndex }: any) {
         const force = useRerender();
         if (!element.properties || typeof element.properties !== 'object') {
             element.properties = emptyIteratorProperties();
         }
         const props = element.properties;
+        const [index, setIndex] = React.useState(() => props.indexVariable ?? 'i');
+        const [indexError, setIndexError] = React.useState('');
         const updateName = () => {
             element.name = iteratorName(element, isJavaBlank(props.target) ? '...' : props.target);
             onChange();
@@ -292,11 +305,23 @@ function makeIteratorEditor(isRule: boolean) {
                             onChange={(e: any) => { props.target = e.target.value; updateName(); }}
                         />
                     </Field>
-                    <Field label="Index Variable">
+                    <Field label="Index Variable"
+                        hint={indexError || 'Press Enter or leave this field to apply the change.'}>
                         <input
                             type="text"
-                            value={props.indexVariable ?? 'i'}
-                            onChange={(e: any) => { props.indexVariable = e.target.value; onChange(); force(); }}
+                            value={index}
+                            aria-invalid={!!indexError}
+                            onChange={e => {
+                                setIndex(e.target.value);
+                                setIndexError('');
+                            }}
+                            onBlur={e => setIndexError(onRenameIteratorIndex(element, e.target.value))}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    e.currentTarget.blur();
+                                }
+                            }}
                         />
                     </Field>
                     {isRule && <>
@@ -338,6 +363,7 @@ function makeIteratorEditor(isRule: boolean) {
 
     return {
         label: 'Iterator',
+        nameEditable: false,
         create: () => ({
             __type: type,
             name: iteratorName({ __type: type }, '...'), enabled: true,
@@ -415,7 +441,12 @@ function MapperEditor({ element, onChange }: any) {
                 <input
                     type="text"
                     value={element.variable ?? ''}
-                    onChange={(e: any) => { element.variable = e.target.value; onChange(); force(); }}
+                    onChange={(e: any) => {
+                        element.variable = e.target.value;
+                        element.name = element.variable;
+                        onChange();
+                        force();
+                    }}
                 />
             </Field>
             <Field label="Add to">
@@ -522,7 +553,7 @@ function XsltEditor({ element, onChange }: any) {
    filter/transformer view; other step editors ignore it, so it's backward
    compatible. metaDataIds is stored as the List<Integer> of CHECKED ids and
    values as a List<String>, in the same wire shape the model loaded with — a
-   loaded element the user only renames round-trips untouched. */
+   loaded element keeps its name until a comparison changes. */
 let dsfUid = 0;
 
 function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
@@ -536,6 +567,11 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
     const behavior = element.behavior || 'REMOVE';
     const condition = element.condition || 'EXISTS';
     const checked = checkedIdSet(element.metaDataIds);
+    const updateName = () => {
+        element.name = comparisonName('Filter destination(s) if', element);
+        onChange();
+        force();
+    };
 
     const listDisabled = behavior === 'REMOVE_ALL';   // REMOVE_ALL takes no ids
 
@@ -563,7 +599,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
                     type="text"
                     placeholder="msg['PID']['PID.3']['PID.3.1'].toString()"
                     value={element.field ?? ''}
-                    onChange={(e: any) => { element.field = e.target.value; onChange(); force(); }}
+                    onChange={(e: any) => { element.field = e.target.value; updateName(); }}
                 />
             </Field>
 
@@ -620,7 +656,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
                                     type="radio"
                                     name={`dsf-condition-${uid}`}
                                     checked={condition === opt.value}
-                                    onChange={() => { element.condition = opt.value; onChange(); force(); }}
+                                    onChange={() => { element.condition = opt.value; updateName(); }}
                                 />
                                 {opt.label}
                             </label>
@@ -632,7 +668,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
             <div className="span-2 mt-2">
                 <Field label="Values">
                     <ExpressionTable label="Value" value={element.values} condition={condition}
-                        onChange={value => { element.values = value; onChange(); }} />
+                        onChange={value => { element.values = value; updateName(); }} />
                 </Field>
             </div>
         </div>
@@ -641,6 +677,11 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
 
 function RuleBuilderEditor({ element, onChange }: any) {
     const force = useRerender();
+    const updateName = () => {
+        element.name = comparisonName('Accept message if', element);
+        onChange();
+        force();
+    };
     return (
         <div className="form-grid">
             <Field label="Field">
@@ -648,20 +689,20 @@ function RuleBuilderEditor({ element, onChange }: any) {
                     type="text"
                     placeholder="msg['MSH']['MSH.9']['MSH.9.1'].toString()"
                     value={element.field ?? ''}
-                    onChange={(e: any) => { element.field = e.target.value; onChange(); force(); }}
+                    onChange={(e: any) => { element.field = e.target.value; updateName(); }}
                 />
             </Field>
             <Field label="Condition">
                 <Select
                     options={CONDITIONS}
                     value={element.condition || 'EXISTS'}
-                    onChange={(e: any) => { element.condition = e.target.value; onChange(); force(); }}
+                    onChange={(e: any) => { element.condition = e.target.value; updateName(); }}
                 />
             </Field>
             <div className="span-2">
                 <Field label="Values">
                     <ExpressionTable label="Value" value={element.values} condition={element.condition || 'EXISTS'}
-                        onChange={value => { element.values = value; onChange(); }} />
+                        onChange={value => { element.values = value; updateName(); }} />
                 </Field>
             </div>
         </div>
@@ -686,6 +727,7 @@ export function register(platform: Platform) {
 
     platform.registerStepType('com.mirth.connect.plugins.mapper.MapperStep', {
         label: 'Mapper',
+        nameEditable: false,
         create: () => ({
             __type: 'com.mirth.connect.plugins.mapper.MapperStep',
             name: '', enabled: true,
@@ -725,6 +767,7 @@ export function register(platform: Platform) {
 
     platform.registerStepType('com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep', {
         label: 'Destination Set Filter',
+        nameEditable: false,
         // Only available on the source transformer (DestinationSetFilterPlugin
         // .onlySourceConnector()); destinations/response transformers exclude it.
         onlySource: true,
@@ -764,6 +807,7 @@ export function register(platform: Platform) {
 
     platform.registerRuleType('com.mirth.connect.plugins.rulebuilder.RuleBuilderRule', {
         label: 'Rule Builder',
+        nameEditable: false,
         create: () => ({
             __type: 'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule',
             name: '', enabled: true, operator: 'AND',

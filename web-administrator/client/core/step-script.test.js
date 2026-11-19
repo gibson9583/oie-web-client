@@ -38,3 +38,12 @@ test('nested Message Builder previews initialize both ancestor indices', () => {
         { value: [{ text: 'three' }] }
     ]);
 });
+
+test('a singleton zero or false comparison retains its operand in both rule generators', () => {
+    for (const type of ['rulebuilder.RuleBuilderRule', 'destinationsetfilter.DestinationSetFilterStep']) {
+        for (const value of [0, false]) {
+            const step = { __type: 'com.mirth.connect.plugins.' + type, field: 'msg.value', condition: 'EQUALS', values: { string: value } };
+            assert.ok(generateElementScript(step).includes('msg.value == ' + value + ')'));
+        }
+    }
+});

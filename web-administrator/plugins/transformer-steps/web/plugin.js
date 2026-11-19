@@ -11,12 +11,12 @@ var SCOPES = [
   { value: "RESPONSE", label: "Response Map" }
 ];
 var CONDITIONS = [
-  { value: "EXISTS", label: "Exists" },
-  { value: "NOT_EXIST", label: "Not Exist" },
-  { value: "EQUALS", label: "Equals" },
-  { value: "NOT_EQUAL", label: "Not Equal" },
-  { value: "CONTAINS", label: "Contains" },
-  { value: "NOT_CONTAIN", label: "Not Contain" }
+  { value: "EXISTS", label: "Exists", presentTense: "exists" },
+  { value: "NOT_EXIST", label: "Not Exist", presentTense: "does not exist" },
+  { value: "EQUALS", label: "Equals", presentTense: "equals" },
+  { value: "NOT_EQUAL", label: "Not Equal", presentTense: "does not equal" },
+  { value: "CONTAINS", label: "Contains", presentTense: "contains" },
+  { value: "NOT_CONTAIN", label: "Not Contain", presentTense: "does not contain" }
 ];
 var BEHAVIORS = [
   { value: "REMOVE", label: "Remove the following" },
@@ -30,6 +30,16 @@ function stringListValues(value) {
   const list = Array.isArray(value) ? value : "string" in value ? value.string : null;
   if (list == null) return [];
   return (Array.isArray(list) ? list : [list]).map((item) => String(item ?? ""));
+}
+function comparisonName(prefix, element) {
+  const condition = CONDITIONS.find((option) => option.value === element.condition) ?? CONDITIONS[0];
+  const field = `${prefix} "${element.field ?? ""}"`;
+  if (!CONDITION_USES_VALUES.has(condition.value)) return `${field} ${condition.presentTense}`;
+  const values = stringListValues(element.values).filter((value) => !isJavaBlank(value));
+  if (values.length) return `${field} ${condition.presentTense} ${values.join(" or ")}`;
+  if (condition.value === "EQUALS") return `${field} is blank`;
+  if (condition.value === "NOT_EQUAL") return `${field} is not blank`;
+  return `${field} ${condition.presentTense} ""`;
 }
 function checkedIdSet(value) {
   if (!value || typeof value !== "object") return /* @__PURE__ */ new Set();
@@ -183,12 +193,14 @@ function emptyIteratorProperties(newFilter = false) {
 function makeIteratorEditor(isRule) {
   const type = isRule ? "com.mirth.connect.model.IteratorRule" : "com.mirth.connect.model.IteratorStep";
   const childNoun = isRule ? "rule" : "step";
-  function IteratorEditor({ element, onChange }) {
+  function IteratorEditor({ element, onChange, onRenameIteratorIndex }) {
     const force = useRerender();
     if (!element.properties || typeof element.properties !== "object") {
       element.properties = emptyIteratorProperties();
     }
     const props = element.properties;
+    const [index, setIndex] = React.useState(() => props.indexVariable ?? "i");
+    const [indexError, setIndexError] = React.useState("");
     const updateName = () => {
       element.name = iteratorName(element, isJavaBlank(props.target) ? "..." : props.target);
       onChange();
@@ -212,18 +224,32 @@ function makeIteratorEditor(isRule) {
           }
         }
       )
-    ), /* @__PURE__ */ React.createElement(Field, { label: "Index Variable" }, /* @__PURE__ */ React.createElement(
-      "input",
+    ), /* @__PURE__ */ React.createElement(
+      Field,
       {
-        type: "text",
-        value: props.indexVariable ?? "i",
-        onChange: (e) => {
-          props.indexVariable = e.target.value;
-          onChange();
-          force();
+        label: "Index Variable",
+        hint: indexError || "Press Enter or leave this field to apply the change."
+      },
+      /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          type: "text",
+          value: index,
+          "aria-invalid": !!indexError,
+          onChange: (e) => {
+            setIndex(e.target.value);
+            setIndexError("");
+          },
+          onBlur: (e) => setIndexError(onRenameIteratorIndex(element, e.target.value)),
+          onKeyDown: (e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.currentTarget.blur();
+            }
+          }
         }
-      }
-    )), isRule && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Field, { label: "Accept Message If" }, /* @__PURE__ */ React.createElement(
+      )
+    ), isRule && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Field, { label: "Accept Message If" }, /* @__PURE__ */ React.createElement(
       "select",
       {
         "aria-label": "Accept Message If",
@@ -270,6 +296,7 @@ function makeIteratorEditor(isRule) {
   }
   return {
     label: "Iterator",
+    nameEditable: false,
     create: () => ({
       __type: type,
       name: iteratorName({ __type: type }, "..."),
@@ -328,6 +355,7 @@ function MapperEditor({ element, onChange }) {
       value: element.variable ?? "",
       onChange: (e) => {
         element.variable = e.target.value;
+        element.name = element.variable;
         onChange();
         force();
       }
@@ -450,6 +478,11 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
   const behavior = element.behavior || "REMOVE";
   const condition = element.condition || "EXISTS";
   const checked = checkedIdSet(element.metaDataIds);
+  const updateName = () => {
+    element.name = comparisonName("Filter destination(s) if", element);
+    onChange();
+    force();
+  };
   const listDisabled = behavior === "REMOVE_ALL";
   const setChecked = (next) => {
     element.metaDataIds = idSetToMetaData(next, dests);
@@ -483,8 +516,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
       value: element.field ?? "",
       onChange: (e) => {
         element.field = e.target.value;
-        onChange();
-        force();
+        updateName();
       }
     }
   )), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Destinations" }, /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-1.5" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", disabled: listDisabled, onClick: selectAll }, "Select All"), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", disabled: listDisabled, onClick: deselectAll }, "Deselect All")), /* @__PURE__ */ React.createElement(
@@ -513,8 +545,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
       checked: condition === opt.value,
       onChange: () => {
         element.condition = opt.value;
-        onChange();
-        force();
+        updateName();
       }
     }
   ), opt.label))))), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Values" }, /* @__PURE__ */ React.createElement(
@@ -525,13 +556,18 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
       condition,
       onChange: (value) => {
         element.values = value;
-        onChange();
+        updateName();
       }
     }
   ))));
 }
 function RuleBuilderEditor({ element, onChange }) {
   const force = useRerender();
+  const updateName = () => {
+    element.name = comparisonName("Accept message if", element);
+    onChange();
+    force();
+  };
   return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: "Field" }, /* @__PURE__ */ React.createElement(
     "input",
     {
@@ -540,8 +576,7 @@ function RuleBuilderEditor({ element, onChange }) {
       value: element.field ?? "",
       onChange: (e) => {
         element.field = e.target.value;
-        onChange();
-        force();
+        updateName();
       }
     }
   )), /* @__PURE__ */ React.createElement(Field, { label: "Condition" }, /* @__PURE__ */ React.createElement(
@@ -551,8 +586,7 @@ function RuleBuilderEditor({ element, onChange }) {
       value: element.condition || "EXISTS",
       onChange: (e) => {
         element.condition = e.target.value;
-        onChange();
-        force();
+        updateName();
       }
     }
   )), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Values" }, /* @__PURE__ */ React.createElement(
@@ -563,7 +597,7 @@ function RuleBuilderEditor({ element, onChange }) {
       condition: element.condition || "EXISTS",
       onChange: (value) => {
         element.values = value;
-        onChange();
+        updateName();
       }
     }
   ))));
@@ -581,6 +615,7 @@ function register(platform2) {
   });
   platform2.registerStepType("com.mirth.connect.plugins.mapper.MapperStep", {
     label: "Mapper",
+    nameEditable: false,
     create: () => ({
       __type: "com.mirth.connect.plugins.mapper.MapperStep",
       name: "",
@@ -630,6 +665,7 @@ function register(platform2) {
   });
   platform2.registerStepType("com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep", {
     label: "Destination Set Filter",
+    nameEditable: false,
     // Only available on the source transformer (DestinationSetFilterPlugin
     // .onlySourceConnector()); destinations/response transformers exclude it.
     onlySource: true,
@@ -671,6 +707,7 @@ function register(platform2) {
   });
   platform2.registerRuleType("com.mirth.connect.plugins.rulebuilder.RuleBuilderRule", {
     label: "Rule Builder",
+    nameEditable: false,
     create: () => ({
       __type: "com.mirth.connect.plugins.rulebuilder.RuleBuilderRule",
       name: "",

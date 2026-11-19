@@ -6,12 +6,13 @@ import { elementsToArray } from '../web-administrator/client/core/oie.js';
 
 const entry = new URL('../web-administrator/client/react/views/iterator-substitutions.ts', import.meta.url);
 const bundle = await build({ entryPoints: [fileURLToPath(entry)], bundle: true, write: false, platform: 'node', format: 'esm' });
-const { serializeEditorElements, rewriteElementIteratorVariables, removeNumberLiterals, iteratorWizardPrefixes, validIteratorIndex } =
+const { serializeEditorElements, rewriteElementIteratorVariables, relocateElementIteratorVariables, rewriteIteratorExpression,
+    rewriteTreeIteratorExpression, renameIteratorIndex, isIteratorIndexName, iteratorWizardPrefixes, validIteratorIndex } =
     await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
 
 const prefix = "msg['OBX']";
 const path = prefix + "[0]['OBX.5'][1].toString()";
-const mapped = prefix + "[i]['OBX.5'].toString()";
+const mapped = prefix + "[i]['OBX.5'][1].toString()";
 const iterator = { __type: 'com.mirth.connect.model.IteratorStep', properties: { target: prefix, indexVariable: 'i', prefixSubstitutions: { string: prefix } } };
 
 test('assignment rewrites shipped plugin fields and leaves unrelated script and literals intact', () => {
@@ -26,41 +27,119 @@ test('assignment rewrites shipped plugin fields and leaves unrelated script and 
         rewriteElementIteratorVariables(el, [iterator], true);
         assert.equal(el[key], mapped);
         rewriteElementIteratorVariables(el, [iterator], false);
-        assert.equal(el[key], prefix + "['OBX.5'].toString()");
+        assert.equal(el[key], prefix + "['OBX.5'][1].toString()");
     }
 });
 
-test('normalization distinguishes repeated fields, computed XML names, method results and invalid drafts', () => {
-    const invalid = prefix + "[0].value[0]; function key(){ 'use strict'; with (obj) {} }";
-    for (const [input, expected] of [
-        [path, prefix + "['OBX.5'].toString()"],
-        ["msg.*::['OBX'][0].*::[fields[0]][1].toString()", "msg.*::['OBX'].*::[fields[0]].toString()"],
-        ["msg['0'][1].toString()", "msg['0'].toString()"],
-        [prefix + '[1][`value`].toString()', prefix + '[`value`].toString()'],
-        [prefix + '[1].*::[`field.${n}`][0]', prefix + '.*::[`field.${n}`]'],
-        [prefix + '[1][tag`key`]', prefix + '[1][tag`key`]'],
-        [prefix + '[1].value.toString().length', prefix + '.value.toString().length'],
-        ['String(' + prefix + '[0].value).length.toString()', 'String(' + prefix + '[0].value).length.toString()'],
-        [invalid, invalid]
-    ]) assert.equal(removeNumberLiterals(input), expected);
+test('assignment replaces the direct index only and preserves the source of every later selector', () => {
+    for (const [source, expected] of [
+        [path, mapped],
+        [prefix + "[0]['value'].trim()", prefix + "[i]['value'].trim()"],
+        [prefix + '[0][fields[n]]', prefix + '[i][fields[n]]'],
+        [prefix + '[1][`value`].toString()', prefix + '[i][`value`].toString()'],
+        [prefix + "[0][new QName('urn:example', 'id')]", prefix + "[i][new QName('urn:example', 'id')]"],
+        [prefix + '[0].*::[fields[0]][1]', prefix + '[i].*::[fields[0]][1]'],
+        [prefix + '[1].value.toString().length', prefix + '[i].value.toString().length'],
+        [prefix + '[1][2]', prefix + '[i][2]'],
+        ["msg['constant'][1].toString()", "msg['constant'][1].toString()"]
+    ]) assert.equal(rewriteIteratorExpression(source, [iterator], true), expected);
+    const dot = { properties: { indexVariable: 'i', prefixSubstitutions: ['msg.rows'] } };
+    for (const source of ['msg.rowsExtra[0].value', 'msg.rows().value', 'msg.rows[0][']) {
+        assert.equal(rewriteIteratorExpression(source, [dot], true), source);
+    }
 });
 
 test('a nested move rewrites the Iterator target, substitution prefixes and descendants in order', () => {
     const innerPrefix = prefix + "['OBX.5']";
     const inner = { __type: iterator.__type, properties: { target: innerPrefix, indexVariable: 'j', prefixSubstitutions: { string: innerPrefix } },
-        __children: [{ __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping: path }] };
+        __children: [{ __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping: innerPrefix + '[j][1].toString()' }] };
     rewriteElementIteratorVariables(inner, [iterator], true);
     const nestedPrefix = prefix + "[i]['OBX.5']";
     assert.equal(inner.properties.target, nestedPrefix);
     assert.equal(inner.properties.prefixSubstitutions.string, nestedPrefix);
-    assert.equal(inner.__children[0].mapping, nestedPrefix + '[j].toString()');
+    assert.equal(inner.__children[0].mapping, nestedPrefix + '[j][1].toString()');
     rewriteElementIteratorVariables(inner, [iterator], false);
     assert.equal(inner.properties.target, innerPrefix);
-    assert.equal(inner.__children[0].mapping, innerPrefix + '.toString()');
+    assert.equal(inner.__children[0].mapping, innerPrefix + '[j][1].toString()');
     const wizard = iteratorWizardPrefixes(nestedPrefix + '[0].toString()', ['i']);
     assert.equal(wizard.selected.value, nestedPrefix);
     assert.ok(!wizard.choices.some(choice => choice.value === prefix));
     assert.equal(validIteratorIndex(['i'], ['j']), 'k');
+});
+
+test('reassigning an indexed child preserves the fixed index behind its old iterator index', () => {
+    const destination = { ...iterator, properties: { ...iterator.properties, indexVariable: 'j' } };
+    const child = { __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping: prefix + '[i][1].toString()' };
+    relocateElementIteratorVariables(child, [iterator], [destination]);
+    assert.equal(child.mapping, prefix + '[j][1].toString()');
+    relocateElementIteratorVariables(child, [destination], [destination]);
+    assert.equal(child.mapping, prefix + '[j][1].toString()');
+});
+
+test('the wizard retains fixed selectors and treats a call receiver and arguments as a single target', () => {
+    for (const [source, selected] of [
+        ['msg.rows()[0][fields[n]]', 'msg.rows()'],
+        ['msg.rows[1].group[2].value', 'msg.rows']
+    ]) {
+        const wizard = iteratorWizardPrefixes(source, []);
+        assert.equal(wizard.selected.value, selected);
+        assert.equal(wizard.choices.at(-1).value, source);
+    }
+});
+
+test('an unambiguous legacy wildcard ancestor can bind a qualified tree field', () => {
+    const exact = "msg[new QName('urn:a', 'OBX')]";
+    const wildcard = "msg.*::['OBX']";
+    const descendant = "[new QName('urn:a', 'value')].toString()";
+    const loop = { properties: { indexVariable: 'i', prefixSubstitutions: [wildcard] } };
+    const source = exact + '[1]' + descendant;
+    const suffix = "[new QName('urn:a', 'OBX')]" + descendant;
+    const bound = rewriteTreeIteratorExpression(source, wildcard + "[1].*::['value'].toString()", [loop]);
+    assert.equal(bound, `(<r>{${wildcard}[i]}</r>)${suffix}`);
+    assert.equal(rewriteIteratorExpression(bound, [loop], false), `(<r>{${wildcard}}</r>)${suffix}`);
+    assert.equal(rewriteTreeIteratorExpression(source, exact + "[1].*::['value'].toString()", [loop]), source);
+    assert.equal(rewriteTreeIteratorExpression(exact + '[1].toString()', wildcard + '[1].toString()', [loop]), exact + '[1].toString()');
+});
+
+test('iterator names exclude reserved words in the stock Rhino ES6 mode', () => {
+    for (const index of ['await', 'class', 'enum', 'let', 'yield']) assert.equal(isIteratorIndexName(index), false);
+    for (const index of ['i', 'static', 'implements']) assert.equal(isIteratorIndexName(index), true);
+});
+
+test('renaming an outer index updates nested iterator paths and structured fields', () => {
+    const nested = prefix + "[i]['OBX.5']";
+    const outer = { ...iterator, properties: { ...iterator.properties },
+        __children: [{ ...iterator, properties: { indexVariable: 'j', target: nested, prefixSubstitutions: { string: nested } },
+            __children: [{ __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping: nested + '[j][1]', defaultValue: "'i'" }] }] };
+    assert.equal(renameIteratorIndex(outer, 'k'), true);
+    const inner = outer.__children[0];
+    assert.equal(outer.properties.indexVariable, 'k');
+    assert.deepEqual(inner.properties, { indexVariable: 'j', target: prefix + "[k]['OBX.5']", prefixSubstitutions: { string: prefix + "[k]['OBX.5']" } });
+    assert.equal(inner.__children[0].mapping, prefix + "[k]['OBX.5'][j][1]");
+    assert.equal(inner.__children[0].defaultValue, "'i'");
+});
+
+test('an Iterator without prefix substitutions can rename a child reference to its target', () => {
+    const child = { __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping: prefix + '[i].value.toString()' };
+    const parent = { ...iterator, properties: { target: prefix, indexVariable: 'i' }, __children: [child] };
+    assert.equal(renameIteratorIndex(parent, 'j'), true);
+    assert.equal(child.mapping, prefix + '[j].value.toString()');
+});
+
+test('rename refuses unresolved or captured index references without changing children', () => {
+    for (const [type, field, source] of [
+        ['mapper.MapperStep', 'mapping', prefix + '[i][fields[i]]'],
+        ['mapper.MapperStep', 'mapping', prefix + '[i][fields[j]]'],
+        ['javascriptstep.JavaScriptStep', 'script', "channelMap.put('x', i);"],
+        ['javascriptstep.JavaScriptStep', 'script', 'channelMap.put("x", `hello ${i}`);'],
+        ['scriptfilestep.ExternalScriptStep', 'scriptPath', '/example/iterator.js']
+    ]) {
+        const child = { __type: 'com.mirth.connect.plugins.' + type, [field]: source };
+        const parent = { ...iterator, properties: { ...iterator.properties }, __children: [child] };
+        const original = structuredClone(parent);
+        assert.equal(renameIteratorIndex(parent, 'j'), false);
+        assert.deepEqual(parent, original);
+    }
 });
 
 test('Swing-authored children of different types retain execution order after saving an Iterator', () => {

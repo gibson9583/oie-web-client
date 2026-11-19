@@ -41,7 +41,8 @@ function buildRegexArray(el: any): string {
    are identical except EXISTS/NOT_EXIST (`.length` vs getArrayOrXmlLength) — the
    Java emits the same operator/join logic otherwise. `field`/`values` are raw. */
 function conditionClause(field: any, condition: any, values: any, existsStyle: 'xml' | 'length'): string {
-    const vals = Array.isArray(values) ? values : (values && values.string ? (Array.isArray(values.string) ? values.string : [values.string]) : []);
+    const items = Array.isArray(values) ? values : values?.string;
+    const vals = items == null ? [] : Array.isArray(items) ? items : [items];
     const exists = existsStyle === 'xml'
         ? { yes: `getArrayOrXmlLength(${field}) > 0) `, no: `getArrayOrXmlLength(${field}) == 0) ` }
         : { yes: `${field}.length > 0) `, no: `${field}.length == 0) ` };

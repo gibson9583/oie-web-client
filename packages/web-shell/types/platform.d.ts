@@ -131,6 +131,7 @@ export interface AttachmentViewer {
 }
 export interface StepRuleType {
     label: string;
+    nameEditable?: boolean;
     create(): OieObject;
     component: PluginComponent<{
         element: OieObject;

@@ -66,6 +66,55 @@ async function assign(page: Page, element: string, destination: string) {
     await dialog.getByRole('button', { name: 'Use Iterator' }).click();
 }
 
+test('moving a child and its Iterator preserves the stored mapping and default', async ({ page }) => {
+    const expression = PREFIX + "[i]['OBX.5'][1].toString()";
+    const observation = { ...mapper(), mapping: expression, defaultValue: expression };
+    const save = await openEditor(page, [iterator('Loop', 'i', [observation, { ...mapper(), name: 'Inner sibling' }]),
+        { ...mapper(), name: 'Outer sibling' }]);
+    for (const [element, path] of [['Observation', '0.1'], ['Loop', '1']]) {
+        await row(page, element).locator('td.num').click({ button: 'right' });
+        await page.getByRole('menuitem', { name: 'Move Step Down' }).click();
+        await expect(row(page, element)).toHaveAttribute('data-path', path);
+    }
+    const mapped = children(await save(), 'Loop')[MAPPER][1];
+    expect(mapped).toMatchObject({ mapping: expression, defaultValue: expression });
+});
+
+test('renaming a populated Iterator updates child paths and rejects a nested index in use', async ({ page }) => {
+    const observation = { ...mapper(), mapping: PREFIX + '[i].value.toString()' };
+    const loop = iterator('Loop', 'i', [observation, iterator('Nested', 'nested', [], [PREFIX + '[i].item'])]);
+    loop.properties.prefixSubstitutions = '';
+    const save = await openEditor(page, [loop]);
+    const index = page.locator('.step-editor-fill .field:has(label:text-is("Index Variable")) input');
+    await index.fill('');
+    await index.pressSequentially('nested');
+    await index.press('Enter');
+    await expect(index).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toHaveCount(0);
+    await index.fill('k');
+    await index.press('Enter');
+    await expect(index).toHaveAttribute('aria-invalid', 'false');
+    const saved = (await save())[ITERATOR][0].properties;
+    expect(saved.indexVariable).toBe('k');
+    expect(saved.children[MAPPER][0].mapping).toBe(PREFIX + '[k].value.toString()');
+    expect(saved.children[ITERATOR][0].properties.target).toBe(PREFIX + '[k].item');
+});
+
+test('an index edit leaves the original stored mapping when one reference cannot be renamed', async ({ page }) => {
+    const expression = PREFIX + '[i][fields[i]]';
+    const save = await openEditor(page, [iterator('Loop', 'i', [{ ...mapper(), mapping: expression }])]);
+    const index = page.locator('.step-editor-fill .field:has(label:text-is("Index Variable")) input');
+    await index.fill('j');
+    await index.press('Enter');
+    await expect(index).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByText(/Update references the editor cannot rename/)).toBeVisible();
+    const target = page.locator('.step-editor-fill .field:has(label:text-is("Iterate On (target)")) input');
+    await target.fill(PREFIX + '.children()');
+    const stored = (await save())[ITERATOR][0].properties;
+    expect(stored.indexVariable).toBe('i');
+    expect(stored.children[MAPPER][0].mapping).toBe(expression);
+});
+
 test('assign, reload and detach a Mapper with defaults and replacements', async ({ page }) => {
     const observation = mapper();
     observation.defaultValue = mapping('1');
@@ -136,13 +185,16 @@ test('cancelling the chooser or losing its source leaves the destination untouch
     expect(children(elements, 'Destination')).toBe('');
 });
 
-for (const scenario of ['sibling', 'nested', 'namespaced sibling']) {
+for (const scenario of ['sibling', 'nested', 'legacy namespaced sibling', 'mixed namespace sibling']) {
     test(`a tree-created Mapper uses the ${scenario} Iterator after reload`, async ({ page }) => {
         const create = scenario === 'nested';
-        const ns = scenario === 'namespaced sibling' ? 'v:' : '';
+        const mixed = scenario === 'mixed namespace sibling';
+        const ns = scenario === 'legacy namespaced sibling' || mixed ? 'v:' : '';
         const prefix = ns ? "msg.*::['OBX']" : PREFIX;
-        const value = ns ? ".*::['value']" : "['value']";
-        const xml = `<message xmlns:v="urn:observations"><${ns}OBX><${ns}value>one</${ns}value></${ns}OBX><${ns}OBX><${ns}value>two</${ns}value></${ns}OBX></message>`;
+        const qualifiedObservation = "[new QName('urn:observations', 'OBX')]";
+        const value = ns ? "[new QName('urn:observations', 'value')]" : "['value']";
+        const other = mixed ? '<w:OBX><w:value>other</w:value></w:OBX>' : '';
+        const xml = `<message xmlns:v="urn:observations" xmlns:w="urn:other"><${ns}OBX><${ns}value>one</${ns}value></${ns}OBX>${other}<${ns}OBX><${ns}value>two</${ns}value></${ns}OBX></message>`;
         const save = await openEditor(page, [iterator('Original', 'i', [], [prefix]), iterator('Destination', 'j', [], [prefix])], 'transformer', xml);
         await row(page, 'Original').locator('td.num').click();
         await page.getByRole('tab', { name: 'Message Trees' }).click();
@@ -159,11 +211,24 @@ for (const scenario of ['sibling', 'nested', 'namespaced sibling']) {
         const elements = await save();
         const nested = children(elements, 'Original');
         const mapped = create ? nested[ITERATOR][0].properties.children : children(elements, 'Destination');
-        const expression = create ? `${prefix}[i]${value}[j].toString()` : `${prefix}[j]${value}.toString()`;
+        const legacyExpression = (index: string) => `(<r>{${prefix}${index}}</r>)${qualifiedObservation}${value}.toString()`;
+        const expression = mixed ? `msg${qualifiedObservation}[1]${value}.toString()`
+            : ns ? legacyExpression('[j]') : create ? `${prefix}[i]${value}[j].toString()` : `${prefix}[j]${value}.toString()`;
         expect(mapped[MAPPER][0].mapping).toBe(expression);
         await page.reload();
         await row(page, mapped[MAPPER][0].name).locator('td.num').click();
         await expect(page.locator('.step-editor-fill .field:has(label:text-is("Mapping")) input')).toHaveValue(expression);
+        if (ns && !mixed) {
+            await row(page, 'Destination').locator('td.num').click();
+            const index = page.locator('.step-editor-fill .field:has(label:text-is("Index Variable")) input');
+            await index.fill('k');
+            await index.press('Enter');
+            const renamed = children(await save(), 'Destination')[MAPPER][0];
+            expect(renamed.mapping).toBe(legacyExpression('[k]'));
+            await row(page, renamed.name).locator('td.num').click();
+            await click(page, 'Remove From Iterator');
+            expect((await save())[MAPPER][0].mapping).toBe(legacyExpression(''));
+        }
     });
 }
 
