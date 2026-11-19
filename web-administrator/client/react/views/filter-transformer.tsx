@@ -1649,6 +1649,12 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         };
         if (!wasIterator && !toIterator) { replace(); return; }
         const defaults = typeDef(old.__type)?.create?.();
+        // Swing 4.6 starts both JavaScript panels empty. The web panels offer starter text.
+        if (defaults && toIterator && (old.script == null || old.script === '')
+            && (old.__type === 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep'
+                || old.__type === 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule')) {
+            defaults.script = '';
+        }
         // The hydrated children were checked above. The wire copy can still contain a removed child.
         const unchanged = defaults && (wasIterator
             ? matchesPanelDefaults(old.properties, defaults.properties, new Set(['children']))

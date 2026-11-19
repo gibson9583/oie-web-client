@@ -260,6 +260,28 @@ for (const kind of ['filter', 'transformer']) {
     });
 }
 
+for (const kind of ['filter', 'transformer']) {
+    test(`converting a Swing JavaScript ${kind} prompts only for the authored script`, async ({ page }) => {
+        const filter = kind === 'filter';
+        const type = filter ? 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule' : 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep';
+        const next = filter ? FILTER_ITERATOR : ITERATOR;
+        const script = filter ? 'return false;' : "channelMap.put('seen', true);";
+        const save = await openEditor(page, [
+            { type, name: 'Blank', script: null }, { type, name: 'Authored', script }
+        ], kind);
+        const select = (path: number) => page.locator(`tr[data-path="${path}"] td`).last().getByRole('combobox');
+        await select(0).selectOption(next);
+        await expect(select(0)).toHaveValue(next);
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+        await select(1).selectOption(next);
+        await page.getByRole('dialog').getByRole('button', { name: 'No', exact: true }).click();
+        await expect(select(1)).toHaveValue(type);
+        const elements = await save();
+        expect(elements[type][0]).toMatchObject({ name: 'Authored', script });
+        expect(elements[next]).toHaveLength(1);
+    });
+}
+
 test('deleting the last child selects the following visible step', async ({ page }) => {
     const last = { ...mapper(), name: 'Last child' };
     await openEditor(page, [iterator('Parent', 'i', [last]), { ...mapper(), name: 'Next step' }]);
