@@ -1,6 +1,6 @@
 // plugins/transformer-steps/web/plugin.tsx
 import { platform } from "@oie/web-shell";
-import { isJavaBlank } from "/core/oie.js";
+import { isJavaBlank, iteratorName } from "/core/oie.js";
 import { replacementPairs, replacementsToWire } from "/core/step-replacements.js";
 var React = platform.React;
 var SCOPES = [
@@ -189,6 +189,11 @@ function makeIteratorEditor(isRule) {
       element.properties = emptyIteratorProperties();
     }
     const props = element.properties;
+    const updateName = () => {
+      element.name = iteratorName(element, isJavaBlank(props.target) ? "..." : props.target);
+      onChange();
+      force();
+    };
     return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(
       Field,
       {
@@ -203,8 +208,7 @@ function makeIteratorEditor(isRule) {
           value: props.target ?? "",
           onChange: (e) => {
             props.target = e.target.value;
-            onChange();
-            force();
+            updateName();
           }
         }
       )
@@ -219,7 +223,32 @@ function makeIteratorEditor(isRule) {
           force();
         }
       }
-    )), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(
+    )), isRule && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Field, { label: "Accept Message If" }, /* @__PURE__ */ React.createElement(
+      "select",
+      {
+        "aria-label": "Accept Message If",
+        value: String(props.intersectIterations ?? false),
+        onChange: (e) => {
+          props.intersectIterations = e.target.value === "true";
+          updateName();
+        }
+      },
+      /* @__PURE__ */ React.createElement("option", { value: "false" }, "At least one of the iterations returns true"),
+      /* @__PURE__ */ React.createElement("option", { value: "true" }, "All of the iterations return true")
+    )), /* @__PURE__ */ React.createElement(Field, { label: "Break Early" }, /* @__PURE__ */ React.createElement(
+      "select",
+      {
+        "aria-label": "Break Early",
+        value: String(props.breakEarly ?? false),
+        onChange: (e) => {
+          props.breakEarly = e.target.value === "true";
+          onChange();
+          force();
+        }
+      },
+      /* @__PURE__ */ React.createElement("option", { value: "true" }, "Yes"),
+      /* @__PURE__ */ React.createElement("option", { value: "false" }, "No")
+    ))), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(
       Field,
       {
         label: "Prefix Substitutions",

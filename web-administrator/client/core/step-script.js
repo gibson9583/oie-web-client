@@ -12,7 +12,8 @@
  *
  * Dispatch is by element.__type (the Java class name the model carries).
  */
-import { elementsToArray } from './oie.js';
+import { elementsToArray, isIteratorType, isJavaBlank } from './oie.js';
+import { readExpressionParts } from './iterator-expression.js';
 import { replacementPairs } from './step-replacements.js';
 /* Scope enum -> map object (MapperStep.Scope.map). */
 const SCOPE_MAP = {
@@ -60,20 +61,21 @@ function conditionClause(field, condition, values, existsStyle) {
     return vals.map((v) => `${field} ${eq} ${v}`).join(` ${join} `) + ') ';
 }
 /* ---- per-type generators (getScript(false)) ---- */
-function mapperScript(el) {
+function mapperScript(el, iterating = false) {
     const scopeMap = SCOPE_MAP[el.scope] || SCOPE_MAP.CHANNEL;
-    const mapping = (el.mapping && String(el.mapping).trim()) ? el.mapping : "''"; // defaultIfBlank
-    const def = (el.defaultValue && String(el.defaultValue).length) ? el.defaultValue : "''";
+    const mapping = isJavaBlank(el.mapping) ? "''" : el.mapping;
+    const def = String(el.defaultValue ?? '') || "''";
+    const write = iterating ? `_${convertIdentifier(el.variable)}.add(` : `${scopeMap}.put('${el.variable ?? ''}', `;
     return `var mapping;\n\ntry {\n\tmapping = ${mapping}; \n} catch (e) {\n\tmapping = '';\n}\n\n`
-        + `${scopeMap}.put('${el.variable ?? ''}', validate( mapping , ${def}, ${buildRegexArray(el)}));`;
+        + `${write}validate( mapping , ${def}, ${buildRegexArray(el)}));`;
 }
 function messageBuilderScript(el) {
-    const mapping = (el.mapping && String(el.mapping).length) ? el.mapping : "''";
-    const def = (el.defaultValue && String(el.defaultValue).length) ? el.defaultValue : "''";
+    const mapping = String(el.mapping ?? '') || "''";
+    const def = String(el.defaultValue ?? '') || "''";
     return `${el.messageSegment ?? ''} = validate(${mapping}, ${def}, ${buildRegexArray(el)});`;
 }
-function xsltScript(el) {
-    const factory = (el.useCustomFactory && el.customFactory)
+function xsltScript(el, iterating = false) {
+    const factory = (String(el.useCustomFactory) === 'true' && el.customFactory)
         ? `Packages.javax.xml.transform.TransformerFactory.newInstance("${el.customFactory}", null)`
         : 'Packages.javax.xml.transform.TransformerFactory.newInstance()';
     return `tFactory = ${factory};\n`
@@ -82,7 +84,8 @@ function xsltScript(el) {
         + `sourceVar = new Packages.java.io.StringReader(${el.sourceXml ?? ''});\n`
         + `resultVar = new Packages.java.io.StringWriter();\n`
         + `transformer.transform(new Packages.javax.xml.transform.stream.StreamSource(sourceVar), new Packages.javax.xml.transform.stream.StreamResult(resultVar));\n`
-        + `channelMap.put('${el.resultVariable ?? ''}', resultVar.toString());\n`;
+        + (iterating ? `_${convertIdentifier(el.resultVariable)}.add(resultVar.toString());\n`
+            : `channelMap.put('${el.resultVariable ?? ''}', resultVar.toString());\n`);
 }
 function externalScript(el) {
     // loadFiles = false (design-time preview)
@@ -117,10 +120,6 @@ const GENERATORS = {
     // JavaScript step/rule carry their own .script — handled by the caller.
     // Iterator step/rule are recursive over children — handled below.
 };
-const ITERATOR_TYPES = new Set([
-    'com.mirth.connect.model.IteratorStep',
-    'com.mirth.connect.model.IteratorRule'
-]);
 /*
  * Build the generated JavaScript for one element. Returns a string, or null if
  * the type has no client-side generator (the caller falls back to element.script
@@ -131,7 +130,7 @@ export function generateElementScript(element, getChildren) {
     if (!element)
         return null;
     const type = element.__type;
-    if (ITERATOR_TYPES.has(type))
+    if (isIteratorType(type))
         return iteratorScript(element, getChildren);
     const gen = GENERATORS[type];
     if (gen)
@@ -149,28 +148,36 @@ function iteratorScript(element, getChildren) {
         + iteratorPhase(element, 'iteration', getChildren)
         + iteratorPhase(element, 'post', getChildren);
 }
-function iteratorPhase(element, phase, getChildren, depth = 0) {
+function iteratorPhase(element, phase, getChildren, ancestors = []) {
     const props = element.properties || element;
     const target = props.target ?? '';
     const idx = props.indexVariable ?? 'i';
+    const indices = [...ancestors, idx];
     const kids = getChildren?.(element) ?? element.__children
         ?? (Array.isArray(props.children) ? props.children : elementsToArray(props.children));
     const enabled = kids.filter((c) => c && c.enabled !== false && c.enabled !== 'false');
     const childScript = (child) => {
-        if (ITERATOR_TYPES.has(child.__type))
-            return iteratorPhase(child, phase, getChildren, depth + 1);
+        if (isIteratorType(child.__type))
+            return iteratorPhase(child, phase, getChildren, indices);
+        if (child.__type === 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep') {
+            return phase === 'iteration' ? messageBuilderIteration(child, indices) : '';
+        }
         if (phase === 'pre')
             return iterPre(child);
         if (phase === 'post')
             return iterPost(child);
-        return iterIteration(child) ?? generateElementScript(child, getChildren);
+        if (child.__type === 'com.mirth.connect.plugins.mapper.MapperStep')
+            return mapperScript(child, true);
+        if (child.__type === 'com.mirth.connect.plugins.xsltstep.XsltStep')
+            return xsltScript(child, true);
+        return generateElementScript(child, getChildren);
     };
     if (phase !== 'iteration') {
         return enabled.map(childScript).filter(script => script !== null).map(script => script + '\n').join('');
     }
     const loop = `for (var ${idx} = 0; ${idx} < getArrayOrXmlLength(${target}); ${idx}++) {\n`;
     if (element.__type === 'com.mirth.connect.model.IteratorRule') {
-        const flag = `_iterator_flag_${depth}`;
+        const flag = `_iterator_flag_${ancestors.length}`;
         const all = String(props.intersectIterations) === 'true';
         const stop = String(props.breakEarly) === 'true' ? 'break; ' : '';
         const clauses = enabled.map((rule, i) => {
@@ -183,6 +190,55 @@ function iteratorPhase(element, phase, getChildren, depth = 0) {
     }
     return loop + enabled.map(child => '\n' + (childScript(child) ?? '') + '\n').join('') + '\n}\n';
 }
+const segmentEscapes = {
+    '\b': '\\b', '\f': '\\f', '\n': '\\n', '\r': '\\r', '\t': '\\t'
+};
+// MessageBuilderStep keeps quoted keys and uses escapeEcmaScript for names.
+function quotedSegmentName(name) {
+    if (/^['"]/.test(name))
+        return name;
+    const escaped = name.replace(/['"\\/\x00-\x1f\x80-\uffff]/g, ch => {
+        if (segmentEscapes[ch])
+            return segmentEscapes[ch];
+        const code = ch.charCodeAt(0);
+        if (code >= 32 && code < 128)
+            return '\\' + ch;
+        return '\\u' + code.toString(16).toUpperCase().padStart(4, '0');
+    });
+    return "'" + escaped + "'";
+}
+// MessageBuilderStep.getIterationScript initializes missing outbound segments
+// before the ordinary assignment. XML and JavaScript objects use different
+// creation rules, and fixed numeric indices participate in both.
+function messageBuilderIteration(el, indices) {
+    const parts = readExpressionParts(String(el.messageSegment ?? ''), 'messageBuilder');
+    const assignment = messageBuilderScript(el);
+    if (parts.length < 2)
+        return assignment;
+    let prefix = '';
+    const paths = parts.map(part => (prefix += part.value));
+    const isIndex = (i) => parts[i].numberLiteral || indices.includes(parts[i].propertyName);
+    const segmentName = (i) => quotedSegmentName(parts[i].propertyName);
+    const guard = (path, create) => `if (typeof(${path}) == 'undefined') {\n${create};\n}\n`;
+    let script = `if (typeof(${paths[0]}) == 'xml') {\n`;
+    let lastObject = parts.length - 2;
+    for (const variable of indices) {
+        const i = parts.findIndex(part => part.propertyName === variable);
+        lastObject = Math.max(lastObject, i);
+        if (i < 2 || isIndex(i - 1))
+            continue;
+        if (i > 2 && !isIndex(i - 2)) {
+            script += guard(paths[i - 2] + '[0]', `createSegment(${segmentName(i - 2)}, ${paths[i - 3]})`);
+        }
+        script += guard(paths[i], `createSegment(${segmentName(i - 1)}, ${paths[i - 2]}, ${variable})`);
+    }
+    script += '} else {\n';
+    for (let i = 0; i <= lastObject; i++) {
+        const initial = i + 1 < parts.length && isIndex(i + 1) ? '[]' : '{}';
+        script += guard(paths[i], `${paths[i]} = ${initial}`);
+    }
+    return script + '}\n' + assignment;
+}
 /* Iterable child pre/iteration/post (Mapper/XSLT declare list accumulators). */
 function iterPre(el) {
     if (el.__type === 'com.mirth.connect.plugins.mapper.MapperStep')
@@ -191,24 +247,12 @@ function iterPre(el) {
         return `var _${convertIdentifier(el.resultVariable)} = Lists.list();`;
     return null;
 }
-function iterIteration(el) {
-    if (el.__type === 'com.mirth.connect.plugins.mapper.MapperStep') {
-        const mapping = (el.mapping && String(el.mapping).trim()) ? el.mapping : "''";
-        const def = (el.defaultValue && String(el.defaultValue).length) ? el.defaultValue : "''";
-        return `var mapping;\n\ntry {\n\tmapping = ${mapping}; \n} catch (e) {\n\tmapping = '';\n}\n\n`
-            + `_${convertIdentifier(el.variable)}.add(validate( mapping , ${def}, ${buildRegexArray(el)}));`;
-    }
-    if (el.__type === 'com.mirth.connect.plugins.xsltstep.XsltStep') {
-        return xsltScript(el).replace(/channelMap\.put\([^\n]*\n$/, `_${convertIdentifier(el.resultVariable)}.add(resultVar.toString());`);
-    }
-    return null; // non-iterable child -> caller uses getScript
-}
 function iterPost(el) {
     if (el.__type === 'com.mirth.connect.plugins.mapper.MapperStep') {
         const scopeMap = SCOPE_MAP[el.scope] || SCOPE_MAP.CHANNEL;
         return `${scopeMap}.put('${el.variable ?? ''}', _${convertIdentifier(el.variable)}.toArray());`;
     }
     if (el.__type === 'com.mirth.connect.plugins.xsltstep.XsltStep')
-        return `channelMap.put('${el.resultVariable ?? ''}', _${convertIdentifier(el.resultVariable)}.toArray());`;
+        return `channelMap.put('${el.resultVariable ?? ''}', _${convertIdentifier(el.resultVariable)}.toArray());\n`;
     return null;
 }

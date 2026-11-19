@@ -6,6 +6,8 @@ export interface Element {
     [key: string]: any;
 }
 export declare function uuid(): string;
+export declare function isIteratorType(type: unknown): boolean;
+export declare function iteratorName(element: OieObject, target?: string): string;
 /**
  * Flatten a class-keyed element map into an ordered array, tagging each entry
  * with `__type` (its Java class) and sorting by `sequenceNumber`. Accepts `''`

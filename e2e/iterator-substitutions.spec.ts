@@ -167,6 +167,130 @@ for (const scenario of ['sibling', 'nested', 'namespaced sibling']) {
     });
 }
 
+test('tree-created Mappers keep separate map keys for identically named leaves', async ({ page }) => {
+    const save = await openEditor(page, [], 'transformer', '<m><sending><id>A</id></sending><receiving><id>B</id></receiving></m>');
+    await page.getByRole('tab', { name: 'Message Trees' }).click();
+    const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+    for (const branch of ['sending', 'receiving']) {
+        const branchRow = tree.getByRole('row').filter({ has: page.getByText(branch, { exact: true }) });
+        await branchRow.locator('.twisty').click();
+        await tree.getByRole('row').filter({ has: page.getByText('id', { exact: true }) }).click({ button: 'right' });
+        await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
+        await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No' }).click();
+        await branchRow.locator('.twisty').click();
+    }
+    const mapped = (await save())[MAPPER];
+    expect(mapped.map((el: Element) => [el.name, el.variable])).toEqual([['sending_id', 'sending_id'], ['receiving_id', 'receiving_id']]);
+});
+
+for (const kind of ['filter', 'transformer']) {
+    test(`a populated ${kind} Iterator retains its children until deletion is confirmed`, async ({ page }) => {
+        const filter = kind === 'filter';
+        const type = filter ? FILTER_ITERATOR : ITERATOR;
+        const leaf = filter ? { type: RULE, name: 'Child', operator: 'NONE', field: mapping('i'), condition: 'EXISTS' }
+            : { ...mapper(), name: 'Child', mapping: mapping('i') };
+        const save = await openEditor(page, [iterator('Parent', 'i', [leaf], [PREFIX], type), { ...leaf, name: 'Sibling' }], kind);
+        const parent = row(page, 'Parent');
+        const noun = filter ? 'Rule' : 'Step';
+        const selectType = parent.locator('td').last().getByRole('combobox');
+        await selectType.selectOption(leaf.type);
+        const warning = page.getByRole('dialog', { name: `Change ${noun} Type` });
+        await warning.getByRole('button', { name: 'OK' }).click();
+        await expect(selectType).toHaveValue(type);
+        await parent.locator('td.num').click();
+        await click(page, `Delete ${noun}`);
+        const confirm = page.getByRole('dialog', { name: `Delete ${noun}` });
+        await confirm.getByRole('button', { name: 'Cancel' }).click();
+        await expect(row(page, 'Child')).toHaveAttribute('data-path', '0.0');
+        await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toBeHidden();
+        await click(page, `Delete ${noun}`);
+        await confirm.getByRole('button', { name: 'OK' }).click();
+        const elements = await save();
+        expect(elements[type]).toBeUndefined();
+        expect(elements[leaf.type].map((el: Element) => el.name)).toEqual(['Sibling']);
+    });
+}
+
+test('a backtick-quoted field offers the repeating segment and saves the chosen index', async ({ page }) => {
+    const observation = { ...mapper(), mapping: PREFIX + '[1][`value`].toString()' };
+    const save = await openEditor(page, [observation]);
+    await click(page, 'Assign To Iterator');
+    const dialog = page.getByRole('dialog', { name: 'Assign To Iterator' });
+    await expect(dialog.getByLabel('Iterate On')).toHaveValue(PREFIX);
+    await dialog.getByRole('button', { name: 'Use Iterator' }).click();
+    const parent = (await save())[ITERATOR][0];
+    expect(parent.properties.children[MAPPER][0].mapping).toBe(PREFIX + '[i][`value`].toString()');
+    await page.reload();
+    await row(page, observation.name).locator('td.num').click();
+    await click(page, 'Remove From Iterator');
+    expect((await save())[MAPPER][0].mapping).toBe(PREFIX + '[`value`].toString()');
+});
+
+test('filter Iterator options survive a save and drive the generated predicate', async ({ page }) => {
+    await page.route('**/vendor/monaco/**', route => route.abort());
+    const rule = { type: RULE, name: 'Observation rule', operator: 'NONE', field: mapping('i'), condition: 'EXISTS' };
+    const save = await openEditor(page, [iterator('Observations', 'i', [rule], [PREFIX], FILTER_ITERATOR)], 'filter');
+    // Existing wire models can omit both flags. 4.6.0 reads an absent boolean as false.
+    const all = page.getByLabel('Accept Message If');
+    const early = page.getByLabel('Break Early');
+    await expect(all).toHaveValue('false');
+    await expect(early).toHaveValue('false');
+    await all.selectOption('true');
+    await early.selectOption('true');
+    expect((await save())[FILTER_ITERATOR][0]).toMatchObject({
+        name: `Accept message if all of the iterations return true for each ${PREFIX}`,
+        properties: { intersectIterations: true, breakEarly: true }
+    });
+    await page.reload();
+    await expect(all).toHaveValue('true');
+    await expect(early).toHaveValue('true');
+    await page.getByRole('tab', { name: 'Generated Script' }).click();
+    const script = page.getByRole('tabpanel', { name: 'Generated Script' }).locator('textarea.ce-area');
+    await expect(script).toHaveValue(/var _iterator_flag_0 = true;[\s\S]*if \(!\([\s\S]*_iterator_flag_0 = false; break;/);
+
+    await page.getByRole('tab', { name: 'Rule', exact: true }).click();
+    await all.selectOption('false');
+    await early.selectOption('false');
+    expect((await save())[FILTER_ITERATOR][0]).toMatchObject({
+        name: `Accept message if at least one of the iterations returns true for each ${PREFIX}`,
+        properties: { intersectIterations: false, breakEarly: false }
+    });
+    await page.getByRole('tab', { name: 'Generated Script' }).click();
+    await expect(script).toHaveValue(/var _iterator_flag_0 = false;[\s\S]*if \(\s*\(function[\s\S]*_iterator_flag_0 = true; }/);
+});
+
+test('a modified inbound tree drop saves a writable Message Builder target', async ({ page }) => {
+    const builder = { type: BUILDER, name: 'Write observation', messageSegment: '', mapping: "'new'", defaultValue: '', replacements: '' };
+    const save = await openEditor(page, [iterator('Observations', 'i', [builder])], 'transformer',
+        '<m><OBX><value>one</value></OBX><OBX><value>two</value></OBX></m>');
+    await row(page, builder.name).locator('td.num').click();
+    await page.getByRole('tab', { name: 'Message Trees' }).click();
+    const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+    await tree.getByRole('row').filter({ has: page.getByText('OBX[0]', { exact: true }) }).locator('.twisty').click();
+    const source = tree.getByRole('row').filter({ has: page.getByText('value', { exact: true }) });
+    const transfer = await page.evaluateHandle(() => new DataTransfer());
+    await source.dispatchEvent('dragstart', { dataTransfer: transfer });
+    const segment = page.locator('.step-editor-fill .field:has(label:text-is("Message Segment")) input');
+    await segment.dispatchEvent('drop', { dataTransfer: transfer, altKey: true });
+    expect(children(await save(), 'Observations')[BUILDER][0].messageSegment).toBe(PREFIX + "[i]['value']");
+});
+
+test('a Message Builder preview creates missing output objects and XML segments inside its Iterator', async ({ page }) => {
+    await page.route('**/vendor/monaco/**', route => route.abort());
+    const target = "tmp['observations'][i]['value']";
+    await openEditor(page, [iterator('Observations', 'i', [
+        { type: BUILDER, name: 'Set value', messageSegment: target, mapping: mapping('i') }
+    ])]);
+    await row(page, 'Observations').locator('td.num').click();
+    await page.getByRole('tab', { name: 'Generated Script' }).click();
+    const preview = page.getByRole('tabpanel', { name: 'Generated Script' }).locator('textarea.ce-area');
+    await expect(preview).toHaveValue(/createSegment\('observations', tmp, i\)/);
+    const script = await preview.inputValue();
+    expect(script).toContain("tmp['observations'] = [];");
+    expect(script).toContain("tmp['observations'][i] = {};");
+    expect(script).toContain(target + ' = validate(');
+});
+
 test('assigning a filter rule creates a short-circuiting Iterator', async ({ page }) => {
     await page.route('**/vendor/monaco/**', route => route.abort());
     const rule = { type: RULE, name: 'Observation rule', operator: 'NONE', field: mapping(), condition: 'EXISTS' };

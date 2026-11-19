@@ -36,6 +36,9 @@ test('normalization distinguishes repeated fields, computed XML names, method re
         [path, prefix + "['OBX.5'].toString()"],
         ["msg.*::['OBX'][0].*::[fields[0]][1].toString()", "msg.*::['OBX'].*::[fields[0]].toString()"],
         ["msg['0'][1].toString()", "msg['0'].toString()"],
+        [prefix + '[1][`value`].toString()', prefix + '[`value`].toString()'],
+        [prefix + '[1].*::[`field.${n}`][0]', prefix + '.*::[`field.${n}`]'],
+        [prefix + '[1][tag`key`]', prefix + '[1][tag`key`]'],
         [prefix + '[1].value.toString().length', prefix + '.value.toString().length'],
         ['String(' + prefix + '[0].value).length.toString()', 'String(' + prefix + '[0].value).length.toString()'],
         [invalid, invalid]

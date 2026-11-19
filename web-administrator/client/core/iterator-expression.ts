@@ -7,7 +7,7 @@
  * This reader never evaluates expressions or resolves user identifiers.
  */
 
-import { isJavaBlank } from '../../core/oie.js';
+import { isJavaBlank } from './oie.js';
 
 type SourceComment = { source: string; style: 'block' | 'line' | 'jsdoc' | 'html' };
 type Token = {
@@ -16,10 +16,11 @@ type Token = {
     comment?: SourceComment;
     skippedComment?: { lineBreakBefore: boolean };
 };
-// The shipped visitor only records Name, StringLiteral and XML references.
-// The same expression parser produces their source and their position in the path.
-type PathLeaf = { kind: 'name' | 'property' | 'string' | 'xml' | 'callTail'; source: string; propertyName?: string; unprintable?: boolean };
-type ExpressionPart = { value: string; propertyName: string };
+type PathMode = 'substitution' | 'messageBuilder';
+// Message Builder uses Rhino's visitor with numeric literals included. The
+// substitution wizard uses the same visitor with those literals removed.
+type PathLeaf = { kind: 'name' | 'property' | 'string' | 'xml' | 'number' | 'callTail'; source: string; propertyName?: string; unprintable?: boolean };
+type ExpressionPart = { value: string; propertyName: string; numberLiteral?: boolean };
 type ParameterList = { items: string[]; names: string[]; parenthesized?: boolean };
 type Operand = { source: string; reference?: boolean; parameters?: ParameterList };
 type Block = { kind: 'block'; body: Statement[] };
@@ -46,6 +47,9 @@ const reserved = new Set([...keywords, ...('let yield class enum export extends 
     + 'protected public static abstract boolean byte char double final float goto int long native short synchronized throws transient volatile').split(' ')]);
 const encodedName = /^(?:[\p{L}\p{Nl}\p{Sc}\p{Pc}]|\\u[\da-fA-F]{4})(?:[\p{L}\p{Nl}\p{Sc}\p{Pc}\p{Mn}\p{Mc}\p{Nd}\u0000-\u0008\u000e-\u001b\u007f-\u009f]|\\u[\da-fA-F]{4})*/u;
 const number = /^(?:0[xX][\da-fA-F]+|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)/;
+// Swing's Rhino parser uses the default language version, which also accepts
+// backticks as ordinary string delimiters when reading iterator expressions.
+const stringQuote = /^['"`]/;
 const formatCharacter = (ch: string) => ch?.length === 1 && ch !== '\ufeff' && /\p{Cf}/u.test(ch);
 const withoutFormatCharacters = (source: string) => source.replace(/\p{Cf}/gu, ch => formatCharacter(ch) ? '' : ch);
 const precedence: Record<string, number> = {
@@ -135,7 +139,7 @@ class RhinoSourceReader {
     private consecutiveLabel = false;
     token: Token = { value: '', end: 0, line: 1 };
 
-    constructor(private text: string) {
+    constructor(private text: string, private mode: PathMode) {
         this.hasFormatCharacters = /\p{Cf}/u.test(text);
         this.next();
     }
@@ -193,7 +197,7 @@ class RhinoSourceReader {
             this.token = { value: source, end: this.position, line, lineBreakBefore, comment: { source, style } };
             return;
         }
-        if (ch === '"' || ch === "'") {
+        if (stringQuote.test(ch)) {
             this.position++;
             while (this.position < text.length) {
                 const next = text[this.position++];
@@ -338,7 +342,7 @@ class RhinoSourceReader {
             const args = this.at('(') ? this.arguments() : '()';
             const initializer = this.at('{') ? ' ' + this.primary().source : '';
             node = { source: `new ${target.source}${args}${initializer}` };
-            if (path === this.rootPath) path = undefined;
+            if (this.mode === 'substitution' && path === this.rootPath) path = undefined;
         } else {
             node = this.primary(path);
         }
@@ -358,7 +362,7 @@ class RhinoSourceReader {
             }
             if (this.at('(') && calls) {
                 node = { source: node.source + this.arguments(), reference: true };
-                if (path === this.rootPath && ['.', '..', '.(', '[', '('].includes(this.token.value)) {
+                if (this.mode === 'substitution' && path === this.rootPath && ['.', '..', '.(', '[', '('].includes(this.token.value)) {
                     // A property of a call result cannot stand on its own. Keep the
                     // call and its remaining accesses together. Only ordinary message
                     // selectors before the call can have their repetitions normalized.
@@ -477,7 +481,7 @@ class RhinoSourceReader {
                 const accessor = ['get', 'set'].includes(key) && !this.at(':') && !this.at('(');
                 const name = accessor ? this.objectKey() : key;
                 if (defined) {
-                    const id = /^['"]/.test(name) ? stringLiteralValue(name)! : name;
+                    const id = stringQuote.test(name) ? stringLiteralValue(name)! : name;
                     const kind = accessor ? key : 'property';
                     const earlier = defined.get(id);
                     if (earlier && (earlier === kind || earlier === 'property' || kind === 'property')) {
@@ -536,7 +540,8 @@ class RhinoSourceReader {
         }
         if (!token.literal && (!token.word || (token.keyword && !['true', 'false', 'null', 'this'].includes(token.value)))) throw new Error('Expected expression');
         if (this.strict && token.literal && /^0\d/.test(token.value)) throw new Error('Legacy octal in strict code');
-        if (/^['"]/.test(token.value)) path?.push({ kind: 'string', source: token.value });
+        if (stringQuote.test(token.value)) path?.push({ kind: 'string', source: token.value });
+        else if (token.literal && this.mode === 'messageBuilder') path?.push({ kind: 'number', source: token.value });
         this.next();
         return { source: token.value };
     }
@@ -607,7 +612,7 @@ class RhinoSourceReader {
                 if (unprintable) throw new Error('Rhino cannot print a default XML namespace in an XML key');
                 value = kind === 'property' || kind === 'xml' ? '.' + source : `[${source}]`;
             }
-            parts.push({ value, propertyName });
+            parts.push(kind === 'number' ? { value, propertyName, numberLiteral: true } : { value, propertyName });
         }
         if (this.rootPath.some(leaf => leaf.kind === 'callTail')) {
             // A method result is one wizard target. Inferring a matching tmp
@@ -785,7 +790,7 @@ class RhinoSourceReader {
                 : this.statement(body.length ? undefined : path);
             body.push(statement);
             if (directives && statement.kind !== 'comment' && statement.kind !== 'function') {
-                directives = !!token.literal && /^['"]/.test(token.value) && statement.kind === 'simple'
+                directives = !!token.literal && stringQuote.test(token.value) && statement.kind === 'simple'
                     && statement.source === token.value + ';';
                 if (directives && token.value.slice(1, -1) === 'use strict') this.strict = true;
             }
@@ -1087,9 +1092,9 @@ function statementSource(statement: Statement, depth = 0): string {
 }
 
 /** getExpressionParts falls back to the complete source when the visitor has no parts. */
-export function readExpressionParts(text: string): ExpressionPart[] {
+export function readExpressionParts(text: string, mode: PathMode = 'substitution'): ExpressionPart[] {
     try {
-        const parts = new RhinoSourceReader(text).expressionParts();
+        const parts = new RhinoSourceReader(text, mode).expressionParts();
         if (parts.length) return parts;
     } catch { /* Rhino also preserves the original expression on a parse error. */ }
     return isJavaBlank(text) ? [] : [{ value: text, propertyName: text }];

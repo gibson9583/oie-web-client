@@ -149,7 +149,7 @@ test('message tree rows map, drag and copy their accessors', async ({ page, brow
         mapping: "msg['PID']['PID.5']['PID.5.1'].toString()",
         defaultValue: "msg['PID']['PID.8']['PID.8.1'].toString()"
     });
-    expect(elements[BUILDER][0]).toMatchObject({ messageSegment: "tmp['PID']['PID.3']" });
+    expect(elements[BUILDER][0]).toMatchObject({ name: 'PID.3 (Patient Identifier List)', messageSegment: "tmp['PID']['PID.3']" });
 });
 
 test('message tree rows drop their accessor into a script editor', async ({ page }) => {
@@ -169,6 +169,42 @@ test('message tree rows drop their accessor into a script editor', async ({ page
     await expect.poll(async () => (await script()).split("msg['PID']['PID.8']['PID.8.1'].toString()").length).toBe(2);
 });
 
+for (const fallback of [false, true]) {
+    test(`tree drops in the expanded ${fallback ? 'textarea' : 'Monaco editor'} use the modifier held at release`, async ({ page }) => {
+        if (fallback) await page.route('**/vendor/monaco/**', route => route.abort());
+        const writes = await openTrees(page);
+        await page.getByRole('button', { name: 'Add New Step' }).first().click();
+        await page.getByRole('dialog', { name: 'Add Step' }).getByText('JavaScript', { exact: true }).click();
+        const editor = page.locator('.step-editor-fill');
+        const input = fallback ? 'textarea.ce-area' : '.ce-monaco .view-lines';
+        await expect(editor.locator(input)).toBeVisible();
+        await editor.locator('.ce-pop-btn').click({ force: true });
+        const overlay = page.locator('.ce-popout-overlay');
+        await overlay.getByRole('tab', { name: 'Message Trees' }).click();
+        await row(page, 'PID').locator('.twisty').click();
+        const transfer = await page.evaluateHandle(() => new DataTransfer());
+        await row(page, 'PID.8').dispatchEvent('dragstart', { dataTransfer: transfer });
+        const path = "msg['PID']['PID.8']['PID.8.1']";
+        expect(await transfer.evaluate(data => data.getData('text/plain'))).toBe(path + '.toString()');
+        const modifier = await page.evaluate(() => /Mac/.test(navigator.platform) ? 'metaKey' : 'ctrlKey');
+        await overlay.locator(input).dispatchEvent('drop', { dataTransfer: transfer, [modifier]: true });
+        await row(page, 'PID.8').dispatchEvent('dragend', { dataTransfer: transfer });
+        const secondTransfer = await page.evaluateHandle(() => new DataTransfer());
+        await row(page, 'PID.1').dispatchEvent('dragstart', { dataTransfer: secondTransfer, altKey: true });
+        const secondPath = "msg['PID']['PID.1']['PID.1.1']";
+        expect(await secondTransfer.evaluate(data => data.getData('text/plain'))).toBe(secondPath);
+        await overlay.locator(input).dispatchEvent('drop', { dataTransfer: secondTransfer });
+        await overlay.getByRole('button', { name: 'Back', exact: true }).click();
+        await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+        await expect.poll(() => writes.length).toBe(1);
+        const steps = writes[0].sourceConnector.transformer.elements;
+        const script = steps['com.mirth.connect.plugins.javascriptstep.JavaScriptStep'][0].script;
+        expect(script.split(path)).toHaveLength(2);
+        expect(script).not.toContain(path + '.toString()');
+        expect(script.split(secondPath + '.toString()')).toHaveLength(2);
+    });
+}
+
 test('strict HL7 component names get no joined value', async ({ page }) => {
     // The strict (HAPI) parser names fields PID.n but components by data type.
     await openTrees(page, { serialize: () => '<ADT_A01><PID><PID.1>1</PID.1><PID.5><XPN.1><FN.1>DOE</FN.1></XPN.1><XPN.2>JANE</XPN.2></PID.5></PID></ADT_A01>' });
@@ -187,8 +223,8 @@ test('a folded field keeps its own name for Map to Variable', async ({ page }) =
     await row(page, 'PID.8').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
     await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
-    // The row's name, not its folded component's ("PID.8.1 (Value)"): the variable is the channel-map key.
-    await expect(stepField(page, 'Variable')).toHaveValue('PID.8 (Administrative Sex)');
+    // Swing uses the displayed field's ancestry for the channel-map key.
+    await expect(stepField(page, 'Variable')).toHaveValue('patientIdentification_administrativeSex');
     await expect(stepField(page, 'Mapping')).toHaveValue("msg['PID']['PID.8']['PID.8.1'].toString()");
 });
 
@@ -276,6 +312,11 @@ test('text on an attributed XML root stays visible and searchable', async ({ pag
     await expect(row(page, 'value')).toBeVisible();
     await row(page, 'value').click();
     await expect(tree(page).locator('.mt-foot')).toContainText('msg.toString()');
+    await row(page, 'value').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
+    await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
+    await expect(stepField(page, 'Variable')).toHaveValue('value');
+    await expect(stepField(page, 'Mapping')).toHaveValue('msg.toString()');
 });
 
 // axe reports these as incomplete (the page background is a dot gradient), so

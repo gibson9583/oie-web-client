@@ -3,15 +3,11 @@
  * Only the shipped expression fields participate, never arbitrary script text.
  */
 
-import { readExpressionParts } from './iterator-expression.js';
-import { arrayToElements, isJavaBlank } from '../../core/oie.js';
+import { readExpressionParts } from '../../core/iterator-expression.js';
+import { arrayToElements, isIteratorType, isJavaBlank } from '../../core/oie.js';
 import { REPLACEMENT_PAIR } from '../../core/step-replacements.js';
 
 type Element = Record<string, any>;
-
-export function isIteratorType(type: unknown): boolean {
-    return type === 'com.mirth.connect.model.IteratorStep' || type === 'com.mirth.connect.model.IteratorRule';
-}
 
 export function childrenOf(element: Element): Element[] {
     return element.__children ??= [];
@@ -114,13 +110,6 @@ export function preferredIterator(expression: string, iterators: Element[], sele
     };
     visit(iterators, expression, 0);
     return preferred;
-}
-
-export function iteratorName(element: Element, target = element.properties?.target ?? ''): string {
-    const all = String(element.properties?.intersectIterations) === 'true';
-    return elementType(element) === 'com.mirth.connect.model.IteratorRule'
-        ? `Accept message if ${all ? 'all of the iterations return' : 'at least one of the iterations returns'} true for each ${target}`
-        : `For each ${target}`;
 }
 
 export function rewriteIteratorExpression(expression: any, ancestors: Element[], replace: boolean): any {

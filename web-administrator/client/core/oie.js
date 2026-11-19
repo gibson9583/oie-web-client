@@ -32,6 +32,15 @@ export function uuid() {
     });
 }
 /* ---- polymorphic element collections (filter rules / transformer steps) ---- */
+export function isIteratorType(type) {
+    return type === 'com.mirth.connect.model.IteratorStep' || type === 'com.mirth.connect.model.IteratorRule';
+}
+export function iteratorName(element, target = element.properties?.target ?? '') {
+    const all = String(element.properties?.intersectIterations) === 'true';
+    return (element.__type || element['@class']) === 'com.mirth.connect.model.IteratorRule'
+        ? `Accept message if ${all ? 'all of the iterations return' : 'at least one of the iterations returns'} true for each ${target}`
+        : `For each ${target}`;
+}
 // FilterTransformerElementsConverter compares the digits of Swing positions
 // (e.g. "0-2" and "0-10"). Older web channels use a local number at each level.
 function sequenceValue(position) {

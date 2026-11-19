@@ -42,15 +42,15 @@ import { parseFilterTransformerImport, normalizeImportTypes, alignDestinationTyp
  */
 
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { h, modal, detailModal, toast, loading, saveFile, pickFile, contextMenu } from '@oie/web-ui';
+import { h, modal, detailModal, toast, loading, saveFile, pickFile, contextMenu, createCodeEditor } from '@oie/web-ui';
 import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
-import { createCodeEditor } from '@oie/web-ui';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import { generateElementScript } from '../../core/step-script.js';
-import { childrenOf, isIteratorType, serializeEditorElements, rewriteElementIteratorVariables, normalizeIteratorTarget, getIteratorInfo, iteratorExpressionParts,
-    iteratorWizardPrefixes, validIteratorIndex, preferredIterator, iteratorName, removeNumberLiterals, rewriteIteratorExpression } from './iterator-substitutions.js';
+import { isIteratorType, iteratorName } from '../../core/oie.js';
+import { childrenOf, serializeEditorElements, rewriteElementIteratorVariables, normalizeIteratorTarget, getIteratorInfo, iteratorExpressionParts,
+    iteratorWizardPrefixes, validIteratorIndex, preferredIterator, removeNumberLiterals, rewriteIteratorExpression } from './iterator-substitutions.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { normalizeLineEndings } from '../../core/content-highlight.js';
 import * as router from '../../core/router.js';
@@ -197,15 +197,12 @@ function collectStepVariables(elements: any) {
 }
 
 /* ---- accessor drag-and-drop ---------------------------------------------------
-   Tree nodes and reference rows are dragged and dropped directly into a script
-   editor or template field. The accessor is carried in a custom data flavor
-   (plus text/plain, which the popped-out code view's own drop handlers rely
-   on) so we can drop it at the exact cursor position the user releases over —
-   Monaco via getTargetAtClientPoint, plain fields via caret. `dragRef` is the
-   resolver reads the receiving selection at drop, even if the drag outlives a render. */
+   Native drags carry text/plain. Inside the editor, resolve tree fields on
+   release so the receiving Iterator and the platform modifier are current. */
 
 const ACCESSOR_FLAVOR = 'application/x-oie-accessor';
-type AccessorDragRef = { current: (() => string) | null };
+type AccessorText = (event: DragEvent) => string;
+type AccessorDragRef = { current: AccessorText | null };
 
 function resolveEditorAt(target: any) {
     if (!target || !(target instanceof Element)) return null;
@@ -244,16 +241,17 @@ function makeAccessorDragOver(dragRef: AccessorDragRef) {
     };
 }
 
-function makeAccessorDrop(dragRef: AccessorDragRef) {
+function makeAccessorDrop(dragRef: AccessorDragRef, canEdit: () => boolean) {
     return (e: any) => {
         if (!hasAccessorDrag(dragRef, e)) return;
         const editor = resolveEditorAt(e.target);
         if (!editor) return;
-        const token = dragRef.current?.() ||
-            (e.dataTransfer && (e.dataTransfer.getData(ACCESSOR_FLAVOR) || e.dataTransfer.getData('text/plain')));
-        dragRef.current = null;
-        if (!token) return;
         e.preventDefault();
+        const resolve = dragRef.current;
+        dragRef.current = null;
+        if (!canEdit()) return;
+        const token = resolve ? resolve(e) : e.dataTransfer?.getData(ACCESSOR_FLAVOR) || e.dataTransfer?.getData('text/plain');
+        if (!token) return;
         if (editor.monaco) {
             const inst = editor.monaco;
             let pos = inst.getPosition();
@@ -286,12 +284,12 @@ function makeAccessorDrop(dragRef: AccessorDragRef) {
 }
 
 // Shared dragstart props for accessor sources (reference rows, tree nodes).
-function accessorDragProps(dragRef: AccessorDragRef, getText: () => string) {
+function accessorDragProps(dragRef: AccessorDragRef, getText: AccessorText) {
     return {
         draggable: true,
         onDragStart: (e: any) => {
             dragRef.current = getText;
-            const token = getText();
+            const token = getText(e);
             e.dataTransfer.effectAllowed = 'copy';
             e.dataTransfer.setData('text/plain', token);
             e.dataTransfer.setData(ACCESSOR_FLAVOR, token);
@@ -365,7 +363,9 @@ function jsonValueNode(label: any, value: any, accessor: any): any {
     if (Array.isArray(value)) {
         return {
             label, name: label, desc: '', value: null, accessor,
-            children: value.map((item: any, i: any) => jsonValueNode(`[${i}]`, item, `${accessor}[${i}]`))
+            children: value.map((item: any, i: number) => ({
+                ...jsonValueNode(`[${i}]`, item, `${accessor}[${i}]`), arrayIndex: i
+            }))
         };
     }
     if (value && typeof value === 'object') {
@@ -386,6 +386,30 @@ function jsonTree(text: any, varName: any) {
    ("Map to Variable" → Mapper, "Map to Message" → Message Builder). */
 const MAPPER_TYPE = 'com.mirth.connect.plugins.mapper.MapperStep';
 const MSGBUILDER_TYPE = 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep';
+
+type TreeNameNode = { name: string; desc?: string; index?: number; arrayIndex?: number };
+type TreeNamePath = { node: TreeNameNode; parent: TreeNamePath | null };
+
+// Swing uses the displayed node's ancestry for names, including repeated XML
+// elements and JSON array positions. A folded HL7 field keeps its own name.
+function treeVariableName(path: TreeNamePath | null) {
+    let variable = '', wasArrayElement = false;
+    for (let part = path; part; part = part.parent) {
+        const { name, desc, index, arrayIndex } = part.node;
+        if (arrayIndex != null) {
+            variable = String(arrayIndex) + (variable ? '_' : '') + variable;
+        } else {
+            const vocab = desc || / \((.*)\)/.exec(name)?.[1];
+            const raw = name.replace(/ \(.*\)/, '');
+            const key = (vocab || raw).toLowerCase().replace(/\//g, ' or ').replace(/ - /g, '_')
+                .replace(/&/g, ' and ').replace(/@/g, 'att ').replace(/[^\w \t\n\v\f\r]/g, '').trim()
+                .replace(/ +([^ ]?)/g, (_, c: string) => c.toUpperCase());
+            variable = (key || raw) + (index ?? '') + (variable && !wasArrayElement ? '_' : '') + variable;
+        }
+        wasArrayElement = arrayIndex != null;
+    }
+    return variable;
+}
 
 /* ---- element grid (top pane, classic grid) ------------------------------------ */
 
@@ -970,13 +994,14 @@ function joinedValue(node: any, seps: any): string | null {
 // The non-strict HL7 v2 serializer stores every simple field as a lone `.1`
 // component. Such a field is one row that reads, drags and maps that component.
 // Segments (no dot) and strict-parser components (HD.1) keep their own rows.
-function treeRow(node: any, key: string, seps: any, top: boolean): any {
+function treeRow(node: any, key: string, seps: any, top: boolean, path: TreeNamePath | null): any {
     const only = seps && node.name.includes('.') && node.children.length === 1 ? node.children[0] : null;
     const source = only && !only.children.length && only.name === `${node.name}.1` ? only : node;
-    const children = source === node ? node.children.map((c: any, i: number) => treeRow(c, `${key}/${i}`, seps, false)) : [];
+    const children = source === node ? node.children.map((c: any, i: number) =>
+        treeRow(c, `${key}/${i}`, seps, false, { node: c, parent: path })) : [];
     const joined = source.value == null && source.children.length ? joinedValue(source, seps) : null;
     const row: any = {
-        key, node, source, children,
+        key, node, source, children, path,
         field: node.index == null ? node.name : `${node.name}[${node.index}]`,
         desc: node.desc || source.desc || '',
         value: joined ?? source.value,
@@ -991,7 +1016,8 @@ function treeRow(node: any, key: string, seps: any, top: boolean): any {
 function messageRows(root: any, side: string, hl7: boolean) {
     const seps = hl7 ? hl7Separators(root) : null;
     const nodes = root.children.length && root.value == null ? root.children : [root];
-    return nodes.map((n: any, i: number) => treeRow(n, `${side}/${i}`, seps, true));
+    return nodes.map((n: any, i: number) =>
+        treeRow(n, `${side}/${i}`, seps, true, n === root ? null : { node: n, parent: null }));
 }
 
 function branchKeys(rows: any[], out = new Set<string>()) {
@@ -1073,7 +1099,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
         for (const key of branchKeys(rows)) { if (open) keys.delete(key); else keys.add(key); }
     });
 
-    const menuItems = (node: any, source: any, rows: any[]) => {
+    const menuItems = (node: any, source: any, path: TreeNamePath | null, rows: any[]) => {
         const items: any[] = [];
         if (branchKeys(rows).size) {
             items.push({ label: 'Expand All', onClick: () => setBranches(rows, true) },
@@ -1082,9 +1108,10 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
         const name = String(node.label || 'value');
         const lval = source.accessor.replace(/\.toString\(\)\s*$/, '');   // assignment target, not a read
         if (side === 'inbound') {
+            const variable = treeVariableName(path) || name;
             items.push({
                 label: 'Map to Variable', icon: 'transform',
-                onClick: () => onAddStep(MAPPER_TYPE, 'Mapper', name, (el: any) => { el.mapping = source.accessor; el.variable = name; })
+                onClick: () => onAddStep(MAPPER_TYPE, 'Mapper', variable, (el: any) => { el.mapping = source.accessor; el.variable = variable; })
             });
         }
         items.push({
@@ -1095,7 +1122,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
     };
     const rowMenu = (row: any, x: number, y: number) => {
         setSelected(row);
-        contextMenu(x, y, menuItems(row.node, row.source, [row]));
+        contextMenu(x, y, menuItems(row.node, row.source, row.path, [row]));
     };
 
     if (parse.status !== 'ready') {
@@ -1150,14 +1177,14 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
     ];
     const rootMenu = (e: any) => {
         e.preventDefault();
-        contextMenu(e.clientX, e.clientY, menuItems(root, root, rows));
+        contextMenu(e.clientX, e.clientY, menuItems(root, root, null, rows));
     };
 
     return (
         <section className="mt-section" style={{ display: hidden ? 'none' : undefined }} aria-label={regionLabel}>
             <div className="mt-root">
                 <span className="mt-root-label" title={`Drag into a script editor: ${root.accessor}`}
-                    {...accessorDragProps(dragRef, () => treeAccessor(root.accessor))} onContextMenu={rootMenu}>
+                    {...accessorDragProps(dragRef, event => treeAccessor(root.accessor, event))} onContextMenu={rootMenu}>
                     {root.label !== varName ? root.label : dtLabel}
                 </span>
                 <button type="button" className="icon-btn" title="Expand All" aria-label="Expand all"
@@ -1177,7 +1204,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
                     onSelect={(row: any) => setSelected(row)}
                     onRowContextMenu={(row: any, e: any) => { e.preventDefault(); rowMenu(row, e.clientX, e.clientY); }}
                     rowDraggable={() => true}
-                    onRowDragStart={(row: any, e: any) => accessorDragProps(dragRef, () => treeAccessor(row.source.accessor)).onDragStart(e)}
+                    onRowDragStart={(row: any, e: any) => accessorDragProps(dragRef, event => treeAccessor(row.source.accessor, event)).onDragStart(e)}
                     onRowDragEnd={() => { dragRef.current = null; }}
                     matches={matches}
                     collapsedKeys={openKeys}
@@ -1348,7 +1375,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // True only while a step plugin's flushSync mount runs (see StepEditorPanel).
     const settlingRef = useRef(false);
     // Live accessor-drag token (reference rows / tree nodes → editors).
-    const dragRef = useRef<(() => string) | null>(null);
+    const dragRef = useRef<AccessorText | null>(null);
     const rootRef = useRef<any>(null);
     const guardImplRef = useRef<any>(null);
 
@@ -1577,7 +1604,15 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         if (!list) return;
         const idx = path[path.length - 1];
         const old = list[idx];
-        if (!old || old.__type === newType) return;
+        if (!old || old.__type === newType || !canEditElements()) return;
+        if (isIteratorType(old.__type) && childrenOf(old).length) {
+            modal({
+                title: `Change ${kind.noun} Type`,
+                body: h('p', 'Please remove all children before changing an Iterator to a different type.'),
+                buttons: [{ label: 'OK', primary: true }]
+            });
+            return;
+        }
         const registry = isFilter ? platform.ruleTypes() : platform.stepTypes();
         const def = registry.get(newType);
         const created = def && def.create ? def.create() : { __type: newType, name: '', enabled: true };
@@ -1592,16 +1627,29 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     }
 
     function deleteElement() {
-        const elements = elementsRef.current;
-        const selPath = selectedPathRef.current;
-        if (!elementAtPath(elements, selPath)) { toast(`Select a ${kind.noun.toLowerCase()} first`, 'warn'); return; }
-        const list = listAtPath(elements, selPath);
-        const idx = selPath![selPath!.length! - 1];
-        const parent = selPath!.slice!(0, -1);
-        list.splice(idx, 1);
-        setSelected(list.length ? [...parent, Math.min(idx, list.length - 1)]
-            : (parent.length ? parent : (elements.length ? [0] : null)));
-        commitRef.current();
+        if (!canEditElements()) return;
+        const element = elementAtPath(elementsRef.current, selectedPathRef.current);
+        if (!element) { toast(`Select a ${kind.noun.toLowerCase()} first`, 'warn'); return; }
+        const isCurrent = channelSessionActive();
+        const remove = () => {
+            if (!isCurrent() || !canEditElements()) return;
+            const elements = elementsRef.current;
+            const path = pathOf(element, elements);
+            if (!path) return;
+            const list = listAtPath(elements, path);
+            const idx = path[path.length - 1];
+            list.splice(idx, 1);
+            const parent = path.slice(0, -1);
+            setSelected(list.length ? [...parent, Math.min(idx, list.length - 1)] : parent.length ? parent : null);
+            commitRef.current();
+        };
+        if (isIteratorType(element.__type) && childrenOf(element).length) {
+            modal({
+                title: `Delete ${kind.noun}`,
+                body: h('p', `All child ${kind.noun.toLowerCase()}s will be removed along with the Iterator. Are you sure you wish to continue?`),
+                buttons: [{ label: 'Cancel' }, { label: 'OK', primary: true, onClick: remove }]
+            });
+        } else remove();
     }
 
     function move(delta: -1 | 1) {
@@ -2135,7 +2183,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     }
 
     const onAccessorDragOver = useMemo(() => makeAccessorDragOver(dragRef), []);
-    const onAccessorDrop = useMemo(() => makeAccessorDrop(dragRef), []);
+    const onAccessorDrop = makeAccessorDrop(dragRef, canEditElements);
 
     apiRef.current = {
         taskState,
@@ -2177,7 +2225,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             channelId: params.channelId,
             target, version, connectorType, channel,
             dragRef,
-            treeAccessor: (text: string) => rewriteIteratorExpression(text, iteratorAncestors(selectedPathRef.current || []), true),
+            treeAccessor: (text: string, event: DragEvent) => {
+                const raw = event.ctrlKey || event.altKey || (event.metaKey && /Mac/.test(navigator.platform));
+                const expression = raw ? text.replace(/\.toString\(\)$/, '') : text;
+                return rewriteIteratorExpression(expression, iteratorAncestors(selectedPathRef.current || []), true);
+            },
             getElements: () => elementsRef.current,
             commit: () => commitRef.current(),
             onAddStep: (typeId: any, label: any, baseName: any, setup: any) => addTreeStepRef.current(typeId, label, baseName, setup),
@@ -2205,9 +2257,8 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
        When a code view opens for an editor that lives inside THIS editor (a step
        script or the generated-script preview), move the real side panel into the
        overlay — the full-fidelity reference, in place of the generic variables
-       list — and move it back when the view closes. Tree/reference drags keep
-       working there because every dragstart also sets text/plain, which the
-       overlay's own capture-phase drop handlers understand. */
+       list — and move it back when the view closes. The overlay resolves
+       tree/reference drags through the same callback as the main editor. */
     useEffect(() => {
         if (missingConnector) return undefined;
         const onCodeView = (e: any) => {
@@ -2215,6 +2266,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             const rootEl = rootRef.current;
             const host = sideHostRef.current;
             if (d.open && d.origin && rootEl && rootEl.contains(d.origin) && !sidePlaceholderRef.current && host) {
+                const fallback = d.getDropText;
+                d.getDropText = (event: DragEvent) => {
+                    if (!canEditElements()) return '';
+                    return dragRef.current ? dragRef.current(event) : fallback(event);
+                };
                 const flat = d.body.querySelector('.ce-popout-vars');
                 if (flat) flat.remove();
                 sidePlaceholderRef.current = document.createComment('ft-side-panel');
