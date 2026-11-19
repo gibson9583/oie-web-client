@@ -413,14 +413,17 @@ function treeVariableName(path: TreeNamePath | null) {
 
 /* ---- element grid (top pane, classic grid) ------------------------------------ */
 
-// Compare the Iterator panel's settings independently of its grid metadata.
-function matchesIteratorDefaults(value: any, initial: any): boolean {
+// Swing compares the outgoing plugin panel with its defaults before a conversion.
+const gridMetadata = new Set(['__type', '__children', 'name', 'enabled', 'sequenceNumber', 'operator']);
+
+function matchesPanelDefaults(value: any, initial: any, ignore?: ReadonlySet<string>): boolean {
     if (Array.isArray(initial)) return Array.isArray(value) && value.length === initial.length
-        && initial.every((item, i) => matchesIteratorDefaults(value[i], item));
+        && initial.every((item, i) => matchesPanelDefaults(value[i], item));
     if (initial && typeof initial === 'object') {
-        return !!value && typeof value === 'object'
-            && Object.keys(value).every(key => key === '@version' || Object.hasOwn(initial, key))
-            && Object.entries(initial).every(([key, item]) => matchesIteratorDefaults(value[key], item));
+        if (!value || typeof value !== 'object') return false;
+        const keys = new Set([...Object.keys(value), ...Object.keys(initial)]);
+        return [...keys].every(key => key === '@version' || ignore?.has(key)
+            || (Object.hasOwn(initial, key) && matchesPanelDefaults(value[key], initial[key])));
     }
     if (typeof initial === 'boolean') return String(value ?? false) === String(initial);
     return (value ?? '') === initial;
@@ -1615,6 +1618,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const old = elementAtPath(elementsRef.current, path);
         if (!old || old.__type === newType || !canEditElements()) return;
         const wasIterator = isIteratorType(old.__type);
+        const toIterator = isIteratorType(newType);
         if (wasIterator && childrenOf(old).length) {
             modal({
                 title: `Change ${kind.noun} Type`,
@@ -1633,18 +1637,23 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             if (!current) return;
             const created = nextType.create?.() ?? { name: '', enabled: true };
             created.__type = newType;
-            if (!wasIterator) {
-                created.name = old.name || (isIteratorType(newType) ? created.name : '');
+            if (!wasIterator && !toIterator) {
+                created.name = old.name || '';
                 created.enabled = old.enabled !== false;
                 if (isFilter && old.operator !== undefined) created.operator = old.operator;
             }
-            if (isIteratorType(newType)) created.__children = [];
+            if (toIterator) created.__children = [];
             listAtPath(elementsRef.current, current)[current.at(-1)] = created;
             setSelected(current);
             commitRef.current();
         };
-        const defaults = wasIterator && typeDef(old.__type)?.create?.().properties;
-        if (!wasIterator || (defaults && matchesIteratorDefaults(old.properties, defaults))) {
+        if (!wasIterator && !toIterator) { replace(); return; }
+        const defaults = typeDef(old.__type)?.create?.();
+        // The hydrated children were checked above. The wire copy can still contain a removed child.
+        const unchanged = defaults && (wasIterator
+            ? matchesPanelDefaults(old.properties, defaults.properties, new Set(['children']))
+            : matchesPanelDefaults(old, defaults, gridMetadata));
+        if (unchanged) {
             replace();
         } else {
             modal({

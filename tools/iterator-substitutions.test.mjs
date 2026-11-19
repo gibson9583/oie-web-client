@@ -72,3 +72,12 @@ test('Swing-authored children of different types retain execution order after sa
     const reloaded = elementsToArray(saved[iterator.__type][0].properties.children);
     assert.deepEqual(reloaded.map(child => [child.__type, child.sequenceNumber]), children.map(child => [child.__type, child.sequenceNumber]));
 });
+
+test('an empty or ambiguous imported prefix never matches an unrelated mapping', () => {
+    const parent = { ...iterator, properties: { ...iterator.properties, prefixSubstitutions: { string: [prefix, null, ''] } } };
+    const unrelated = "channelMap.get('label')";
+    const child = { __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping: path, defaultValue: unrelated };
+    rewriteElementIteratorVariables(child, [parent], true);
+    assert.equal(child.mapping, mapped);
+    assert.equal(child.defaultValue, unrelated);
+});

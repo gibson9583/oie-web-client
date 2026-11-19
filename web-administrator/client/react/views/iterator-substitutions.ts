@@ -37,10 +37,14 @@ function elementType(element: Element): string {
     return element.__type || element['@class'] || '';
 }
 
-function strings(value: any): string[] {
-    const list = value?.string ?? value;
-    if (list == null || value === '') return [];
-    return (Array.isArray(list) ? list : [list]).map(item => String(item ?? ''));
+// Swing's Iterator panel omits blank prefixes. A null XStream list entry must
+// never become an empty prefix that would match every expression.
+function iteratorPrefixes(iterator: Element): string[] {
+    const wire = iterator.properties?.prefixSubstitutions;
+    const list = wire && typeof wire === 'object' && !Array.isArray(wire) ? wire.string : wire;
+    if (list == null) return [];
+    const entries = Array.isArray(list) ? list : [list];
+    return entries.filter(prefix => !isJavaBlank(prefix)).map(String);
 }
 
 const stringSuffix = '.toString()';
@@ -100,7 +104,7 @@ export function preferredIterator(expression: string, iterators: Element[], sele
     const visit = (nodes: Element[], target: string, depth: number) => {
         for (const iterator of nodes) {
             if (iterator === selected || !isIteratorType(elementType(iterator))) continue;
-            for (const prefix of strings(iterator.properties?.prefixSubstitutions)) {
+            for (const prefix of iteratorPrefixes(iterator)) {
                 if (target.startsWith(prefix)) {
                     if (depth > maxDepth) { preferred = iterator; maxDepth = depth; }
                     visit(childrenOf(iterator), prefix + `[${iterator.properties?.indexVariable}]` + target.slice(prefix.length), depth + 1);
@@ -118,7 +122,7 @@ export function rewriteIteratorExpression(expression: any, ancestors: Element[],
     for (const iterator of iterators) {
         const props = iterator.properties || {};
         const index = `[${props.indexVariable ?? 'i'}]`;
-        for (const prefix of strings(props.prefixSubstitutions)) {
+        for (const prefix of iteratorPrefixes(iterator)) {
             if (replace) {
                 if (expression.startsWith(prefix) && !expression.startsWith(prefix + index)) {
                     const suffix = removeNumberLiterals('msg' + expression.slice(prefix.length)).replace(/^msg/, '');

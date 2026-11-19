@@ -236,6 +236,30 @@ for (const kind of ['filter', 'transformer']) {
 
 }
 
+for (const kind of ['filter', 'transformer']) {
+    test(`converting a configured ${kind} element to an Iterator requires confirmation`, async ({ page }) => {
+        const filter = kind === 'filter';
+        const original = filter
+            ? { type: RULE, name: 'First value', field: mapping(), condition: 'EQUALS', values: { string: "'one'" } }
+            : mapper();
+        const type = filter ? FILTER_ITERATOR : ITERATOR;
+        const save = await openEditor(page, [{ ...original, enabled: false }], kind);
+        const select = page.locator('tr[data-path="0"] td').last().getByRole('combobox');
+        const dialog = page.getByRole('dialog', { name: `Change ${filter ? 'Rule' : 'Step'} Type` });
+        await select.selectOption(type);
+        await expect(dialog).toContainText('lose all of the current data');
+        await dialog.getByRole('button', { name: 'No', exact: true }).click();
+        await expect(select).toHaveValue(original.type);
+        await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toBeHidden();
+        await select.selectOption(type);
+        await dialog.getByRole('button', { name: 'Yes', exact: true }).click();
+        expect((await save())[type][0]).toMatchObject({
+            enabled: true, properties: { target: '', indexVariable: 'i' },
+            name: filter ? 'Accept message if at least one of the iterations returns true for each ...' : 'For each ...'
+        });
+    });
+}
+
 test('deleting the last child selects the following visible step', async ({ page }) => {
     const last = { ...mapper(), name: 'Last child' };
     await openEditor(page, [iterator('Parent', 'i', [last]), { ...mapper(), name: 'Next step' }]);
@@ -391,4 +415,18 @@ test('dropping a repeated tree field into an existing Mapper uses the receiving 
     const expression = PREFIX + "[i]['value'].toString()";
     await expect(field).toHaveValue(expression);
     expect(children(await save(), 'Observations')[MAPPER][0].mapping).toBe(expression);
+});
+
+test('an ambiguous prefix returned by 4.6.0 never matches unrelated Mapper fields', async ({ page }) => {
+    const parent = iterator('Observations');
+    // The shipped JSON writer represents the String prefix "null" as JSON null.
+    parent.properties.prefixSubstitutions = { string: [PREFIX, null] };
+    const step = { ...mapper(), defaultValue: "channelMap.get('fallback')" };
+    const save = await openEditor(page, [parent, step]);
+    await assign(page, step.name, parent.name);
+    const assigned = children(await save(), parent.name)[MAPPER][0];
+    expect(assigned).toMatchObject({ mapping: mapping('i'), defaultValue: step.defaultValue });
+    await page.reload();
+    await row(page, step.name).locator('td.num').click();
+    await expect(page.locator('.step-editor-fill .field:has(label:text-is("Default Value")) input')).toHaveValue(step.defaultValue);
 });
