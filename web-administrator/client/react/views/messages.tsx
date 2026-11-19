@@ -628,7 +628,7 @@ function Cell({ value, cls, indent }: any) {
 function ResultsTable({
     cols, mgr, rows, loading, emptyText, expandedIds, allExpanded, selKey, anchorKey,
     sortKey, sortDir, onSort, onToggleAll, onToggleRow, onSelect, onRowMenu,
-    onColumnMenu, onColumnsChange
+    onColumnMenu, onColumnsChange, canShowAll, onShowAll
 }: any) {
     const tableRef = useRef<any>(null);
     const colRefs = useRef<any>({});       // key -> <col> element (live resize)
@@ -778,7 +778,25 @@ function ResultsTable({
                     </span>
                     {anchorMark(`${m.messageId}:0`)}
                 </td>
-                {cols.map((c: any) => <Cell key={c.key} value={c.parent(m, source)} cls={c.cls} />)}
+                {cols.map((c: any) => {
+                    const val = c.parent(m, source);
+                    if (c.key === 'id' && canShowAll?.(m)) {
+                        return (
+                            <Cell key={c.key} cls={c.cls} value={
+                                <span className="inline-flex items-center justify-end gap-1.5 w-full">
+                                    <button type="button"
+                                        className="msg-show-all inline-flex items-center justify-center text-text-faint hover:text-accent cursor-pointer"
+                                        title={`Show all connectors for message ${m.messageId}`}
+                                        onClick={(e: any) => { e.stopPropagation(); onShowAll?.(m); }}>
+                                        <Icon name="channels" size={13} />
+                                    </button>
+                                    <span>{val}</span>
+                                </span>
+                            } />
+                        );
+                    }
+                    return <Cell key={c.key} value={val} cls={c.cls} />;
+                })}
             </tr>
         );
         if (expanded) for (const cm of dests) {
@@ -2591,6 +2609,66 @@ export function MessagesView({ params, query }: any) {
 
     /* ---- selection + detail ---- */
 
+    function auditConnectorPHI(message: any, metaDataId: any) {
+        if (!phiEnabledRef.current) return;
+        const connector = connectorMessagesOf(message)
+            .find(cm => Number(cm.metaDataId) === Number(metaDataId));
+        if (connector) {
+            api.messages.auditAccessedPHI({
+                patientId: String(metaOfCm(connector, 'PATIENT_ID') || ''),
+                channel: `Channel[id=${channelId},name=${channelNameRef.current}]`,
+                messageId: String(connector.messageId ?? message.messageId)
+            }).catch((e: any) => toast(`Unable to audit accessed PHI: ${e.message || e}`, 'error'));
+        }
+    }
+
+    function applyAllConnectorsToRow(rowId: any, fullMessage: any, nextMetaDataId?: any) {
+        const fullCms = connectorMessagesOf(fullMessage);
+        if (!fullCms.length) return;
+        let updatedRow: any = null;
+        setMessages(prev => prev.map(m => {
+            if (String(m.messageId) !== String(rowId)) return m;
+            updatedRow = { ...m, connectorMessages: fullMessage.connectorMessages, __allConnectorsLoaded: true };
+            return updatedRow;
+        }));
+        if (fullCms.some(cm => Number(cm.metaDataId) > 0)) {
+            setExpandedIds(prev => {
+                if (prev.has(String(rowId))) return prev;
+                const next = new Set(prev);
+                next.add(String(rowId));
+                return next;
+            });
+        }
+        if (nextMetaDataId != null) {
+            const targetRow = updatedRow || selectedRef.current?.m || fullMessage;
+            const selection = { m: targetRow, metaDataId: Number(nextMetaDataId) };
+            selectedRef.current = selection;
+            setSelected(selection);
+        }
+    }
+
+    function rowHasHiddenConnectors(m: any) {
+        if (!m || m.__allConnectorsLoaded) return false;
+        const cms = connectorMessagesOf(m);
+        if (!cms.length) return false;
+        const rowIds = new Set(cms.map(cm => Number(cm.metaDataId)));
+        if (detailRef.current?.status === 'ready' && String(detailRef.current.message?.messageId) === String(m.messageId)) {
+            return connectorMessagesOf(detailRef.current.message).some(cm => !rowIds.has(Number(cm.metaDataId)));
+        }
+        if (!rowIds.has(0)) return true;
+        const activeParams = resultRef.current?.params || {};
+        const isFiltered = activeParams.status != null
+            || activeParams.includedMetaDataId != null
+            || activeParams.excludedMetaDataId != null
+            || activeParams.minSendAttempts != null
+            || activeParams.maxSendAttempts != null
+            || activeParams.error != null;
+        if (isFiltered && connectors.length > 0 && connectors.some(c => !rowIds.has(Number(c.metaDataId)))) {
+            return true;
+        }
+        return false;
+    }
+
     function selectMessage(m: any, metaDataId: any) {
         selectedRef.current = { m, metaDataId };
         setSelected({ m, metaDataId });
@@ -2605,7 +2683,7 @@ export function MessagesView({ params, query }: any) {
         else showDetail(m, metaDataId);
     }
 
-    async function showDetail(row: any, metaDataId: any) {
+    async function showDetail(row: any, metaDataId: any, { hydrateRow = false }: any = {}) {
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
         // The selection object is unique per click: A -> B -> A must not let
@@ -2642,18 +2720,35 @@ export function MessagesView({ params, query }: any) {
             toast(`Failed to load attachments: ${e.message || e}`, 'error');
         }
         if (!isCurrentSelection()) return;
-        setDetail({ status: 'ready', message, metaDataId });
-        if (phiEnabledRef.current) {
-            const connector = connectorMessagesOf(message)
-                .find(cm => Number(cm.metaDataId) === Number(metaDataId));
-            if (connector) {
-                api.messages.auditAccessedPHI({
-                    patientId: String(metaOfCm(connector, 'PATIENT_ID') || ''),
-                    channel: `Channel[id=${channelId},name=${channelNameRef.current}]`,
-                    messageId: String(connector.messageId ?? message.messageId)
-                }).catch((e: any) => toast(`Unable to audit accessed PHI: ${e.message || e}`, 'error'));
-            }
+        if (hydrateRow) {
+            applyAllConnectorsToRow(row.messageId, message, metaDataId);
         }
+        setDetail({ status: 'ready', message, metaDataId });
+        auditConnectorPHI(message, metaDataId);
+    }
+
+    async function showAllConnectorsTask(row = requireSelection(), preferredMetaDataId?: any) {
+        if (!row) return;
+        const currentSelected = selectedRef.current;
+        const isSameRow = currentSelected && String(currentSelected.m?.messageId) === String(row.messageId);
+        const targetMeta = preferredMetaDataId != null
+            ? Number(preferredMetaDataId)
+            : isSameRow ? Number(currentSelected.metaDataId ?? 0) : 0;
+        if (detailRef.current?.status === 'ready'
+            && String(detailRef.current.message?.messageId) === String(row.messageId)) {
+            const fullMessage = detailRef.current.message;
+            applyAllConnectorsToRow(row.messageId, fullMessage, targetMeta);
+            if (Number(detailRef.current.metaDataId) !== targetMeta) {
+                setDetail({ status: 'ready', message: fullMessage, metaDataId: targetMeta });
+                auditConnectorPHI(fullMessage, targetMeta);
+            }
+            return;
+        }
+        const selection = { m: row, metaDataId: targetMeta };
+        selectedRef.current = selection;
+        setSelected(selection);
+        onActiveStage(null);
+        await showDetail(row, targetMeta, { hydrateRow: true });
     }
 
     /* Detail pane height: the global .split-handle mutates style.height directly
@@ -2876,9 +2971,13 @@ export function MessagesView({ params, query }: any) {
         e.preventDefault();
         selectMessage(m, metaDataId);
         const pluginItems = messageActionItems(m, metaDataId);
+        const showSiblingsItem = rowHasHiddenConnectors(m)
+            ? [{ label: 'Show All Connectors', icon: 'channels', task: 'doShowMessages', group: 'message', onClick: () => showAllConnectorsTask(m, metaDataId) }]
+            : [];
         contextMenu(e.clientX, e.clientY, [
             { label: 'Refresh', icon: 'refresh', task: 'doRefreshMessages', group: 'message', onClick: () => searchRef.current(true) },
             { label: 'Send Message', icon: 'send', task: 'doSendMessage', group: 'message', onClick: () => sendMessageTask() },
+            ...(showSiblingsItem.length ? ['-', ...showSiblingsItem] : []),
             '-',
             { label: 'Import Messages', icon: 'import', task: 'doImportMessages', group: 'message', onClick: () => importMessagesTask() },
             { label: 'Export Results', icon: 'export', task: 'doExportMessages', group: 'message', onClick: () => exportResultsTask() },
@@ -3383,6 +3482,10 @@ export function MessagesView({ params, query }: any) {
                         {removingMessages > 0 && <div role="status" className="text-text-dim">Removing message...</div>}
                         <TaskButton label="Reprocess Results" icon="transform" task="doReprocessFilteredMessages" onClick={reprocessResultsTask} />
                         {hasSel && <TaskButton label="Reprocess Message" icon="transform" task="doReprocessMessage" onClick={() => reprocessTask()} />}
+                        {hasSel && rowHasHiddenConnectors(selected.m) && (
+                            <TaskButton label="Show All Connectors" icon="channels" task="doShowMessages"
+                                onClick={() => showAllConnectorsTask(selected.m, selected.metaDataId)} />
+                        )}
                         <TaskButton label="Select for Compare" icon="compare" task="doSelectForCompare"
                             onClick={selectForCompareTask}
                             title={activeStage ? `Select ${describeRef(activeStage)} for comparison` : undefined} />
@@ -3475,7 +3578,9 @@ export function MessagesView({ params, query }: any) {
                         onSelect={selectMessage}
                         onRowMenu={messageRowMenu}
                         onColumnMenu={openColumnMenu}
-                        onColumnsChange={() => setColumnsRev(r => r + 1)} />
+                        onColumnsChange={() => setColumnsRev(r => r + 1)}
+                        canShowAll={rowHasHiddenConnectors}
+                        onShowAll={(m: any) => showAllConnectorsTask(m)} />
                     )}
                 </div>
 
