@@ -1,5 +1,6 @@
 // plugins/transformer-steps/web/plugin.tsx
 import { platform } from "@oie/web-shell";
+import { isJavaBlank } from "/core/oie.js";
 import { replacementPairs, replacementsToWire } from "/core/step-replacements.js";
 var React = platform.React;
 var SCOPES = [
@@ -24,15 +25,11 @@ var BEHAVIORS = [
 ];
 var CONDITION_USES_VALUES = /* @__PURE__ */ new Set(["EQUALS", "NOT_EQUAL", "CONTAINS", "NOT_CONTAIN"]);
 var isBlank = (v) => v == null || String(v).trim() === "";
-function stringListToLines(value) {
+function stringListValues(value) {
   if (!value || typeof value !== "object") return [];
-  const list = value.string;
-  if (list === null || list === void 0) return [];
-  return (Array.isArray(list) ? list : [list]).map((v) => String(v ?? ""));
-}
-function linesToStringList(text) {
-  const lines = String(text || "").split("\n").map((s) => s.trim()).filter(Boolean);
-  return lines.length ? { string: lines } : "";
+  const list = Array.isArray(value) ? value : "string" in value ? value.string : null;
+  if (list == null) return [];
+  return (Array.isArray(list) ? list : [list]).map((item) => String(item ?? ""));
 }
 function checkedIdSet(value) {
   if (!value || typeof value !== "object") return /* @__PURE__ */ new Set();
@@ -45,9 +42,6 @@ function idSetToMetaData(set, destinations) {
   for (const id of set) if (!ordered.includes(id)) ordered.push(id);
   return ordered.length ? { int: ordered } : "";
 }
-function stringArrayToList(arr) {
-  return arr.length ? { string: arr.map((s) => String(s ?? "")) } : "";
-}
 function Field({ label, hint, children }) {
   return /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, label), children, hint ? /* @__PURE__ */ React.createElement("div", { className: "hint" }, hint) : null);
 }
@@ -56,6 +50,59 @@ function Select({ options, value, onChange }) {
     const o = typeof opt === "object" ? opt : { value: opt, label: String(opt) };
     return /* @__PURE__ */ React.createElement("option", { key: String(o.value), value: o.value }, o.label);
   }));
+}
+function ExpressionTable({ label, value, condition, keep = Boolean, onChange }) {
+  const [rows, setRows] = React.useState(() => stringListValues(value));
+  const [selected, setSelected] = React.useState(-1);
+  const disabled = condition !== void 0 && !CONDITION_USES_VALUES.has(condition);
+  React.useEffect(() => {
+    setSelected(-1);
+  }, [condition]);
+  const change = (next) => {
+    setRows(next);
+    const saved = next.filter(keep);
+    onChange(saved.length ? { string: saved } : "");
+  };
+  const add = () => {
+    setSelected(rows.length);
+    change([...rows, ""]);
+  };
+  const remove = () => {
+    change(rows.filter((_, i) => i !== selected));
+    setSelected(Math.min(selected, rows.length - 2));
+  };
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-1.5" }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      className: "btn btn-sm",
+      disabled,
+      "aria-label": `New ${label.toLowerCase()}`,
+      onClick: add
+    },
+    "New"
+  ), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      className: "btn btn-sm btn-danger",
+      disabled: disabled || selected < 0,
+      "aria-label": `Delete ${label.toLowerCase()}`,
+      onClick: remove
+    },
+    "Delete"
+  )), /* @__PURE__ */ React.createElement("div", { className: "dt-wrap border border-line rounded max-h-[162px]" }, /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", null, label))), /* @__PURE__ */ React.createElement("tbody", null, rows.map((text, i) => /* @__PURE__ */ React.createElement("tr", { key: i, className: i === selected ? "selected" : void 0 }, /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement(
+    "textarea",
+    {
+      rows: 1,
+      spellCheck: false,
+      disabled,
+      "aria-label": `${label} ${i + 1}`,
+      value: text,
+      onFocus: () => setSelected(i),
+      onChange: (e) => change(rows.map((entry, index) => index === i ? e.target.value : entry))
+    }
+  ))))))));
 }
 function useRerender() {
   const [, force] = React.useReducer((x) => x + 1, 0);
@@ -124,8 +171,14 @@ function ScriptPathEditor({ element, onChange }) {
     )
   );
 }
-function emptyIteratorProperties() {
-  return { target: "", indexVariable: "i", prefixSubstitutions: "", children: "" };
+function emptyIteratorProperties(newFilter = false) {
+  return {
+    target: "",
+    indexVariable: "i",
+    prefixSubstitutions: "",
+    children: "",
+    ...newFilter ? { intersectIterations: false, breakEarly: true } : {}
+  };
 }
 function makeIteratorEditor(isRule) {
   const type = isRule ? "com.mirth.connect.model.IteratorRule" : "com.mirth.connect.model.IteratorStep";
@@ -170,18 +223,17 @@ function makeIteratorEditor(isRule) {
       Field,
       {
         label: "Prefix Substitutions",
-        hint: "One prefix per line \u2014 when dragging values into children, the index variable (e.g. [i]) is injected after these prefixes"
+        hint: "Dragging a field into a child inserts the index variable after a matching prefix."
       },
       /* @__PURE__ */ React.createElement(
-        "textarea",
+        ExpressionTable,
         {
-          rows: 3,
-          placeholder: "msg['OBX']",
-          value: stringListToLines(props.prefixSubstitutions).join("\n"),
-          onChange: (e) => {
-            props.prefixSubstitutions = linesToStringList(e.target.value);
+          label: "Prefix",
+          value: props.prefixSubstitutions,
+          keep: (prefix) => !isJavaBlank(prefix),
+          onChange: (value) => {
+            props.prefixSubstitutions = value;
             onChange();
-            force();
           }
         }
       )
@@ -194,7 +246,7 @@ function makeIteratorEditor(isRule) {
       name: "",
       enabled: true,
       ...isRule ? { operator: "AND" } : null,
-      properties: emptyIteratorProperties()
+      properties: emptyIteratorProperties(isRule)
     }),
     validate: (el) => {
       const p = el.properties || {};
@@ -364,15 +416,12 @@ function XsltEditor({ element, onChange }) {
 var dsfUid = 0;
 function DestinationSetFilterEditor({ element, onChange, destinations }) {
   const force = useRerender();
-  const [selValue, setSelValue] = React.useState(-1);
   const uid = React.useMemo(() => ++dsfUid, []);
   const dests = Array.isArray(destinations) ? destinations : [];
   const behavior = element.behavior || "REMOVE";
   const condition = element.condition || "EXISTS";
   const checked = checkedIdSet(element.metaDataIds);
-  const values = stringListToLines(element.values);
   const listDisabled = behavior === "REMOVE_ALL";
-  const valuesEnabled = CONDITION_USES_VALUES.has(condition);
   const setChecked = (next) => {
     element.metaDataIds = idSetToMetaData(next, dests);
     onChange();
@@ -386,27 +435,6 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
   };
   const selectAll = () => setChecked(new Set(dests.map((d) => String(d.metaDataId))));
   const deselectAll = () => setChecked(/* @__PURE__ */ new Set());
-  const setValues = (arr) => {
-    element.values = stringArrayToList(arr);
-    onChange();
-    force();
-  };
-  const newValue = () => {
-    setValues([...values, ""]);
-    setSelValue(values.length);
-  };
-  const editValue = (i, v) => {
-    const next = values.slice();
-    next[i] = v;
-    setValues(next);
-  };
-  const deleteSelected = () => {
-    if (selValue < 0 || selValue >= values.length) return;
-    const next = values.slice();
-    next.splice(selValue, 1);
-    setValues(next);
-    setSelValue(next.length ? Math.min(selValue, next.length - 1) : -1);
-  };
   return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: "Behavior" }, /* @__PURE__ */ React.createElement(
     Select,
     {
@@ -460,39 +488,17 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
         force();
       }
     }
-  ), opt.label))))), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Values" }, /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-1.5" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", disabled: !valuesEnabled, onClick: newValue }, "New"), /* @__PURE__ */ React.createElement(
-    "button",
+  ), opt.label))))), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Values" }, /* @__PURE__ */ React.createElement(
+    ExpressionTable,
     {
-      type: "button",
-      className: "btn btn-sm btn-danger",
-      disabled: !valuesEnabled || selValue < 0 || selValue >= values.length,
-      onClick: deleteSelected
-    },
-    "Delete"
-  )), /* @__PURE__ */ React.createElement(
-    "div",
-    {
-      className: "dt-wrap border border-line rounded max-h-[162px]",
-      style: !valuesEnabled ? { opacity: 0.5, pointerEvents: "none" } : void 0
-    },
-    /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", null, "Value"))), /* @__PURE__ */ React.createElement("tbody", null, values.length ? values.map((v, i) => /* @__PURE__ */ React.createElement(
-      "tr",
-      {
-        key: i,
-        className: selValue === i ? "selected" : void 0,
-        onClick: () => setSelValue(i)
-      },
-      /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement(
-        "input",
-        {
-          type: "text",
-          value: v,
-          disabled: !valuesEnabled,
-          onFocus: () => setSelValue(i),
-          onChange: (e) => editValue(i, e.target.value)
-        }
-      ))
-    )) : /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "No values \u2014 use New")))))
+      label: "Value",
+      value: element.values,
+      condition,
+      onChange: (value) => {
+        element.values = value;
+        onChange();
+      }
+    }
   ))));
 }
 function RuleBuilderEditor({ element, onChange }) {
@@ -521,16 +527,14 @@ function RuleBuilderEditor({ element, onChange }) {
       }
     }
   )), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Values" }, /* @__PURE__ */ React.createElement(
-    "textarea",
+    ExpressionTable,
     {
-      rows: 4,
-      placeholder: "One value per line",
-      title: "Only used by Equals / Not Equal / Contains / Not Contain",
-      value: stringListToLines(element.values).join("\n"),
-      onChange: (e) => {
-        element.values = linesToStringList(e.target.value);
+      label: "Value",
+      value: element.values,
+      condition: element.condition || "EXISTS",
+      onChange: (value) => {
+        element.values = value;
         onChange();
-        force();
       }
     }
   ))));

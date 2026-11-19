@@ -31,9 +31,10 @@
 
 import { platform } from '@oie/web-shell';
 import type { Platform } from '@oie/web-shell';
+import { isJavaBlank } from '/core/oie.js';
 import { replacementPairs, replacementsToWire } from '/core/step-replacements.js';
 import type { Replacement } from '/core/step-replacements.js';
-const React = platform.React;
+const React: typeof import('react') = platform.React;
 
 const SCOPES = [
     { value: 'CHANNEL', label: 'Channel Map' },
@@ -76,16 +77,13 @@ const isBlank = (v: any) => v == null || String(v).trim() === '';
  * List<Integer> round-trips as { int: [...] }.
  */
 
-function stringListToLines(value: any) {
-    if (!value || typeof value !== 'object') return [];
-    const list = value.string;
-    if (list === null || list === undefined) return [];
-    return (Array.isArray(list) ? list : [list]).map(v => String(v ?? ''));
-}
+type WireStrings = '' | { string: string[] };
 
-function linesToStringList(text: any) {
-    const lines = String(text || '').split('\n').map(s => s.trim()).filter(Boolean);
-    return lines.length ? { string: lines } : '';
+function stringListValues(value: unknown): string[] {
+    if (!value || typeof value !== 'object') return [];
+    const list = Array.isArray(value) ? value : 'string' in value ? value.string : null;
+    if (list == null) return [];
+    return (Array.isArray(list) ? list : [list]).map(item => String(item ?? ''));
 }
 
 /* DestinationSetFilter metaDataIds <-> the set of checked destination ids.
@@ -104,13 +102,6 @@ function idSetToMetaData(set: any, destinations: any) {
     // Preserve any checked ids that aren't in the current destination list.
     for (const id of set) if (!ordered.includes(id)) ordered.push(id);
     return ordered.length ? { int: ordered } : '';
-}
-
-/* DestinationSetFilter values <-> an array of strings (List<String>). Unlike
-   linesToStringList this does NOT drop blanks — the values table keeps empty
-   rows the user is still typing into; '' stands in for an empty list. */
-function stringArrayToList(arr: any) {
-    return arr.length ? { string: arr.map((s: any) => String(s ?? '')) } : '';
 }
 
 /* ---- JSX form helpers --------------------------------------------------------
@@ -139,6 +130,51 @@ function Select({ options, value, onChange }: any) {
             })}
         </select>
     );
+}
+
+// One Swing table cell is one expression. A computed XML key or a comparison
+// can contain newlines of its own, including when the iterator wizard prints it.
+function ExpressionTable({ label, value, condition, keep = Boolean, onChange }: {
+    label: string; value: unknown; condition?: string;
+    keep?: (text: string) => boolean; onChange: (value: WireStrings) => void;
+}) {
+    const [rows, setRows] = React.useState(() => stringListValues(value));
+    const [selected, setSelected] = React.useState(-1);
+    const disabled = condition !== undefined && !CONDITION_USES_VALUES.has(condition);
+    React.useEffect(() => { setSelected(-1); }, [condition]);
+    const change = (next: string[]) => {
+        setRows(next);
+        const saved = next.filter(keep);
+        onChange(saved.length ? { string: saved } : '');
+    };
+    const add = () => {
+        setSelected(rows.length);
+        change([...rows, '']);
+    };
+    const remove = () => {
+        change(rows.filter((_, i) => i !== selected));
+        setSelected(Math.min(selected, rows.length - 2));
+    };
+    return <>
+        <div className="flex gap-2 mb-1.5">
+            <button type="button" className="btn btn-sm" disabled={disabled}
+                aria-label={`New ${label.toLowerCase()}`} onClick={add}>New</button>
+            <button type="button" className="btn btn-sm btn-danger" disabled={disabled || selected < 0}
+                aria-label={`Delete ${label.toLowerCase()}`} onClick={remove}>Delete</button>
+        </div>
+        <div className="dt-wrap border border-line rounded max-h-[162px]">
+            <table className="dt">
+                <thead><tr><th>{label}</th></tr></thead>
+                <tbody>{rows.map((text, i) => (
+                    <tr key={i} className={i === selected ? 'selected' : undefined}>
+                        <td><textarea rows={1} spellCheck={false} disabled={disabled}
+                            aria-label={`${label} ${i + 1}`} value={text} onFocus={() => setSelected(i)}
+                            onChange={e => change(rows.map((entry, index) => index === i ? e.target.value : entry))} /></td>
+                    </tr>
+                ))}</tbody>
+            </table>
+        </div>
+    </>;
 }
 
 /* A small force-update hook: the editors mutate the shared `element` object in
@@ -221,11 +257,12 @@ function ScriptPathEditor({ element, onChange }: any) {
  * collection instead of null.
  */
 
-function emptyIteratorProperties() {
-    return { target: '', indexVariable: 'i', prefixSubstitutions: '', children: '' };
+function emptyIteratorProperties(newFilter = false) {
+    return { target: '', indexVariable: 'i', prefixSubstitutions: '', children: '',
+        ...(newFilter ? { intersectIterations: false, breakEarly: true } : {}) };
 }
 
-function makeIteratorEditor(isRule: any) {
+function makeIteratorEditor(isRule: boolean) {
     const type = isRule ? 'com.mirth.connect.model.IteratorRule' : 'com.mirth.connect.model.IteratorStep';
     const childNoun = isRule ? 'rule' : 'step';
 
@@ -260,18 +297,10 @@ function makeIteratorEditor(isRule: any) {
                     <div className="span-2">
                         <Field
                             label="Prefix Substitutions"
-                            hint="One prefix per line — when dragging values into children, the index variable (e.g. [i]) is injected after these prefixes"
+                            hint="Dragging a field into a child inserts the index variable after a matching prefix."
                         >
-                            <textarea
-                                rows={3}
-                                placeholder="msg['OBX']"
-                                value={stringListToLines(props.prefixSubstitutions).join('\n')}
-                                onChange={(e: any) => {
-                                    props.prefixSubstitutions = linesToStringList(e.target.value);
-                                    onChange();
-                                    force();
-                                }}
-                            />
+                            <ExpressionTable label="Prefix" value={props.prefixSubstitutions} keep={prefix => !isJavaBlank(prefix)}
+                                onChange={value => { props.prefixSubstitutions = value; onChange(); }} />
                         </Field>
                     </div>
                 </div>
@@ -292,7 +321,7 @@ function makeIteratorEditor(isRule: any) {
             __type: type,
             name: '', enabled: true,
             ...(isRule ? { operator: 'AND' } : null),
-            properties: emptyIteratorProperties()
+            properties: emptyIteratorProperties(isRule)
         }),
         validate: (el: any) => {
             const p = el.properties || {};
@@ -477,7 +506,6 @@ let dsfUid = 0;
 
 function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
     const force = useRerender();
-    const [selValue, setSelValue] = React.useState(-1);
     // Per-INSTANCE radio-group name: keying on the element class collides when
     // two Destination Set Filter steps are on screen at once (same class), and
     // colliding names let one step's Condition radios uncheck the other's.
@@ -487,10 +515,8 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
     const behavior = element.behavior || 'REMOVE';
     const condition = element.condition || 'EXISTS';
     const checked = checkedIdSet(element.metaDataIds);
-    const values = stringListToLines(element.values);
 
     const listDisabled = behavior === 'REMOVE_ALL';   // REMOVE_ALL takes no ids
-    const valuesEnabled = CONDITION_USES_VALUES.has(condition);
 
     // ---- destination checkbox list ----
     const setChecked = (next: any) => { element.metaDataIds = idSetToMetaData(next, dests); onChange(); force(); };
@@ -501,18 +527,6 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
     };
     const selectAll = () => setChecked(new Set(dests.map(d => String(d.metaDataId))));
     const deselectAll = () => setChecked(new Set());
-
-    // ---- values table ----
-    const setValues = (arr: any) => { element.values = stringArrayToList(arr); onChange(); force(); };
-    const newValue = () => { setValues([...values, '']); setSelValue(values.length); };
-    const editValue = (i: any, v: any) => { const next = values.slice(); next[i] = v; setValues(next); };
-    const deleteSelected = () => {
-        if (selValue < 0 || selValue >= values.length) return;
-        const next = values.slice();
-        next.splice(selValue, 1);
-        setValues(next);
-        setSelValue(next.length ? Math.min(selValue, next.length - 1) : -1);
-    };
 
     return (
         <div className="form-grid">
@@ -596,44 +610,8 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
 
             <div className="span-2 mt-2">
                 <Field label="Values">
-                    <div className="flex gap-2 mb-1.5">
-                        <button type="button" className="btn btn-sm" disabled={!valuesEnabled} onClick={newValue}>New</button>
-                        <button
-                            type="button"
-                            className="btn btn-sm btn-danger"
-                            disabled={!valuesEnabled || selValue < 0 || selValue >= values.length}
-                            onClick={deleteSelected}
-                        >Delete</button>
-                    </div>
-                    <div
-                        className="dt-wrap border border-line rounded max-h-[162px]"
-                        style={!valuesEnabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
-                    >
-                        <table className="dt">
-                            <thead><tr><th>Value</th></tr></thead>
-                            <tbody>
-                                {values.length ? values.map((v: any, i: any) => (
-                                    <tr
-                                        key={i}
-                                        className={selValue === i ? 'selected' : undefined}
-                                        onClick={() => setSelValue(i)}
-                                    >
-                                        <td>
-                                            <input
-                                                type="text"
-                                                value={v}
-                                                disabled={!valuesEnabled}
-                                                onFocus={() => setSelValue(i)}
-                                                onChange={(e: any) => editValue(i, e.target.value)}
-                                            />
-                                        </td>
-                                    </tr>
-                                )) : (
-                                    <tr><td><span className="text-text-faint">No values — use New</span></td></tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                    <ExpressionTable label="Value" value={element.values} condition={condition}
+                        onChange={value => { element.values = value; onChange(); }} />
                 </Field>
             </div>
         </div>
@@ -661,13 +639,8 @@ function RuleBuilderEditor({ element, onChange }: any) {
             </Field>
             <div className="span-2">
                 <Field label="Values">
-                    <textarea
-                        rows={4}
-                        placeholder="One value per line"
-                        title="Only used by Equals / Not Equal / Contains / Not Contain"
-                        value={stringListToLines(element.values).join('\n')}
-                        onChange={(e: any) => { element.values = linesToStringList(e.target.value); onChange(); force(); }}
-                    />
+                    <ExpressionTable label="Value" value={element.values} condition={element.condition || 'EXISTS'}
+                        onChange={value => { element.values = value; onChange(); }} />
                 </Field>
             </div>
         </div>

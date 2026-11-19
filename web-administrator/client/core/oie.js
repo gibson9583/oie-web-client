@@ -9,6 +9,10 @@
  *     object keyed by Java class name: { "com.x.JavaScriptStep": {...}|[...] }
  *   - single-element lists arrive as a bare object instead of an array
  */
+// StringUtils.isBlank follows Java whitespace, excluding non-breaking spaces and the byte-order mark.
+export function isJavaBlank(text) {
+    return text == null || /^[\u0009-\u000d\u001c-\u0020\u1680\u2000-\u2006\u2008-\u200a\u2028\u2029\u205f\u3000]*$/.test(text);
+}
 export function uuid() {
     // randomUUID needs a secure context; plain-HTTP LAN deployments don't have
     // one. getRandomValues is available everywhere we run — only its absence

@@ -50,7 +50,7 @@ import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import { generateElementScript } from '../../core/step-script.js';
 import { childrenOf, isIteratorType, serializeEditorElements, rewriteElementIteratorVariables, normalizeIteratorTarget, getIteratorInfo, iteratorExpressionParts,
-    iteratorWizardPrefixes, validIteratorIndex, preferredIterator, iteratorName, removeNumberLiterals } from './iterator-substitutions.js';
+    iteratorWizardPrefixes, validIteratorIndex, preferredIterator, iteratorName, removeNumberLiterals, rewriteIteratorExpression } from './iterator-substitutions.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { normalizeLineEndings } from '../../core/content-highlight.js';
 import * as router from '../../core/router.js';
@@ -202,9 +202,10 @@ function collectStepVariables(elements: any) {
    (plus text/plain, which the popped-out code view's own drop handlers rely
    on) so we can drop it at the exact cursor position the user releases over —
    Monaco via getTargetAtClientPoint, plain fields via caret. `dragRef` is the
-   per-editor-instance live token (a ref, since the drag outlives renders). */
+   resolver reads the receiving selection at drop, even if the drag outlives a render. */
 
 const ACCESSOR_FLAVOR = 'application/x-oie-accessor';
+type AccessorDragRef = { current: (() => string) | null };
 
 function resolveEditorAt(target: any) {
     if (!target || !(target instanceof Element)) return null;
@@ -226,14 +227,14 @@ function resolveEditorAt(target: any) {
     return null;
 }
 
-function hasAccessorDrag(dragRef: any, e: any) {
+function hasAccessorDrag(dragRef: AccessorDragRef, e: any) {
     if (dragRef.current) return true;
     return !!(e.dataTransfer && Array.from(e.dataTransfer.types || []).includes(ACCESSOR_FLAVOR));
 }
 
 // Allow dropping onto editors/fields anywhere in the view (the tree lives in
 // the side panel; the editors are in the bottom panel — same document).
-function makeAccessorDragOver(dragRef: any) {
+function makeAccessorDragOver(dragRef: AccessorDragRef) {
     return (e: any) => {
         if (!hasAccessorDrag(dragRef, e)) return;
         if (resolveEditorAt(e.target)) {
@@ -243,12 +244,12 @@ function makeAccessorDragOver(dragRef: any) {
     };
 }
 
-function makeAccessorDrop(dragRef: any) {
+function makeAccessorDrop(dragRef: AccessorDragRef) {
     return (e: any) => {
         if (!hasAccessorDrag(dragRef, e)) return;
         const editor = resolveEditorAt(e.target);
         if (!editor) return;
-        const token = dragRef.current ||
+        const token = dragRef.current?.() ||
             (e.dataTransfer && (e.dataTransfer.getData(ACCESSOR_FLAVOR) || e.dataTransfer.getData('text/plain')));
         dragRef.current = null;
         if (!token) return;
@@ -285,11 +286,12 @@ function makeAccessorDrop(dragRef: any) {
 }
 
 // Shared dragstart props for accessor sources (reference rows, tree nodes).
-function accessorDragProps(dragRef: any, token: any) {
+function accessorDragProps(dragRef: AccessorDragRef, getText: () => string) {
     return {
         draggable: true,
         onDragStart: (e: any) => {
-            dragRef.current = token;
+            dragRef.current = getText;
+            const token = getText();
             e.dataTransfer.effectAllowed = 'copy';
             e.dataTransfer.setData('text/plain', token);
             e.dataTransfer.setData(ACCESSOR_FLAVOR, token);
@@ -655,7 +657,7 @@ function GeneratedScriptPane({ kind, element, rev }: any) {
 function ReferenceRow({ dragRef, name, subtitle, dropText, title }: any) {
     return (
         <div className="step-item cursor-grab" title={title || undefined}
-            {...accessorDragProps(dragRef, dropText)}>
+            {...accessorDragProps(dragRef, () => dropText)}>
             <div className="flex-1 min-w-0">
                 <div className="truncate">{name || '(unnamed)'}</div>
                 {subtitle ? <div className="step-type">{subtitle}</div> : null}
@@ -1008,7 +1010,7 @@ function copyAccessor(text: string) {
     navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard'), () => toast('Clipboard unavailable', 'warn'));
 }
 
-function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef, onAddStep }: any) {
+function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef, treeAccessor, onAddStep }: any) {
     const [parse, setParse] = useState<any>({ status: 'idle' });   // idle | parsing | ready | failed | empty
     const [collapsed, setCollapsed] = useState<Set<string>>(NO_KEYS);
     const [filterCollapsed, setFilterCollapsed] = useState<any>({ q: '', keys: NO_KEYS });
@@ -1155,7 +1157,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
         <section className="mt-section" style={{ display: hidden ? 'none' : undefined }} aria-label={regionLabel}>
             <div className="mt-root">
                 <span className="mt-root-label" title={`Drag into a script editor: ${root.accessor}`}
-                    {...accessorDragProps(dragRef, root.accessor)} onContextMenu={rootMenu}>
+                    {...accessorDragProps(dragRef, () => treeAccessor(root.accessor))} onContextMenu={rootMenu}>
                     {root.label !== varName ? root.label : dtLabel}
                 </span>
                 <button type="button" className="icon-btn" title="Expand All" aria-label="Expand all"
@@ -1175,7 +1177,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
                     onSelect={(row: any) => setSelected(row)}
                     onRowContextMenu={(row: any, e: any) => { e.preventDefault(); rowMenu(row, e.clientX, e.clientY); }}
                     rowDraggable={() => true}
-                    onRowDragStart={(row: any, e: any) => accessorDragProps(dragRef, row.source.accessor).onDragStart(e)}
+                    onRowDragStart={(row: any, e: any) => accessorDragProps(dragRef, () => treeAccessor(row.source.accessor)).onDragStart(e)}
                     onRowDragEnd={() => { dragRef.current = null; }}
                     matches={matches}
                     collapsedKeys={openKeys}
@@ -1197,7 +1199,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
     );
 }
 
-function TreesTab({ target, dragRef, onAddStep }: any) {
+function TreesTab({ target, dragRef, treeAccessor, onAddStep }: any) {
     const [side, setSide] = useState('inbound');
     const [query, setQuery] = useState('');
     const [hideEmpty, setHideEmpty] = useState(false);
@@ -1215,9 +1217,9 @@ function TreesTab({ target, dragRef, onAddStep }: any) {
                     onClick={() => setHideEmpty(v => !v)}><Icon name={hideEmpty ? 'eyeOff' : 'eye'} size={14} /></button>
             </div>
             <TreeSection side="inbound" varName="msg" hidden={side !== 'inbound'} query={query} hideEmpty={hideEmpty}
-                target={target} dragRef={dragRef} onAddStep={onAddStep} />
+                target={target} dragRef={dragRef} treeAccessor={treeAccessor} onAddStep={onAddStep} />
             <TreeSection side="outbound" varName="tmp" hidden={side !== 'outbound'} query={query} hideEmpty={hideEmpty}
-                target={target} dragRef={dragRef} onAddStep={onAddStep} />
+                target={target} dragRef={dragRef} treeAccessor={treeAccessor} onAddStep={onAddStep} />
         </div>
     );
 }
@@ -1253,7 +1255,7 @@ function SidePanel({ ctx }: any) {
         body = <ReferenceTab key="ref" dragRef={ctx.dragRef} channelId={ctx.channelId}
             context={scriptContext(ctx.connectorType)} getElements={ctx.getElements} />;
     } else if (label === 'Message Trees') {
-        body = <TreesTab key="trees" target={ctx.target} dragRef={ctx.dragRef} onAddStep={ctx.onAddStep} />;
+        body = <TreesTab key="trees" target={ctx.target} dragRef={ctx.dragRef} treeAccessor={ctx.treeAccessor} onAddStep={ctx.onAddStep} />;
     } else if (label === 'Message Templates') {
         body = <TemplatesTab key="templates" target={ctx.target} version={ctx.version}
             connectorType={ctx.connectorType} channel={ctx.channel} commit={ctx.commit} />;
@@ -1346,7 +1348,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // True only while a step plugin's flushSync mount runs (see StepEditorPanel).
     const settlingRef = useRef(false);
     // Live accessor-drag token (reference rows / tree nodes → editors).
-    const dragRef = useRef<any>(null);
+    const dragRef = useRef<(() => string) | null>(null);
     const rootRef = useRef<any>(null);
     const guardImplRef = useRef<any>(null);
 
@@ -2175,6 +2177,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             channelId: params.channelId,
             target, version, connectorType, channel,
             dragRef,
+            treeAccessor: (text: string) => rewriteIteratorExpression(text, iteratorAncestors(selectedPathRef.current || []), true),
             getElements: () => elementsRef.current,
             commit: () => commitRef.current(),
             onAddStep: (typeId: any, label: any, baseName: any, setup: any) => addTreeStepRef.current(typeId, label, baseName, setup),

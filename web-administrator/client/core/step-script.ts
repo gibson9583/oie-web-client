@@ -12,6 +12,7 @@
  * Dispatch is by element.__type (the Java class name the model carries).
  */
 
+import { elementsToArray } from './oie.js';
 import { replacementPairs } from './step-replacements.js';
 
 /* Scope enum -> map object (MapperStep.Scope.map). */
@@ -158,14 +159,15 @@ function iteratorScript(element: any, getChildren?: (el: any) => any[]): string 
         + iteratorPhase(element, 'post', getChildren);
 }
 
-function iteratorPhase(element: any, phase: 'pre' | 'iteration' | 'post', getChildren?: (el: any) => any[]): string {
+function iteratorPhase(element: any, phase: 'pre' | 'iteration' | 'post', getChildren?: (el: any) => any[], depth = 0): string {
     const props = element.properties || element;
     const target = props.target ?? '';
-    const idx = props.indexVariable || 'i';
-    const kids: any[] = (typeof getChildren === 'function' ? getChildren(element) : (props.children || [])) || [];
+    const idx = props.indexVariable ?? 'i';
+    const kids: any[] = getChildren?.(element) ?? element.__children
+        ?? (Array.isArray(props.children) ? props.children : elementsToArray(props.children));
     const enabled = kids.filter((c: any) => c && c.enabled !== false && c.enabled !== 'false');
     const childScript = (child: any): string | null => {
-        if (ITERATOR_TYPES.has(child.__type)) return iteratorPhase(child, phase, getChildren);
+        if (ITERATOR_TYPES.has(child.__type)) return iteratorPhase(child, phase, getChildren, depth + 1);
         if (phase === 'pre') return iterPre(child);
         if (phase === 'post') return iterPost(child);
         return iterIteration(child) ?? generateElementScript(child, getChildren);
@@ -173,8 +175,20 @@ function iteratorPhase(element: any, phase: 'pre' | 'iteration' | 'post', getChi
     if (phase !== 'iteration') {
         return enabled.map(childScript).filter(script => script !== null).map(script => script + '\n').join('');
     }
-    const body = enabled.map(child => '\n' + (childScript(child) ?? '') + '\n').join('');
-    return `for (var ${idx} = 0; ${idx} < getArrayOrXmlLength(${target}); ${idx}++) {\n${body}\n}\n`;
+    const loop = `for (var ${idx} = 0; ${idx} < getArrayOrXmlLength(${target}); ${idx}++) {\n`;
+    if (element.__type === 'com.mirth.connect.model.IteratorRule') {
+        const flag = `_iterator_flag_${depth}`;
+        const all = String(props.intersectIterations) === 'true';
+        const stop = String(props.breakEarly) === 'true' ? 'break; ' : '';
+        const clauses = enabled.map((rule, i) => {
+            const operator = i === 0 ? '' : rule.operator === 'AND' ? '&&' : '||';
+            return `${operator}\n(function() {\n${childScript(rule) ?? ''}\n}() == true)\n`;
+        }).join('');
+        const predicate = all ? `!(${clauses})` : clauses;
+        const body = clauses && `if (${predicate}) { ${flag} = ${!all}; ${stop}}\n`;
+        return `var ${flag} = ${all};\n${loop}${body}\n}\nreturn ${flag};\n`;
+    }
+    return loop + enabled.map(child => '\n' + (childScript(child) ?? '') + '\n').join('') + '\n}\n';
 }
 
 /* Iterable child pre/iteration/post (Mapper/XSLT declare list accumulators). */

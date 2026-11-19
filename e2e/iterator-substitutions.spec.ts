@@ -166,3 +166,62 @@ for (const scenario of ['sibling', 'nested', 'namespaced sibling']) {
         await expect(page.locator('.step-editor-fill .field:has(label:text-is("Mapping")) input')).toHaveValue(expression);
     });
 }
+
+test('assigning a filter rule creates a short-circuiting Iterator', async ({ page }) => {
+    await page.route('**/vendor/monaco/**', route => route.abort());
+    const rule = { type: RULE, name: 'Observation rule', operator: 'NONE', field: mapping(), condition: 'EXISTS' };
+    const save = await openEditor(page, [rule], 'filter');
+    await row(page, rule.name).locator('td.num').click();
+    await click(page, 'Assign To Iterator');
+    await page.getByRole('dialog', { name: 'Assign To Iterator' }).getByRole('button', { name: 'Use Iterator' }).click();
+    const props = (await save())[FILTER_ITERATOR][0].properties;
+    expect(props).toMatchObject({ target: PREFIX, intersectIterations: false, breakEarly: true });
+    expect(props.children[RULE][0].field).toBe(mapping('i'));
+    await page.reload();
+    await page.locator('.element-list-pane tr[data-path="0"] td.num').click();
+    await page.getByRole('tab', { name: 'Generated Script' }).click();
+    const preview = page.getByRole('tabpanel', { name: 'Generated Script' }).locator('textarea.ce-area');
+    await expect(preview).toHaveValue(/_iterator_flag_0 = true; break;[\s\S]*return _iterator_flag_0;/);
+});
+
+test('editing a second Iterator prefix preserves a multiline computed prefix through assignment', async ({ page }) => {
+    const prefix = "msg.*::[(function() {\n  return 'OBX';\n})()]";
+    const save = await openEditor(page, [iterator('Observations', 'i', [], [prefix]),
+        { ...mapper(), mapping: prefix + '[0].value.toString()' }]);
+    await row(page, 'Observations').locator('td.num').click();
+    await page.getByRole('button', { name: 'New prefix' }).click();
+    await page.getByRole('textbox', { name: 'Prefix 2' }).fill("  tmp['OBX'] ");
+    expect((await save())[ITERATOR][0].properties.prefixSubstitutions.string).toEqual([prefix, "  tmp['OBX'] "]);
+    await page.reload();
+    await expect(page.getByRole('textbox', { name: 'Prefix 1' })).toHaveValue(prefix);
+    await assign(page, 'Observation', 'Observations');
+    expect(children(await save(), 'Observations')[MAPPER][0].mapping).toBe(prefix + '[i].value.toString()');
+});
+
+for (const kind of ['filter', 'transformer']) {
+    test(`editing a second ${kind} comparison preserves the first expression across reload`, async ({ page }) => {
+        const multiline = "(function(){\r\nreturn 'one';\r\n})()";
+        const type = kind === 'filter' ? RULE : 'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep';
+        const save = await openEditor(page, [{ type, name: 'Compare', condition: 'EQUALS', field: mapping(),
+            values: { string: [multiline, "'two'"] } }], kind);
+        await page.getByRole('textbox', { name: 'Value 2' }).fill("'three'");
+        expect((await save())[type][0].values.string).toEqual([multiline, "'three'"]);
+        await page.reload();
+        await expect(page.getByRole('textbox', { name: 'Value 1' })).toHaveValue(multiline.replaceAll('\r\n', '\n'));
+    });
+}
+
+test('dropping a repeated tree field into an existing Mapper uses the receiving Iterator', async ({ page }) => {
+    const save = await openEditor(page, [iterator('Observations', 'i', [mapper()])], 'transformer',
+        '<m><OBX><value>one</value></OBX><OBX><value>two</value></OBX></m>');
+    await row(page, 'Observation').locator('td.num').click();
+    await page.getByRole('tab', { name: 'Message Trees' }).click();
+    const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+    await tree.getByRole('row').filter({ has: page.getByText('OBX[0]', { exact: true }) }).locator('.twisty').click();
+    const field = page.locator('.step-editor-fill .field:has(label:text-is("Mapping")) input');
+    await field.fill('');
+    await tree.getByRole('row').filter({ has: page.getByText('value', { exact: true }) }).dragTo(field);
+    const expression = PREFIX + "[i]['value'].toString()";
+    await expect(field).toHaveValue(expression);
+    expect(children(await save(), 'Observations')[MAPPER][0].mapping).toBe(expression);
+});

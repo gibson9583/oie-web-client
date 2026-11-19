@@ -1,4 +1,5 @@
 import type { OieObject, WireChannel, WireConnector, XStreamElements } from './wire-types.js';
+export declare function isJavaBlank(text: string | null | undefined): boolean;
 /** A polymorphic filter rule / transformer step, tagged with its Java `__type`. */
 export interface Element {
     __type: string;

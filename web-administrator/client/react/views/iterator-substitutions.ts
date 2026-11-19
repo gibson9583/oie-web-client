@@ -3,8 +3,8 @@
  * Only the shipped expression fields participate, never arbitrary script text.
  */
 
-import { isJavaBlank, readExpressionParts } from './iterator-expression.js';
-import { arrayToElements } from '../../core/oie.js';
+import { readExpressionParts } from './iterator-expression.js';
+import { arrayToElements, isJavaBlank } from '../../core/oie.js';
 import { REPLACEMENT_PAIR } from '../../core/step-replacements.js';
 
 type Element = Record<string, any>;
@@ -123,7 +123,7 @@ export function iteratorName(element: Element, target = element.properties?.targ
         : `For each ${target}`;
 }
 
-function rewriteIteratorExpression(expression: any, ancestors: Element[], replace: boolean): any {
+export function rewriteIteratorExpression(expression: any, ancestors: Element[], replace: boolean): any {
     if (typeof expression !== 'string' || isJavaBlank(expression)) return expression;
     const iterators = replace ? ancestors : [...ancestors].reverse();
     for (const iterator of iterators) {

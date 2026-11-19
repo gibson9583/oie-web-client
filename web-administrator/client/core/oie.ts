@@ -11,6 +11,11 @@
 
 import type { OieObject, WireChannel, WireConnector, XStreamElements } from './wire-types.js';
 
+// StringUtils.isBlank follows Java whitespace, excluding non-breaking spaces and the byte-order mark.
+export function isJavaBlank(text: string | null | undefined): boolean {
+    return text == null || /^[\u0009-\u000d\u001c-\u0020\u1680\u2000-\u2006\u2008-\u200a\u2028\u2029\u205f\u3000]*$/.test(text);
+}
+
 /** A polymorphic filter rule / transformer step, tagged with its Java `__type`. */
 export interface Element {
     __type: string;

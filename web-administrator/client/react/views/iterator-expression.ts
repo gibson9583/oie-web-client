@@ -7,6 +7,8 @@
  * This reader never evaluates expressions or resolves user identifiers.
  */
 
+import { isJavaBlank } from '../../core/oie.js';
+
 type SourceComment = { source: string; style: 'block' | 'line' | 'jsdoc' | 'html' };
 type Token = {
     value: string; end: number; line: number; literal?: boolean; lineBreakBefore?: boolean;
@@ -1082,11 +1084,6 @@ function statementSource(statement: Statement, depth = 0): string {
             + statement.catches.map(clause => pad + `catch (${clause.binding}) ` + statementSource(clause.body)).join('')
             + (statement.finalizer ? ' finally ' + statementSource(statement.finalizer, depth) : statement.catches.length ? '' : '\n');
     }
-}
-
-// StringUtils.isBlank follows Java whitespace, excluding non-breaking spaces and the byte-order mark.
-export function isJavaBlank(text: string | null | undefined): boolean {
-    return text == null || /^[\u0009-\u000d\u001c-\u0020\u1680\u2000-\u2006\u2008-\u200a\u2028\u2029\u205f\u3000]*$/.test(text);
 }
 
 /** getExpressionParts falls back to the complete source when the visitor has no parts. */
