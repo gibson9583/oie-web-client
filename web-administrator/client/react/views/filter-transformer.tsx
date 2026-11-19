@@ -122,7 +122,7 @@ const pathEquals = (a: any, b: any) => !!a && !!b && a.length === b.length && a.
 const isAncestorPath = (anc: any, p: any) => anc.length < p.length && anc.every((v: any, i: any) => v === p[i]);
 
 // Flatten the tree to display rows in order, carrying each row's path/depth.
-function flattenRows(list: any, parentPath: any, depth: any, out: any) {
+function flattenRows(list: any[], parentPath: number[] = [], depth = 0, out: { el: any; path: number[]; depth: number }[] = []) {
     list.forEach((el: any, i: any) => {
         const path = [...parentPath, i];
         out.push({ el, path, depth });
@@ -413,6 +413,19 @@ function treeVariableName(path: TreeNamePath | null) {
 
 /* ---- element grid (top pane, classic grid) ------------------------------------ */
 
+// Compare the Iterator panel's settings independently of its grid metadata.
+function matchesIteratorDefaults(value: any, initial: any): boolean {
+    if (Array.isArray(initial)) return Array.isArray(value) && value.length === initial.length
+        && initial.every((item, i) => matchesIteratorDefaults(value[i], item));
+    if (initial && typeof initial === 'object') {
+        return !!value && typeof value === 'object'
+            && Object.keys(value).every(key => key === '@version' || Object.hasOwn(initial, key))
+            && Object.entries(initial).every(([key, item]) => matchesIteratorDefaults(value[key], item));
+    }
+    if (typeof initial === 'boolean') return String(value ?? false) === String(initial);
+    return (value ?? '') === initial;
+}
+
 function typeDefFor(isFilter: any, type: any) {
     return isFilter ? platform.ruleType(type) : platform.stepType(type);
 }
@@ -440,7 +453,7 @@ function GridRow({ el, path, depth, isFilter, selected, typeOptions, onSelect, o
                 <input type="checkbox" checked={el.enabled !== false} onClick={stop}
                     onChange={(e: any) => { el.enabled = e.target.checked; onCommit(); }} />
             </td>
-            <td className="num">{String(idx + 1)}</td>
+            <td className="num">{path.join('-')}</td>
             {isFilter && (
                 <td>
                     {idx === 0 ? '' : (
@@ -505,7 +518,7 @@ function ElementsGrid({ kind, isFilter, elements, selectedPath, typeOptions, can
                 </tr>
             </thead>
             <tbody>
-                {flattenRows(elements, [], 0, []).map(({ el, path, depth }: any) => (
+                {flattenRows(elements).map(({ el, path, depth }: any) => (
                     <GridRow key={path.join('.')} el={el} path={path} depth={depth}
                         isFilter={isFilter} selected={pathEquals(path, selectedPath)}
                         typeOptions={typeOptions}
@@ -1597,15 +1610,12 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         }
     }
 
-    // Convert a step/rule to another type in place, preserving its name, enabled
-    // state and (for filters) boolean operator — like the Swing grid's Type column.
+    // Swing blocks conversion of populated Iterators and confirms loss of configured fields.
     function changeElementType(path: any, newType: any) {
-        const list = listAtPath(elementsRef.current, path);
-        if (!list) return;
-        const idx = path[path.length - 1];
-        const old = list[idx];
+        const old = elementAtPath(elementsRef.current, path);
         if (!old || old.__type === newType || !canEditElements()) return;
-        if (isIteratorType(old.__type) && childrenOf(old).length) {
+        const wasIterator = isIteratorType(old.__type);
+        if (wasIterator && childrenOf(old).length) {
             modal({
                 title: `Change ${kind.noun} Type`,
                 body: h('p', 'Please remove all children before changing an Iterator to a different type.'),
@@ -1613,17 +1623,36 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             });
             return;
         }
-        const registry = isFilter ? platform.ruleTypes() : platform.stepTypes();
-        const def = registry.get(newType);
-        const created = def && def.create ? def.create() : { __type: newType, name: '', enabled: true };
-        created.__type = newType;
-        created.name = old.name ?? '';
-        created.enabled = old.enabled !== false;
-        if (isFilter && old.operator !== undefined) created.operator = old.operator;
-        if (isIteratorType(newType)) created.__children = [];
-        list[idx] = created;
-        setSelected(path);
-        commitRef.current();
+        const nextType = typeDef(newType);
+        if (!nextType) return;
+        const isCurrent = channelSessionActive();
+        const original = JSON.stringify(old);
+        const replace = () => {
+            if (!isCurrent() || !canEditElements() || JSON.stringify(old) !== original) return;
+            const current = pathOf(old, elementsRef.current);
+            if (!current) return;
+            const created = nextType.create?.() ?? { name: '', enabled: true };
+            created.__type = newType;
+            if (!wasIterator) {
+                created.name = old.name || (isIteratorType(newType) ? created.name : '');
+                created.enabled = old.enabled !== false;
+                if (isFilter && old.operator !== undefined) created.operator = old.operator;
+            }
+            if (isIteratorType(newType)) created.__children = [];
+            listAtPath(elementsRef.current, current)[current.at(-1)] = created;
+            setSelected(current);
+            commitRef.current();
+        };
+        const defaults = wasIterator && typeDef(old.__type)?.create?.().properties;
+        if (!wasIterator || (defaults && matchesIteratorDefaults(old.properties, defaults))) {
+            replace();
+        } else {
+            modal({
+                title: `Change ${kind.noun} Type`,
+                body: h('p', `Are you sure you would like to change this ${kind.title.toLowerCase()} ${kind.noun.toLowerCase()} and lose all of the current data?`),
+                buttons: [{ label: 'No' }, { label: 'Yes', primary: true, onClick: replace }]
+            });
+        }
     }
 
     function deleteElement() {
@@ -1634,13 +1663,13 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const remove = () => {
             if (!isCurrent() || !canEditElements()) return;
             const elements = elementsRef.current;
-            const path = pathOf(element, elements);
-            if (!path) return;
-            const list = listAtPath(elements, path);
-            const idx = path[path.length - 1];
-            list.splice(idx, 1);
-            const parent = path.slice(0, -1);
-            setSelected(list.length ? [...parent, Math.min(idx, list.length - 1)] : parent.length ? parent : null);
+            const rows = flattenRows(elements);
+            const index = rows.findIndex(row => row.el === element);
+            if (index < 0) return;
+            const { path } = rows[index];
+            listAtPath(elements, path).splice(path[path.length - 1], 1);
+            const remaining = flattenRows(elements);
+            setSelected(remaining[Math.min(index, remaining.length - 1)]?.path ?? null);
             commitRef.current();
         };
         if (isIteratorType(element.__type) && childrenOf(element).length) {
@@ -1759,7 +1788,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     function elementError(el: any, message: any) {
         const containerWord = isFilter ? 'filter' : 'transformer';
         const responsePrefix = kindName === 'response' ? 'response ' : '';
-        const seq = el.sequenceNumber != null ? el.sequenceNumber : '';
+        const seq = pathOf(el, elementsRef.current)?.join('-') ?? '';
         return `Error in connector "${connector.name}" at `
             + `${responsePrefix}${containerWord} ${kind.noun.toLowerCase()} ${seq} `
             + `("${elementName(el)}"):\n${message}`;
@@ -2330,7 +2359,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                                 node: <StepEditorPanel kind={kind} isFilter={isFilter}
                                     element={selectedElement}
                                     contextRevision={elementContextRevision}
-                                    headerIndex={selectedPath ? selectedPath[selectedPath.length - 1] + 1 : 0}
+                                    headerIndex={selectedPath?.join('-')}
                                     settlingRef={settlingRef}
                                     onChange={() => commitRef.current()}
                                     onReplaceElement={(parsed: any) => {

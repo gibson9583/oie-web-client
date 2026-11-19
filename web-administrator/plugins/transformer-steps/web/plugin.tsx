@@ -340,7 +340,7 @@ function makeIteratorEditor(isRule: boolean) {
         label: 'Iterator',
         create: () => ({
             __type: type,
-            name: '', enabled: true,
+            name: iteratorName({ __type: type }, '...'), enabled: true,
             ...(isRule ? { operator: 'AND' } : null),
             properties: emptyIteratorProperties(isRule)
         }),

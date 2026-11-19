@@ -209,7 +209,50 @@ for (const kind of ['filter', 'transformer']) {
         expect(elements[type]).toBeUndefined();
         expect(elements[leaf.type].map((el: Element) => el.name)).toEqual(['Sibling']);
     });
+    test(`changing a configured empty ${kind} Iterator can be cancelled before any settings are lost`, async ({ page }) => {
+        const filter = kind === 'filter';
+        const type = filter ? FILTER_ITERATOR : ITERATOR;
+        const next = filter ? RULE : MAPPER;
+        const source = { ...iterator('Configured', 'j', [], [PREFIX], type), enabled: false };
+        const save = await openEditor(page, [source], kind);
+        const select = page.locator('tr[data-path="0"] td').last().getByRole('combobox');
+        const dialog = page.getByRole('dialog', { name: `Change ${filter ? 'Rule' : 'Step'} Type` });
+        await select.selectOption(next);
+        await expect(dialog).toContainText('lose all of the current data');
+        await dialog.getByRole('button', { name: 'No', exact: true }).click();
+        await expect(select).toHaveValue(type);
+        await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toBeHidden();
+        await select.selectOption(next);
+        await dialog.getByRole('button', { name: 'Yes', exact: true }).click();
+        const saved = await save();
+        expect(saved[type]).toBeUndefined();
+        expect(saved[next][0]).toMatchObject({ name: '', enabled: true });
+        await select.selectOption(type);
+        await expect(dialog).toHaveCount(0);
+        await expect(select).toHaveValue(type);
+        await expect(page.locator('tr[data-path="0"] .grid-name')).toHaveValue(filter
+            ? 'Accept message if at least one of the iterations returns true for each ...' : 'For each ...');
+    });
+
 }
+
+test('deleting the last child selects the following visible step', async ({ page }) => {
+    const last = { ...mapper(), name: 'Last child' };
+    await openEditor(page, [iterator('Parent', 'i', [last]), { ...mapper(), name: 'Next step' }]);
+    await row(page, last.name).locator('td.num').click();
+    await click(page, 'Delete Step');
+    await expect(row(page, 'Next step')).toHaveClass(/selected/);
+    await expect(row(page, 'Parent')).toBeVisible();
+});
+
+test('a moved rule reports its current Swing sequence number in the grid and validation error', async ({ page }) => {
+    const rule = { type: RULE, name: 'Incomplete', condition: 'EXISTS', field: '', operator: 'NONE' };
+    await openEditor(page, [rule, iterator('Parent', 'i', [], [PREFIX], FILTER_ITERATOR)], 'filter');
+    await assign(page, rule.name, 'Parent');
+    await expect(row(page, rule.name).locator('td.num')).toHaveText('0-0');
+    await click(page, 'Validate Rule');
+    await expect(page.getByRole('dialog')).toContainText('filter rule 0-0 ("Incomplete")');
+});
 
 test('a backtick-quoted field offers the repeating segment and saves the chosen index', async ({ page }) => {
     const observation = { ...mapper(), mapping: PREFIX + '[1][`value`].toString()' };
