@@ -2064,7 +2064,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 const indent = depth ? '\u00a0'.repeat(4 + (depth - 1) * 8) + '— ' : '';
                 return h('option', { value: String(i) }, indent + (it.name || `Iterator ${i + 1}`));
             })) as HTMLSelectElement;
-        const preferred = parent || preferredIterator(wizardTarget, elements, sourcePath ? el : undefined);
+        const preferred = parent || preferredIterator(wizardTarget, elements, sourcePath ? el : undefined, el.__type === MAPPER_TYPE);
         const preferredIndex = targets.indexOf(preferred);
         if (preferredIndex >= 0) choice.value = String(preferredIndex);
         else if (!targetPrefixes.choices.length && targets.length) choice.value = '0';

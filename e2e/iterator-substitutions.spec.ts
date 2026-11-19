@@ -125,12 +125,30 @@ test('reserved words and generated Mapper variables cannot replace an Iterator i
         await expect(index).toHaveAttribute('aria-invalid', 'true');
         await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toHaveCount(0);
     }
+    const enabled = row(page, 'Observation').getByRole('checkbox');
+    await enabled.uncheck();
+    for (const rejected of ['mapping', '_observations']) {
+        await index.fill(rejected);
+        await index.press('Enter');
+        await expect(index).toHaveAttribute('aria-invalid', 'true');
+        await expect(page.getByText(/Review generated variables/)).toBeVisible();
+    }
     await index.fill('positions');
     await index.press('Enter');
     await expect(index).toHaveAttribute('aria-invalid', 'false');
     const stored = (await save())[ITERATOR][0].properties;
     expect(stored.indexVariable).toBe('positions');
-    expect(stored.children[MAPPER][0].mapping).toBe(PREFIX + '[positions].value.toString()');
+    expect(stored.children[MAPPER][0]).toMatchObject({ enabled: false, mapping: PREFIX + '[positions].value.toString()' });
+
+    await page.reload();
+    await enabled.check();
+    await expect(index).toHaveValue('positions');
+    await index.fill('i');
+    await index.press('Enter');
+    await expect(index).toHaveAttribute('aria-invalid', 'false');
+    const restored = (await save())[ITERATOR][0].properties;
+    expect(restored.indexVariable).toBe('i');
+    expect(restored.children[MAPPER][0]).toMatchObject({ enabled: true, mapping: expression });
 });
 
 test('assign, reload and detach a Mapper with defaults and replacements', async ({ page }) => {
@@ -283,6 +301,25 @@ for (const { template, label, selector } of [
         expect((await save())[MAPPER][0].mapping).toBe(expression(''));
     });
 }
+
+test('mapping a repeated leaf under a qualified parent uses the migrated Iterator index', async ({ page }) => {
+    const prefix = "msg.*::['group'].*::['value']";
+    const template = '<m xmlns:v="urn:v"><v:group><v:value>one</v:value><v:value>two</v:value></v:group></m>';
+    const save = await openEditor(page, [iterator('Values', 'i', [], [prefix])], 'transformer', template);
+    await row(page, 'Values').locator('td.num').click();
+    await page.getByRole('tab', { name: 'Message Trees' }).click();
+    const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+    await tree.getByRole('row').filter({ has: page.getByText('v:group', { exact: true }) }).locator('.twisty').click();
+    await tree.getByRole('row').filter({ has: page.getByText('v:value[1]', { exact: true }) }).click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
+    await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
+    const mapped = children(await save(), 'Values')[MAPPER][0];
+    expect(mapped.mapping).toContain(prefix + '[i]');
+    expect(mapped.mapping).not.toContain('[1]');
+    await page.reload();
+    await row(page, mapped.name).locator('td.num').click();
+    await expect(page.locator('.step-editor-fill .field:has(label:text-is("Mapping")) input')).toHaveValue(mapped.mapping);
+});
 
 test('tree-created Mappers keep separate map keys for identically named leaves', async ({ page }) => {
     const save = await openEditor(page, [], 'transformer', '<m><sending><id>A</id></sending><receiving><id>B</id></receiving></m>');
@@ -568,4 +605,63 @@ test('an ambiguous prefix returned by 4.6.0 never matches unrelated Mapper field
     await page.reload();
     await row(page, step.name).locator('td.num').click();
     await expect(page.locator('.step-editor-fill .field:has(label:text-is("Default Value")) input')).toHaveValue(step.defaultValue);
+});
+
+test('a standalone namespaced Mapper binds to a Swing wildcard Iterator after save and reload', async ({ page }) => {
+    const prefix = "msg.*::['OBX']";
+    const observation = "[new QName('urn:observations', 'OBX')]";
+    const value = "[new QName('urn:observations', 'value')]";
+    const standalone = `msg${observation}[1]${value}.toString()`;
+    const bound = (index: string) => `(<r>{${prefix}${index}}</r>)${observation}${value}.toString()`;
+    const authored = `${standalone} + ' supplemental'`;
+    const xml = '<message xmlns:v="urn:observations" xmlns:w="urn:other">'
+        + '<v:OBX><v:value>one</v:value></v:OBX><w:OBX><w:value>other</w:value></w:OBX>'
+        + '<v:OBX><v:value>two</v:value></v:OBX></message>';
+    const sibling = { ...mapper(), name: 'Unrelated' };
+    const save = await openEditor(page, [sibling, iterator('Original', 'i', [], [prefix]), iterator('Destination', 'j', [], [prefix])], 'transformer', xml);
+    await page.getByRole('tab', { name: 'Message Trees' }).click();
+    const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+    await tree.getByRole('row').filter({ has: page.getByText('v:OBX[1]', { exact: true }) }).locator('.twisty').click();
+    await tree.getByRole('row').filter({ has: page.getByText('v:value', { exact: true }) }).click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
+    await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No' }).click();
+    const field = (name: string) => page.locator(`.step-editor-fill .field:has(label:text-is("${name}")) input`);
+    await field('Default Value').fill(authored);
+    const saved = (await save())[MAPPER].find((el: Element) => el.name !== sibling.name);
+    expect(saved).toMatchObject({ mapping: standalone, defaultValue: authored });
+
+    await page.reload();
+    await row(page, saved.name).locator('td.num').click();
+    await expect(field('Mapping')).toHaveValue(standalone);
+    await click(page, 'Assign To Iterator');
+    const dialog = page.getByRole('dialog', { name: 'Assign To Iterator' });
+    await expect(dialog.getByLabel('Iterator', { exact: true }).locator('option:checked')).toHaveText('Original');
+    await dialog.getByRole('button', { name: 'Use Iterator' }).click();
+    expect(children(await save(), 'Original')[MAPPER][0]).toMatchObject({ mapping: bound('[i]'), defaultValue: authored });
+
+    await page.reload();
+    await assign(page, saved.name, 'Destination');
+    const reassigned = await save();
+    expect(children(reassigned, 'Original')).toBe('');
+    expect(children(reassigned, 'Destination')[MAPPER][0]).toMatchObject({ mapping: bound('[j]'), defaultValue: authored });
+    await click(page, 'Remove From Iterator');
+    const rootMapping = (elements: any) => elements[MAPPER].find((el: Element) => el.name === saved.name);
+    expect(rootMapping(await save())).toMatchObject({ mapping: bound(''), defaultValue: authored });
+
+    await assign(page, saved.name, 'Original');
+    expect(children(await save(), 'Original')[MAPPER][0].mapping).toBe(bound('[i]'));
+    await row(page, saved.name).locator('td.num').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Move Step Down' }).click();
+    await page.getByRole('dialog', { name: 'Move Step Down' }).getByRole('button', { name: 'OK' }).click();
+    expect(rootMapping(await save())).toMatchObject({ mapping: bound(''), defaultValue: authored });
+});
+
+test('assigning a Message Builder preserves its namespaced writable target', async ({ page }) => {
+    const prefix = "msg.*::['OBX']";
+    const target = "msg[new QName('urn:observations', 'OBX')][1][new QName('urn:observations', 'value')]";
+    const step = { type: BUILDER, name: 'Write observation', messageSegment: target, mapping: '', defaultValue: '', replacements: '' };
+    const parent = iterator('Observations', 'i', [], [prefix]);
+    const save = await openEditor(page, [step, parent]);
+    await assign(page, step.name, parent.name);
+    expect(children(await save(), parent.name)[BUILDER][0].messageSegment).toBe(target);
 });
