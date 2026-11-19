@@ -54,6 +54,7 @@ import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import * as router from '../../core/router.js';
+import { resolveMessageUrlCriteria } from '../../core/message-navigation.js';
 import { DateTimeField } from '../date-time-field.jsx';
 import { on, scopedKey } from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
@@ -2142,24 +2143,28 @@ export function MessagesView({ params, query }: any) {
     const metaDataLoadRef = useRef<Promise<boolean> | null>(null);
     const channelNameRef = useRef(channelId);
 
-    // Staged advanced criteria (the dialog stages; Search runs). Deep-link from
-    // the dashboard (double-click a connector row): pre-filter the search to
-    // that single connector by its metaDataId.
+    // Staged advanced criteria (the dialog stages; Search runs). Deep-links can
+    // pre-fill both the main search bar (single metaDataId, status, dates, text)
+    // and scalar/boolean Advanced fields.
+    const initialCriteriaRef = useRef<any>(null);
+    if (!initialCriteriaRef.current) {
+        const rawQuery = typeof location !== 'undefined' && location.search ? location.search : query;
+        initialCriteriaRef.current = resolveMessageUrlCriteria(rawQuery, { hasTargetMessageId: query.messageId != null });
+    }
+    const initialCriteria = initialCriteriaRef.current;
+
     const advRef = useRef<any>(null);
     if (!advRef.current) {
-        advRef.current = defaultAdvancedCriteria();
-        if (!targetMessageId && query.metaDataId != null && query.metaDataId !== '') {
-            advRef.current.includedMetaDataIds = [Number(query.metaDataId)];
-        }
+        advRef.current = { ...defaultAdvancedCriteria(), ...initialCriteria.advanced };
     }
 
     /* ---- criteria state ---- */
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [statusSel, setStatusSel] = useState(() => new Set());
-    const [textSearch, setTextSearch] = useState('');
-    const [textRegex, setTextRegex] = useState(false);
-    const [connectorVal, setConnectorVal] = useState('');
+    const [startDate, setStartDate] = useState(initialCriteria.startDate);
+    const [endDate, setEndDate] = useState(initialCriteria.endDate);
+    const [statusSel, setStatusSel] = useState(() => new Set(initialCriteria.statuses));
+    const [textSearch, setTextSearch] = useState(initialCriteria.textSearch);
+    const [textRegex, setTextRegex] = useState(initialCriteria.textRegex);
+    const [connectorVal, setConnectorVal] = useState(initialCriteria.connectorVal);
     const [pageSize, setPageSize] = useState(() => String(Number(getPref('messagePageSize')) || PREF_DEFAULTS.messagePageSize));
     const [advOn, setAdvOn] = useState(() => advIsActive(advRef.current));
     const [searchSummary, setSearchSummary] = useState('Current Search: (none — press Search)');
@@ -3338,6 +3343,9 @@ export function MessagesView({ params, query }: any) {
                                     {connectors.map(c => (
                                         <option key={c.metaDataId} value={String(c.metaDataId)}>{`${c.name} (${c.metaDataId})`}</option>
                                     ))}
+                                    {connectorVal !== '' && !connectors.some(c => String(c.metaDataId) === String(connectorVal)) && (
+                                        <option value={connectorVal}>{`Id ${connectorVal}`}</option>
+                                    )}
                                 </select>
                             </Field>
                             <Field label="Page Size">
