@@ -349,13 +349,11 @@ function xmlElementNode(element: Element, accessor: string, suffix: string, desc
         return namespace === defaultNamespace ? `['${escapeKey(child.localName)}']` : qnameKey(namespace, child.localName);
     };
     const counts = new Map<string, number>();
-    const namespaces = new Map<string, string | null>();
+    const wildcardNames = new Set<string>();
     for (const child of childElements) {
         const part = keyPart(child);
         counts.set(part, (counts.get(part) ?? 0) + 1);
-        const namespace = child.namespaceURI ?? '';
-        const previous = namespaces.get(child.localName);
-        namespaces.set(child.localName, previous === undefined || previous === namespace ? namespace : null);
+        if (child.prefix || legacy.wildcardBranch || child.hasAttribute('xmlns')) wildcardNames.add(child.localName);
     }
     const seen = new Map<string, number>();
     for (const child of childElements) {
@@ -365,9 +363,9 @@ function xmlElementNode(element: Element, accessor: string, suffix: string, desc
         const repeated = (counts.get(part) ?? 0) > 1;
         const position = repeated ? `[${index}]` : '';
         const wildcardBranch = legacy.wildcardBranch || child.hasAttribute('xmlns');
-        // Older tree-created Iterators store wildcard prefixes. They are
-        // equivalent here only where one namespace owns the local name.
-        const legacyPart = (child.prefix || wildcardBranch) && namespaces.get(child.localName) !== null
+        // Older tree-created Iterators may collect all namespaces for this
+        // local name. The binding rechecks the selected namespace at runtime.
+        const legacyPart = wildcardNames.has(child.localName)
             ? `.*::['${escapeKey(child.localName)}']` : part;
         const node = xmlElementNode(child, accessor + part + position, suffix, descriptions, defaultNamespace,
             { accessor: legacy.accessor + legacyPart + position, wildcardBranch });
@@ -1996,7 +1994,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             || allIteratorPaths(childrenOf(iterator)).some(childPath =>
                 elementAtPath(childrenOf(iterator), childPath).properties?.indexVariable === index)) return 'Enter an unused JavaScript variable name.';
         if (!renameIteratorIndex(iterator, index)) {
-            return 'Review child expressions and scripts. Update references the editor cannot rename or choose a different index name.';
+            return 'Review generated variables, child expressions, and scripts. Update references the editor cannot rename or choose a different index name.';
         }
         commitRef.current();
         return '';

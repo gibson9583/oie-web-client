@@ -240,6 +240,23 @@ function messageBuilderIteration(el, indices) {
     }
     return script + '}\n' + assignment;
 }
+/** Names an enabled step uses in the enclosing Iterator's JavaScript scope. */
+export function usesGeneratedIteratorIdentifier(el, name) {
+    switch (el.__type || el['@class']) {
+        case 'com.mirth.connect.plugins.mapper.MapperStep':
+            return ['mapping', 'validate', 'Array', 'Lists', SCOPE_MAP[el.scope] || SCOPE_MAP.CHANNEL].includes(name)
+                || name === `_${convertIdentifier(el.variable)}`;
+        case 'com.mirth.connect.plugins.xsltstep.XsltStep':
+            return ['tFactory', 'xsltTemplate', 'transformer', 'sourceVar', 'resultVar', 'Packages', 'Lists', 'channelMap'].includes(name)
+                || name === `_${convertIdentifier(el.resultVariable)}`;
+        case 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep':
+            return ['validate', 'Array', 'createSegment'].includes(name);
+        case 'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep':
+            return name === 'destinationSet';
+        default:
+            return false;
+    }
+}
 /* Iterable child pre/iteration/post (Mapper/XSLT declare list accumulators). */
 function iterPre(el) {
     if (el.__type === 'com.mirth.connect.plugins.mapper.MapperStep')

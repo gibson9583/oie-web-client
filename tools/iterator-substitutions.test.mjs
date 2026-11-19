@@ -98,12 +98,26 @@ test('an unambiguous legacy wildcard ancestor can bind a qualified tree field', 
     assert.equal(bound, `(<r>{${wildcard}[i]}</r>)${suffix}`);
     assert.equal(rewriteIteratorExpression(bound, [loop], false), `(<r>{${wildcard}}</r>)${suffix}`);
     assert.equal(rewriteTreeIteratorExpression(source, exact + "[1].*::['value'].toString()", [loop]), source);
-    assert.equal(rewriteTreeIteratorExpression(exact + '[1].toString()', wildcard + '[1].toString()', [loop]), exact + '[1].toString()');
+});
+
+test('an Iterator over a legacy wildcard leaf reads the selected namespace at each index', () => {
+    const wildcard = "msg.*::['value']";
+    const selector = "[new QName('urn:a', 'value')]";
+    const iterator = { __type: 'com.mirth.connect.model.IteratorStep',
+        properties: { target: wildcard, indexVariable: 'i', prefixSubstitutions: [wildcard] } };
+    const expression = index => `(<r>{${wildcard}${index}}</r>)${selector}.toString()`;
+    const mapping = rewriteTreeIteratorExpression(`msg${selector}[1].toString()`, wildcard + '[1].toString()', [iterator]);
+    const child = { __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping };
+    assert.equal(mapping, expression('[i]'));
+    assert.equal(renameIteratorIndex({ ...iterator, __children: [child] }, 'j'), true);
+    assert.equal(child.mapping, expression('[j]'));
+    assert.equal(rewriteIteratorExpression(child.mapping, [iterator], false), expression(''));
 });
 
 test('iterator names exclude reserved words in the stock Rhino ES6 mode', () => {
-    for (const index of ['await', 'class', 'enum', 'let', 'yield']) assert.equal(isIteratorIndexName(index), false);
-    for (const index of ['i', 'static', 'implements']) assert.equal(isIteratorIndexName(index), true);
+    for (const index of ['await', 'class', 'enum', 'export', 'extends', 'import', 'let', 'super', 'yield', 'ex\u200dport', 'map\u200cping'])
+        assert.equal(isIteratorIndexName(index), false, index);
+    for (const index of ['i', 'static', 'implements']) assert.equal(isIteratorIndexName(index), true, index);
 });
 
 test('renaming an outer index updates nested iterator paths and structured fields', () => {
@@ -124,6 +138,24 @@ test('an Iterator without prefix substitutions can rename a child reference to i
     const parent = { ...iterator, properties: { target: prefix, indexVariable: 'i' }, __children: [child] };
     assert.equal(renameIteratorIndex(parent, 'j'), true);
     assert.equal(child.mapping, prefix + '[j].value.toString()');
+});
+
+test('rename refuses an enabled nested step’s generated variables without changing children', () => {
+    for (const [plugin, fields, indices] of [
+        ['mapper.MapperStep', { variable: 'patient-id', mapping: prefix + '[i].value.toString()' }, ['mapping', '_patientid']],
+        ['xsltstep.XsltStep', { resultVariable: 'xml-output', sourceXml: prefix + '[i]' }, ['sourceVar', '_xmloutput']]
+    ]) {
+        const child = { __type: 'com.mirth.connect.plugins.' + plugin, ...fields };
+        const nested = { ...iterator, properties: { indexVariable: 'j', target: prefix + '[i].items' }, __children: [child] };
+        const parent = { ...iterator, properties: { ...iterator.properties }, __children: [nested] };
+        const original = structuredClone(parent);
+        for (const index of indices) {
+            assert.equal(renameIteratorIndex(parent, index), false, index);
+            assert.deepEqual(parent, original);
+        }
+        assert.equal(renameIteratorIndex(parent, 'e'), true);
+        assert.equal(parent.properties.indexVariable, 'e');
+    }
 });
 
 test('rename refuses unresolved or captured index references without changing children', () => {

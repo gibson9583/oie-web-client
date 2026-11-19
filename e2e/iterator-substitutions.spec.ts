@@ -115,6 +115,24 @@ test('an index edit leaves the original stored mapping when one reference cannot
     expect(stored.children[MAPPER][0].mapping).toBe(expression);
 });
 
+test('reserved words and generated Mapper variables cannot replace an Iterator index', async ({ page }) => {
+    const expression = PREFIX + '[i].value.toString()';
+    const save = await openEditor(page, [iterator('Loop', 'i', [{ ...mapper(), mapping: expression }])]);
+    const index = page.locator('.step-editor-fill .field:has(label:text-is("Index Variable")) input');
+    for (const rejected of ['export', 'import', 'extends', 'super', 'mapping', '_observations']) {
+        await index.fill(rejected);
+        await index.press('Enter');
+        await expect(index).toHaveAttribute('aria-invalid', 'true');
+        await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toHaveCount(0);
+    }
+    await index.fill('positions');
+    await index.press('Enter');
+    await expect(index).toHaveAttribute('aria-invalid', 'false');
+    const stored = (await save())[ITERATOR][0].properties;
+    expect(stored.indexVariable).toBe('positions');
+    expect(stored.children[MAPPER][0].mapping).toBe(PREFIX + '[positions].value.toString()');
+});
+
 test('assign, reload and detach a Mapper with defaults and replacements', async ({ page }) => {
     const observation = mapper();
     observation.defaultValue = mapping('1');
@@ -212,13 +230,12 @@ for (const scenario of ['sibling', 'nested', 'legacy namespaced sibling', 'mixed
         const nested = children(elements, 'Original');
         const mapped = create ? nested[ITERATOR][0].properties.children : children(elements, 'Destination');
         const legacyExpression = (index: string) => `(<r>{${prefix}${index}}</r>)${qualifiedObservation}${value}.toString()`;
-        const expression = mixed ? `msg${qualifiedObservation}[1]${value}.toString()`
-            : ns ? legacyExpression('[j]') : create ? `${prefix}[i]${value}[j].toString()` : `${prefix}[j]${value}.toString()`;
+        const expression = ns ? legacyExpression('[j]') : create ? `${prefix}[i]${value}[j].toString()` : `${prefix}[j]${value}.toString()`;
         expect(mapped[MAPPER][0].mapping).toBe(expression);
         await page.reload();
         await row(page, mapped[MAPPER][0].name).locator('td.num').click();
         await expect(page.locator('.step-editor-fill .field:has(label:text-is("Mapping")) input')).toHaveValue(expression);
-        if (ns && !mixed) {
+        if (ns) {
             await row(page, 'Destination').locator('td.num').click();
             const index = page.locator('.step-editor-fill .field:has(label:text-is("Index Variable")) input');
             await index.fill('k');
@@ -229,6 +246,41 @@ for (const scenario of ['sibling', 'nested', 'legacy namespaced sibling', 'mixed
             await click(page, 'Remove From Iterator');
             expect((await save())[MAPPER][0].mapping).toBe(legacyExpression(''));
         }
+    });
+}
+
+for (const { template, label, selector } of [
+    {
+        template: '<message xmlns:v="urn:values"><v:value>one</v:value><v:value>two</v:value></message>',
+        label: 'v:value[1]', selector: "[new QName('urn:values', 'value')]"
+    },
+    {
+        template: '<message xmlns="urn:values" xmlns:w="urn:other"><value>one</value><w:value>other</w:value><value>two</value></message>',
+        label: 'value[1]', selector: "['value']"
+    }
+]) {
+    test(`a tree-created Mapper binds repeated ${label} to its legacy wildcard Iterator`, async ({ page }) => {
+        const prefix = "msg.*::['value']";
+        const save = await openEditor(page, [iterator('Values', 'i', [], [prefix])], 'transformer', template);
+        await row(page, 'Values').locator('td.num').click();
+        await page.getByRole('tab', { name: 'Message Trees' }).click();
+        const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+        await tree.getByRole('row').filter({ has: page.getByText(label, { exact: true }) }).click({ button: 'right' });
+        await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
+        await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
+
+        const expression = (index: string) => `(<r>{${prefix}${index}}</r>)${selector}.toString()`;
+        const mapped = children(await save(), 'Values')[MAPPER][0];
+        expect(mapped.mapping).toBe(expression('[i]'));
+        await page.reload();
+        await row(page, 'Values').locator('td.num').click();
+        const index = page.locator('.step-editor-fill .field:has(label:text-is("Index Variable")) input');
+        await index.fill('j');
+        await index.press('Enter');
+        expect(children(await save(), 'Values')[MAPPER][0].mapping).toBe(expression('[j]'));
+        await row(page, mapped.name).locator('td.num').click();
+        await click(page, 'Remove From Iterator');
+        expect((await save())[MAPPER][0].mapping).toBe(expression(''));
     });
 }
 

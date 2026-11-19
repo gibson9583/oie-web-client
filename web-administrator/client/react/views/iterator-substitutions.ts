@@ -6,6 +6,7 @@
 import { readMemberBoundaries, referencesIteratorIdentifier } from '../../core/iterator-expression.js';
 import { arrayToElements, isIteratorType, isJavaBlank } from '../../core/oie.js';
 import { REPLACEMENT_PAIR } from '../../core/step-replacements.js';
+import { usesGeneratedIteratorIdentifier } from '../../core/step-script.js';
 
 type Element = Record<string, any>;
 
@@ -113,7 +114,7 @@ function readTreeBinding(expression: string) {
         ? { path: body.slice(0, end), suffix: body.slice(end + treeBindingEnd.length) } : null;
 }
 
-/** A tree can recognize legacy wildcard ancestors that are unambiguous in its template. */
+/** Bind a tree read to a legacy wildcard prefix and recheck the selected namespace. */
 export function rewriteTreeIteratorExpression(expression: string, legacy: string | undefined, ancestors: Element[]): string {
     for (const iterator of ancestors) {
         if (legacy && legacy !== expression) {
@@ -128,8 +129,8 @@ export function rewriteTreeIteratorExpression(expression: string, legacy: string
                     const before = source[boundary - 1]?.end;
                     const after = boundary + (source[boundary + 1]?.numeric ? 1 : 0);
                     // The loop index selects a row from the legacy collection.
-                    // Reapply exactly one qualified selector to that row before reading its field.
-                    if (selected && before !== undefined && source[after + 1]
+                    // Reapply the qualified selector to the selected row, including when it is the leaf.
+                    if (selected && before !== undefined
                         && expression.slice(0, before) === legacy.slice(0, alias[boundary - 1].end)) {
                         const exactSelector = expression.slice(before, selected.end);
                         const suffix = expression.slice(source[after].end);
@@ -285,8 +286,12 @@ export function renameIteratorIndex(element: Element, index: string): boolean {
     const hasScriptReferences = (el: Element): boolean =>
         unsafeReference(el.script, previous) || unsafeReference(el.script, index) || !!el.scriptPath
         || (isIteratorType(elementType(el)) && childrenOf(el).some(hasScriptReferences));
+    const hasGeneratedCollision = (el: Element): boolean => el.enabled !== false && el.enabled !== 'false'
+        && (usesGeneratedIteratorIdentifier(el, index)
+            || (isIteratorType(elementType(el)) && childrenOf(el).some(hasGeneratedCollision)));
     const children = childrenOf(element);
-    let unsafe = unsafeReference(target, previous) || unsafeReference(target, index) || children.some(hasScriptReferences);
+    let unsafe = unsafeReference(target, previous) || unsafeReference(target, index) || children.some(hasScriptReferences)
+        || index === 'getArrayOrXmlLength' || children.some(hasGeneratedCollision);
     if (unsafe) return false;
     // Read from a draft first so a successful edit updates all references together.
     for (const child of children) {
@@ -303,8 +308,9 @@ export function renameIteratorIndex(element: Element, index: string): boolean {
 }
 
 export function isIteratorIndexName(index: string): boolean {
-    if (['await', 'class', 'enum', 'let', 'yield'].includes(index)) return false;
-    if (!/^[$_\p{ID_Start}][$\u200c\u200d\p{ID_Continue}]*$/u.test(index)) return false;
+    if (['await', 'class', 'enum', 'export', 'extends', 'import', 'let', 'super', 'yield'].includes(index)) return false;
+    // Rhino ignores format controls in identifiers, so joiners cannot distinguish two indices.
+    if (/\p{Cf}/u.test(index) || !/^[$_\p{ID_Start}][$\p{ID_Continue}]*$/u.test(index)) return false;
     const parts = readMemberBoundaries(index);
     return parts.length === 1 && parts[0].end === index.length;
 }
