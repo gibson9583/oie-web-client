@@ -23,6 +23,14 @@ const ids      = asList(someXStreamMap, 'string');
   XStream-encoded value the way the Swing client shows it (`{k=v, …}` for a
   map, `[a, b]` for a list, the payload for a scalar).
 
+## Iterator helpers (API 4.11)
+
+Use `isIteratorType(type)` to recognize an Iterator step or rule by its Java
+class name. `iteratorName(element, target?)` formats its Swing display name.
+`isJavaBlank(text)` uses Java whitespace rules for strings and treats null and
+undefined as blank. Plugins using these exports declare `oie.apiMin` of
+`"4.11"`. [Iterator editor contracts](../../web-administrator/PLUGINS.md#api-411-iterator-helpers-and-editors)
+
 ## Channel tags (API 4.8)
 
 The API provides `api.channels.tags(channelId: string): Promise<ChannelTag[]>`

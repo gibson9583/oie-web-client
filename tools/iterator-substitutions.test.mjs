@@ -7,7 +7,7 @@ import { elementsToArray } from '../web-administrator/client/core/oie.js';
 const entry = new URL('../web-administrator/client/react/views/iterator-substitutions.ts', import.meta.url);
 const bundle = await build({ entryPoints: [fileURLToPath(entry)], bundle: true, write: false, platform: 'node', format: 'esm' });
 const { serializeEditorElements, rewriteElementIteratorVariables, relocateElementIteratorVariables, rewriteIteratorExpression,
-    rewriteTreeIteratorExpression, renameIteratorIndex, isIteratorIndexName, iteratorWizardPrefixes, preferredIterator, validIteratorIndex } =
+    treeWritePath, renameIteratorIndex, isIteratorIndexName, iteratorWizardPrefixes, preferredIterator, validIteratorIndex } =
     await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
 
 const prefix = "msg['OBX']";
@@ -87,131 +87,76 @@ test('the wizard retains fixed selectors and treats a call receiver and argument
     }
 });
 
-test('an unambiguous legacy wildcard ancestor can bind a qualified tree field', () => {
-    const exact = "msg[new QName('urn:a', 'OBX')]";
-    const wildcard = "msg.*::['OBX']";
-    const descendant = "[new QName('urn:a', 'value')].toString()";
-    const loop = { properties: { indexVariable: 'i', prefixSubstitutions: [wildcard] } };
-    const source = exact + '[1]' + descendant;
-    const suffix = "[new QName('urn:a', 'OBX')]" + descendant;
-    const bound = rewriteTreeIteratorExpression(source, wildcard + "[1].*::['value'].toString()", [loop]);
-    assert.equal(bound, `(<r>{${wildcard}[i]}</r>)${suffix}`);
-    assert.equal(rewriteIteratorExpression(bound, [loop], false), `(<r>{${wildcard}}</r>)${suffix}`);
-    assert.equal(rewriteTreeIteratorExpression(source, exact + "[1].*::['value'].toString()", [loop]), source);
-});
-
-test('an Iterator over a legacy wildcard leaf reads the selected namespace at each index', () => {
-    const wildcard = "msg.*::['value']";
-    const selector = "[new QName('urn:a', 'value')]";
-    const iterator = { __type: 'com.mirth.connect.model.IteratorStep',
-        properties: { target: wildcard, indexVariable: 'i', prefixSubstitutions: [wildcard] } };
-    const expression = index => `(<r>{${wildcard}${index}}</r>)${selector}.toString()`;
-    const mapping = rewriteTreeIteratorExpression(`msg${selector}[1].toString()`, wildcard + '[1].toString()', [iterator]);
-    const child = { __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping };
-    assert.equal(mapping, expression('[i]'));
-    assert.equal(renameIteratorIndex({ ...iterator, __children: [child] }, 'j'), true);
-    assert.equal(child.mapping, expression('[j]'));
-    assert.equal(rewriteIteratorExpression(child.mapping, [iterator], false), expression(''));
-});
-
-test('nested wildcard bindings check the selected leaf and every widened ancestor', () => {
+test('canonical wildcard Mapper reads round-trip across nested and sibling Iterator scopes', () => {
     const groups = "msg.*::['group']";
-    const branches = ".*::['branch']";
     const values = ".*::['value']";
-    const group = "[new QName('urn:groups', 'group')]";
-    const branch = "[new QName('urn:branches', 'branch')]";
-    const value = "[new QName('urn:leaves', 'value')]";
     const outer = { ...iterator, properties: { indexVariable: 'i', prefixSubstitutions: [groups] } };
-    const innerPrefix = groups + '[i]' + branches + values;
-    const inner = { ...iterator, properties: { indexVariable: 'j', prefixSubstitutions: [innerPrefix] } };
+    const inner = { ...iterator, properties: { indexVariable: 'j', prefixSubstitutions: [groups + '[i]' + values] } };
     outer.__children = [inner];
-    const exact = 'msg' + group + '[0]' + branch + value + '[1].toString()';
-    const legacy = groups + '[0]' + branches + values + '[1].toString()';
-    const mapping = rewriteTreeIteratorExpression(exact, legacy, [outer, inner]);
-    assert.match(mapping, /\[i\]\.\*::\['branch'\]\.\*::\['value'\]\[j\]/);
-    assert.ok(mapping.includes("row.parent().name() == new QName('urn:branches', 'branch')"));
-    assert.ok(mapping.includes("row.parent().parent().name() == new QName('urn:groups', 'group')"));
-    assert.ok(mapping.endsWith(`</r>)${value}.toString()`));
-    assert.equal(preferredIterator(exact, [outer], undefined, true), inner);
-
-    const outerMapping = rewriteTreeIteratorExpression(exact, legacy, [outer]);
-    const moved = { __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping: outerMapping };
-    relocateElementIteratorVariables(moved, [outer], [outer, inner]);
-    assert.equal(moved.mapping, mapping);
-    const qualifiedPrefix = 'msg' + group + '[i]' + branch + value;
-    const qualifiedLoop = { ...inner, properties: { ...inner.properties, prefixSubstitutions: [qualifiedPrefix] } };
-    const movedToQualified = { ...moved, mapping: outerMapping };
-    relocateElementIteratorVariables(movedToQualified, [outer], [outer, qualifiedLoop]);
-    assert.equal(movedToQualified.mapping, qualifiedPrefix + '[j].toString()');
-
-    const child = { __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping };
-    inner.__children = [child];
-    assert.equal(renameIteratorIndex(outer, 'k'), true);
-    assert.equal(child.mapping, mapping.replace('[i]', '[k]'));
-    const destination = { ...inner, properties: { ...inner.properties, indexVariable: 'n' } };
-    relocateElementIteratorVariables(child, [outer, inner], [outer, destination]);
-    assert.equal(child.mapping, mapping.replace('[i]', '[k]').replace('[j]', '[n]'));
-    relocateElementIteratorVariables(child, [outer, destination], []);
-    assert.equal(child.mapping, mapping.replace('[i]', '').replace('[j]', ''));
-
-    const newPrefix = groups + '[k]' + branches;
-    const newScope = { ...inner, properties: { indexVariable: 'l', prefixSubstitutions: [newPrefix] } };
-    const movedToBranch = { ...child, mapping: mapping.replace('[i]', '[k]') };
-    relocateElementIteratorVariables(movedToBranch, [outer, inner], [outer, newScope]);
-    assert.ok(movedToBranch.mapping.includes(newPrefix + '[l]'));
-    assert.ok(movedToBranch.mapping.includes("row.parent().name() == new QName('urn:groups', 'group')"));
-    assert.ok(movedToBranch.mapping.endsWith(`</r>)${branch}${value}.toString()`));
-});
-
-test('a nested wildcard binding retains a fixed ancestor index within its exact namespace', () => {
-    const exact = "msg[new QName('urn:v', 'group')][1][new QName('urn:v', 'value')][1].toString()";
-    const wildcard = "msg.*::['group'][1].*::['value']";
-    const loop = { properties: { indexVariable: 'i', prefixSubstitutions: [wildcard] } };
-    const mapping = rewriteTreeIteratorExpression(exact, undefined, [loop]);
-    assert.ok(mapping.includes(wildcard + '[i]'));
-    assert.ok(mapping.includes("row.parent().parent()[new QName('urn:v', 'group')][1].childIndex() === row.parent().childIndex()"));
-});
-
-test('renaming a guarded Mapper Iterator protects its XML and QName references', () => {
-    const wildcard = "msg.*::['group'].*::['value']";
-    const loop = { ...iterator, properties: { ...iterator.properties, prefixSubstitutions: [wildcard] } };
-    const mapping = rewriteTreeIteratorExpression("msg[new QName('urn:v', 'group')]['value'][1].toString()", undefined, [loop]);
-    loop.__children = [{ __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping }];
-    for (const name of ['XML', 'QName']) {
-        assert.equal(renameIteratorIndex(loop, name), false, name);
-        assert.equal(loop.__children[0].mapping, mapping);
+    for (const suffix of ['.toString()', ".@*::['code'].toString()", ".namespace('v').toString()"]) {
+        const mapping = groups + '[2]' + values + '[1]' + suffix;
+        const child = { __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping };
+        assert.equal(preferredIterator(mapping, [outer]), inner);
+        relocateElementIteratorVariables(child, [], [outer, inner]);
+        assert.equal(child.mapping, groups + '[i]' + values + '[j]' + suffix);
+        inner.__children = [child];
+        assert.equal(renameIteratorIndex(outer, 'n'), true);
+        assert.equal(child.mapping, groups + '[n]' + values + '[j]' + suffix);
+        const sibling = { ...inner, properties: { ...inner.properties, indexVariable: 'k' } };
+        relocateElementIteratorVariables(child, [outer, inner], [outer, sibling]);
+        assert.equal(child.mapping, groups + '[n]' + values + '[k]' + suffix);
+        relocateElementIteratorVariables(child, [outer, sibling], []);
+        assert.equal(child.mapping, groups + values + suffix);
+        assert.equal(renameIteratorIndex(outer, 'i'), true);
     }
-    assert.equal(renameIteratorIndex(loop, 'XMLList'), true);
-    assert.equal(loop.__children[0].mapping, mapping.replace('[i]', '[XMLList]'));
 });
 
-test('saved canonical Mapper reads bind without transient tree metadata', () => {
+test('a tree write under a qualified parent only picks up its configured row index', () => {
+    const groups = "msg.*::['group']";
+    const path = groups + "[1]['value']";
+    const loop = prefix => ({ properties: { indexVariable: 'i', prefixSubstitutions: [prefix] } });
+    assert.equal(treeWritePath(path, [loop(groups)]), groups + "[i]['value']");
+    for (const prefix of ["msg[new QName('urn:v', 'group')]", "msg.v::group", "msg.v::['group']", "msg['group']",
+        "msg [ new QName ( 'urn:v', 'group' ) ]", "msg . v :: group", "msg . v :: [ 'group' ]"]) {
+        assert.equal(treeWritePath(path, [loop(prefix)]), null);
+        const audit = "msg.*::['audit'][1]['status']";
+        assert.equal(treeWritePath(audit, [loop(prefix)]), audit);
+    }
+    for (const prefix of ["tmp[new QName('urn:v', 'group')]", "msg['QName']", "msg['other'].v::group", "msg[key]", "msg.v::[key]"]) {
+        assert.equal(treeWritePath(path, [loop(prefix)]), path);
+    }
+    const single = groups + "['value']";
+    assert.equal(treeWritePath(single, [loop("msg.v::group")]), single);
+});
+
+test('assigning an authored QName read or write only rewrites a configured literal prefix', () => {
     const wildcard = "msg.*::['group']";
+    const exact = "msg[new QName('urn:v', 'group')]";
     const loop = { ...iterator, properties: { indexVariable: 'i', prefixSubstitutions: [wildcard] } };
-    for (const selector of ["[new QName('urn:v', 'group')]", "['group']"]) {
-        for (const suffix of ['.toString()', ".@[new QName('urn:v', 'code')].toString()"]) {
-            const mapping = 'msg' + selector + '[1]' + suffix;
-            const child = { __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping, defaultValue: mapping };
-            relocateElementIteratorVariables(child, [], [loop]);
-            assert.equal(child.mapping, `(<r>{${wildcard}[i]}</r>)${selector}${suffix}`);
-            assert.equal(child.defaultValue, mapping);
-        }
-    }
-    const computed = "msg[new QName('urn:v', 'group')][1][fields[n]].toString()";
-    for (const child of [
-        { __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping: computed },
-        { __type: 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep', mapping: "msg['group'][1].toString()", messageSegment: "msg['group'][1]" }
-    ]) {
-        const original = structuredClone(child);
-        relocateElementIteratorVariables(child, [], [loop]);
-        assert.deepEqual(child, original);
-    }
+    const child = { __type: 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep',
+        mapping: exact + '[1].toString()', messageSegment: exact + '[1]' };
+    const before = structuredClone(child);
+    relocateElementIteratorVariables(child, [], [loop]);
+    assert.deepEqual(child, before);
+    assert.equal(preferredIterator(child.mapping, [loop]), null);
+    loop.properties.prefixSubstitutions = [exact];
+    relocateElementIteratorVariables(child, [], [loop]);
+    assert.equal(child.mapping, exact + '[i].toString()');
+    assert.equal(child.messageSegment, exact + '[i]');
 });
 
 test('iterator names exclude reserved words in the stock Rhino ES6 mode', () => {
     for (const index of ['await', 'class', 'enum', 'export', 'extends', 'import', 'let', 'super', 'yield', 'ex\u200dport', 'map\u200cping'])
         assert.equal(isIteratorIndexName(index), false, index);
     for (const index of ['i', 'static', 'implements']) assert.equal(isIteratorIndexName(index), true, index);
+});
+
+test('a filter Iterator index cannot shadow its generated result flag after a move', () => {
+    const rule = { ...iterator, __type: 'com.mirth.connect.model.IteratorRule', properties: { ...iterator.properties } };
+    for (const index of ['_iterator_flag_0', '_iterator_flag_1']) {
+        assert.equal(renameIteratorIndex(rule, index), false);
+        assert.equal(rule.properties.indexVariable, 'i');
+    }
 });
 
 test('renaming an outer index updates nested iterator paths and structured fields', () => {

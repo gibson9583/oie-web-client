@@ -364,20 +364,23 @@ test('text on an attributed XML root stays visible and searchable', async ({ pag
     await expect(stepField(page, 'Mapping')).toHaveValue('msg.toString()');
 });
 
-test('XML tree accessors distinguish namespaces, their aliases and namespaced attributes', async ({ page }) => {
+test('XML tree uses Swing accessors and indexes each wildcard in document order', async ({ page }) => {
     const xml = '<message xmlns:a="urn:a" xmlns:b="urn:b" xmlns:same="urn:a">'
         + '<a:id>A1</a:id><b:id>B</b:id><same:id>A2</same:id>'
-        + '<group xmlns="urn:group" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="numeric">'
+        + '<group xmlns="urn:group" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="numeric" b:type="other-attribute">'
         + '<type>other</type><plain xmlns="">empty namespace</plain></group></message>';
     await openTrees(page, { dataType: 'XML', template: xml, serialize: () => xml });
     await row(page, 'group').locator('.twisty').click();
     const expected = [
-        ['a:id[0]', "msg[new QName('urn:a', 'id')][0].toString()"],
-        ['b:id', "msg[new QName('urn:b', 'id')].toString()"],
-        ['same:id[1]', "msg[new QName('urn:a', 'id')][1].toString()"],
-        ['@xsi:type', "msg[new QName('urn:group', 'group')].@[new QName('http://www.w3.org/2001/XMLSchema-instance', 'type')].toString()"],
-        ['type', "msg[new QName('urn:group', 'group')][new QName('urn:group', 'type')].toString()"],
-        ['plain', "msg[new QName('urn:group', 'group')]['plain'].toString()"]
+        ['a:id[0]', "msg.*::['id'][0].toString()"],
+        ['b:id', "msg.*::['id'][1].toString()"],
+        ['same:id[1]', "msg.*::['id'][2].toString()"],
+        ['@xmlns', "msg.*::['group'].namespace('').toString()"],
+        ['@xmlns:xsi', "msg.*::['group'].namespace('xsi').toString()"],
+        ['@b:type', "msg.*::['group'].@*::['type'][0].toString()"],
+        ['@xsi:type', "msg.*::['group'].@*::['type'][1].toString()"],
+        ['type', "msg.*::['group'].*::['type'].toString()"],
+        ['plain', "msg.*::['group'].*::['plain'].toString()"]
     ];
     for (const [field, accessor] of expected) {
         await row(page, field).click();

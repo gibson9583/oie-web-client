@@ -1,4 +1,5 @@
 // plugins/transformer-steps/web/plugin.tsx
+import { ElementType } from "/core/element-types.js";
 import { platform } from "@oie/web-shell";
 import { isJavaBlank, iteratorName } from "/core/oie.js";
 import { replacementPairs, replacementsToWire } from "/core/step-replacements.js";
@@ -191,7 +192,7 @@ function emptyIteratorProperties(newFilter = false) {
   };
 }
 function makeIteratorEditor(isRule) {
-  const type = isRule ? "com.mirth.connect.model.IteratorRule" : "com.mirth.connect.model.IteratorStep";
+  const type = isRule ? ElementType.IteratorRule : ElementType.IteratorStep;
   const childNoun = isRule ? "rule" : "step";
   function IteratorEditor({ element, onChange, onRenameIteratorIndex }) {
     const force = useRerender();
@@ -400,6 +401,7 @@ function MessageBuilderEditor({ element, onChange }) {
   return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Message Segment" }, /* @__PURE__ */ React.createElement(
     "input",
     {
+      "data-message-segment": true,
       type: "text",
       placeholder: "tmp['MSH']['MSH.3']['MSH.3.1']",
       value: element.messageSegment ?? "",
@@ -603,21 +605,21 @@ function RuleBuilderEditor({ element, onChange }) {
   ))));
 }
 function register(platform2) {
-  platform2.registerStepType("com.mirth.connect.plugins.javascriptstep.JavaScriptStep", {
+  platform2.registerStepType(ElementType.JavaScriptStep, {
     label: "JavaScript",
     create: () => ({
-      __type: "com.mirth.connect.plugins.javascriptstep.JavaScriptStep",
+      __type: ElementType.JavaScriptStep,
       name: "",
       enabled: true,
       script: "// Write your JavaScript here\n"
     }),
     component: ScriptEditor
   });
-  platform2.registerStepType("com.mirth.connect.plugins.mapper.MapperStep", {
+  platform2.registerStepType(ElementType.Mapper, {
     label: "Mapper",
     nameEditable: false,
     create: () => ({
-      __type: "com.mirth.connect.plugins.mapper.MapperStep",
+      __type: ElementType.Mapper,
       name: "",
       enabled: true,
       variable: "",
@@ -629,10 +631,10 @@ function register(platform2) {
     validate: (el) => isBlank(el.variable) ? "The variable name cannot be blank." : "",
     component: MapperEditor
   });
-  platform2.registerStepType("com.mirth.connect.plugins.messagebuilder.MessageBuilderStep", {
+  platform2.registerStepType(ElementType.MessageBuilder, {
     label: "Message Builder",
     create: () => ({
-      __type: "com.mirth.connect.plugins.messagebuilder.MessageBuilderStep",
+      __type: ElementType.MessageBuilder,
       name: "",
       enabled: true,
       messageSegment: "",
@@ -643,10 +645,10 @@ function register(platform2) {
     validate: (el) => isBlank(el.messageSegment) ? "The message segment value cannot be blank." : "",
     component: MessageBuilderEditor
   });
-  platform2.registerStepType("com.mirth.connect.plugins.xsltstep.XsltStep", {
+  platform2.registerStepType(ElementType.Xslt, {
     label: "XSLT Step",
     create: () => ({
-      __type: "com.mirth.connect.plugins.xsltstep.XsltStep",
+      __type: ElementType.Xslt,
       name: "",
       enabled: true,
       sourceXml: "",
@@ -663,14 +665,14 @@ function register(platform2) {
     },
     component: XsltEditor
   });
-  platform2.registerStepType("com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep", {
+  platform2.registerStepType(ElementType.DestinationSetFilter, {
     label: "Destination Set Filter",
     nameEditable: false,
     // Only available on the source transformer (DestinationSetFilterPlugin
     // .onlySourceConnector()); destinations/response transformers exclude it.
     onlySource: true,
     create: () => ({
-      __type: "com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep",
+      __type: ElementType.DestinationSetFilter,
       name: "",
       enabled: true,
       behavior: "REMOVE",
@@ -682,10 +684,10 @@ function register(platform2) {
     validate: (el) => isBlank(el.field) ? "The field cannot be blank." : "",
     component: DestinationSetFilterEditor
   });
-  platform2.registerStepType("com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep", {
+  platform2.registerStepType(ElementType.ExternalScriptStep, {
     label: "External Script",
     create: () => ({
-      __type: "com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep",
+      __type: ElementType.ExternalScriptStep,
       name: "",
       enabled: true,
       scriptPath: ""
@@ -693,11 +695,11 @@ function register(platform2) {
     validate: (el) => isBlank(el.scriptPath) ? "The script path cannot be blank." : "",
     component: ScriptPathEditor
   });
-  platform2.registerStepType("com.mirth.connect.model.IteratorStep", makeIteratorEditor(false));
-  platform2.registerRuleType("com.mirth.connect.plugins.javascriptrule.JavaScriptRule", {
+  platform2.registerStepType(ElementType.IteratorStep, makeIteratorEditor(false));
+  platform2.registerRuleType(ElementType.JavaScriptRule, {
     label: "JavaScript",
     create: () => ({
-      __type: "com.mirth.connect.plugins.javascriptrule.JavaScriptRule",
+      __type: ElementType.JavaScriptRule,
       name: "",
       enabled: true,
       operator: "AND",
@@ -705,11 +707,11 @@ function register(platform2) {
     }),
     component: ScriptEditor
   });
-  platform2.registerRuleType("com.mirth.connect.plugins.rulebuilder.RuleBuilderRule", {
+  platform2.registerRuleType(ElementType.RuleBuilder, {
     label: "Rule Builder",
     nameEditable: false,
     create: () => ({
-      __type: "com.mirth.connect.plugins.rulebuilder.RuleBuilderRule",
+      __type: ElementType.RuleBuilder,
       name: "",
       enabled: true,
       operator: "AND",
@@ -720,10 +722,10 @@ function register(platform2) {
     validate: (el) => isBlank(el.field) ? "The field cannot be blank." : "",
     component: RuleBuilderEditor
   });
-  platform2.registerRuleType("com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule", {
+  platform2.registerRuleType(ElementType.ExternalScriptRule, {
     label: "External Script",
     create: () => ({
-      __type: "com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule",
+      __type: ElementType.ExternalScriptRule,
       name: "",
       enabled: true,
       operator: "AND",
@@ -732,7 +734,7 @@ function register(platform2) {
     validate: (el) => isBlank(el.scriptPath) ? "The script path cannot be blank." : "",
     component: ScriptPathEditor
   });
-  platform2.registerRuleType("com.mirth.connect.model.IteratorRule", makeIteratorEditor(true));
+  platform2.registerRuleType(ElementType.IteratorRule, makeIteratorEditor(true));
 }
 export {
   register

@@ -3,7 +3,7 @@
  * Asserts the generated model types resolve and that wrong usage is rejected.
  * If a future `gen:schema` against the engine drops/renames a model, this fails.
  */
-import api, { asList, destinationsOf, elementsToArray, ApiError } from '@oie/web-api';
+import api, { asList, destinationsOf, elementsToArray, isIteratorType, iteratorName, isJavaBlank, ApiError } from '@oie/web-api';
 import type { Channel, Connector, WireChannel, WireConnector, DashboardStatus, User, Message } from '@oie/web-api';
 
 async function goodUsage() {
@@ -29,7 +29,10 @@ async function goodUsage() {
     // go through the helper too; each result carries the synthesized __type.
     const steps = elementsToArray({ 'com.mirth.connect.plugins.mapper.MapperStep': { sequenceNumber: '0' } });
     const stepType: string = steps[0]!.__type;
-    void stepType;
+    if (isIteratorType(stepType) && isJavaBlank(steps[0]!.name)) {
+        const name: string = iteratorName(steps[0]!);
+        void name;
+    }
 
     // A clean Channel is still what you build for a write; both are accepted.
     const clean: Channel = { name: 'x' };

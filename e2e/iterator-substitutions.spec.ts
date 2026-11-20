@@ -227,8 +227,7 @@ for (const scenario of ['sibling', 'nested', 'legacy namespaced sibling', 'mixed
         const mixed = scenario === 'mixed namespace sibling';
         const ns = scenario === 'legacy namespaced sibling' || mixed ? 'v:' : '';
         const prefix = ns ? "msg.*::['OBX']" : PREFIX;
-        const qualifiedObservation = "[new QName('urn:observations', 'OBX')]";
-        const value = ns ? "[new QName('urn:observations', 'value')]" : "['value']";
+        const value = ns ? ".*::['value']" : "['value']";
         const other = mixed ? '<w:OBX><w:value>other</w:value></w:OBX>' : '';
         const xml = `<message xmlns:v="urn:observations" xmlns:w="urn:other"><${ns}OBX><${ns}value>one</${ns}value></${ns}OBX>${other}<${ns}OBX><${ns}value>two</${ns}value></${ns}OBX></message>`;
         const save = await openEditor(page, [iterator('Original', 'i', [], [prefix]), iterator('Destination', 'j', [], [prefix])], 'transformer', xml);
@@ -247,8 +246,8 @@ for (const scenario of ['sibling', 'nested', 'legacy namespaced sibling', 'mixed
         const elements = await save();
         const nested = children(elements, 'Original');
         const mapped = create ? nested[ITERATOR][0].properties.children : children(elements, 'Destination');
-        const legacyExpression = (index: string) => `(<r>{${prefix}${index}}</r>)${qualifiedObservation}${value}.toString()`;
-        const expression = ns ? legacyExpression('[j]') : create ? `${prefix}[i]${value}[j].toString()` : `${prefix}[j]${value}.toString()`;
+        const bound = (index: string) => `${prefix}${index}${value}.toString()`;
+        const expression = create ? `${prefix}[i]${value}[j].toString()` : bound('[j]');
         expect(mapped[MAPPER][0].mapping).toBe(expression);
         await page.reload();
         await row(page, mapped[MAPPER][0].name).locator('td.num').click();
@@ -259,10 +258,10 @@ for (const scenario of ['sibling', 'nested', 'legacy namespaced sibling', 'mixed
             await index.fill('k');
             await index.press('Enter');
             const renamed = children(await save(), 'Destination')[MAPPER][0];
-            expect(renamed.mapping).toBe(legacyExpression('[k]'));
+            expect(renamed.mapping).toBe(bound('[k]'));
             await row(page, renamed.name).locator('td.num').click();
             await click(page, 'Remove From Iterator');
-            expect((await save())[MAPPER][0].mapping).toBe(legacyExpression(''));
+            expect((await save())[MAPPER][0].mapping).toBe(bound(''));
         }
     });
 }
@@ -270,15 +269,15 @@ for (const scenario of ['sibling', 'nested', 'legacy namespaced sibling', 'mixed
 for (const { template, label, selector } of [
     {
         template: '<message xmlns:v="urn:values"><v:value>one</v:value><v:value>two</v:value></message>',
-        label: 'v:value[1]', selector: "[new QName('urn:values', 'value')]"
+        label: 'v:value[1]', selector: ".*::['value']"
     },
     {
         template: '<message xmlns="urn:values" xmlns:w="urn:other"><value>one</value><w:value>other</w:value><value>two</value></message>',
         label: 'value[1]', selector: "['value']"
     }
 ]) {
-    test(`a tree-created Mapper binds repeated ${label} to its legacy wildcard Iterator`, async ({ page }) => {
-        const prefix = "msg.*::['value']";
+    test(`a tree-created Mapper binds repeated ${label} to its Swing Iterator`, async ({ page }) => {
+        const prefix = `msg${selector}`;
         const save = await openEditor(page, [iterator('Values', 'i', [], [prefix])], 'transformer', template);
         await row(page, 'Values').locator('td.num').click();
         await page.getByRole('tab', { name: 'Message Trees' }).click();
@@ -287,7 +286,7 @@ for (const { template, label, selector } of [
         await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
         await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
 
-        const expression = (index: string) => `(<r>{${prefix}${index}}</r>)${selector}.toString()`;
+        const expression = (index: string) => `${prefix}${index}.toString()`;
         const mapped = children(await save(), 'Values')[MAPPER][0];
         expect(mapped.mapping).toBe(expression('[i]'));
         await page.reload();
@@ -302,7 +301,7 @@ for (const { template, label, selector } of [
     });
 }
 
-test('mapping a repeated leaf under a qualified parent uses the migrated Iterator index', async ({ page }) => {
+test('mapping a repeated leaf under a qualified parent uses the configured Iterator index', async ({ page }) => {
     const prefix = "msg.*::['group'].*::['value']";
     const template = '<m xmlns:v="urn:v"><v:group><v:value>one</v:value><v:value>two</v:value></v:group></m>';
     const save = await openEditor(page, [iterator('Values', 'i', [], [prefix])], 'transformer', template);
@@ -314,8 +313,7 @@ test('mapping a repeated leaf under a qualified parent uses the migrated Iterato
     await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
     await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
     const mapped = children(await save(), 'Values')[MAPPER][0];
-    expect(mapped.mapping).toContain(prefix + '[i]');
-    expect(mapped.mapping).not.toContain('[1]');
+    expect(mapped.mapping).toBe(prefix + '[i].toString()');
     await page.reload();
     await row(page, mapped.name).locator('td.num').click();
     await expect(page.locator('.step-editor-fill .field:has(label:text-is("Mapping")) input')).toHaveValue(mapped.mapping);
@@ -534,6 +532,32 @@ test('a Message Builder preview creates missing output objects and XML segments 
     expect(script).toContain(target + ' = validate(');
 });
 
+test('an opaque Message Builder target reports incomplete Iterator validation and still checks siblings', async ({ page }) => {
+    await page.route('**/vendor/monaco/**', route => route.abort());
+    const target = "tmp.rows[i][chooseKey({fallback: 'value'})]";
+    await openEditor(page, [iterator('Custom target', 'i', [
+        { type: BUILDER, name: 'Set value', messageSegment: target, mapping: "'value'" }
+    ]), mapper()]);
+    const submitted: string[] = [];
+    await page.route('**/javascript/_validate', async route => {
+        submitted.push(route.request().postData() || '');
+        await route.fulfill({ json: { error: null } });
+    });
+    await row(page, 'Custom target').locator('td.num').click();
+    await page.getByRole('tab', { name: 'Generated Script' }).click();
+    await expect(page.getByRole('tabpanel', { name: 'Generated Script' }).locator('textarea.ce-area'))
+        .toHaveValue(/Use Swing to preview or validate its Iterator/);
+    await click(page, 'Validate Step');
+    const warning = page.getByRole('dialog', { name: 'Warning' });
+    await expect(warning).toContainText('Use Swing to preview or validate its Iterator');
+    expect(submitted).toHaveLength(0);
+    await warning.getByRole('button', { name: 'Close' }).last().click();
+    await click(page, 'Validate Transformer');
+    await expect.poll(() => submitted.length).toBe(1);
+    expect(submitted[0]).toContain("channelMap.put('observations'");
+    await expect(warning).toContainText('Use Swing to preview or validate its Iterator');
+});
+
 test('assigning a filter rule creates a short-circuiting Iterator', async ({ page }) => {
     await page.route('**/vendor/monaco/**', route => route.abort());
     const rule = { type: RULE, name: 'Observation rule', operator: 'NONE', field: mapping(), condition: 'EXISTS' };
@@ -609,11 +633,9 @@ test('an ambiguous prefix returned by 4.6.0 never matches unrelated Mapper field
 
 test('a standalone namespaced Mapper binds to a Swing wildcard Iterator after save and reload', async ({ page }) => {
     const prefix = "msg.*::['OBX']";
-    const observation = "[new QName('urn:observations', 'OBX')]";
-    const value = "[new QName('urn:observations', 'value')]";
-    const standalone = `msg${observation}[1]${value}.toString()`;
-    const bound = (index: string) => `(<r>{${prefix}${index}}</r>)${observation}${value}.toString()`;
-    const authored = `${standalone} + ' supplemental'`;
+    const bound = (index: string) => `${prefix}${index}.*::['value'].toString()`;
+    const standalone = bound('[2]');
+    const authored = "msg[new QName('urn:observations', 'OBX')][1].toString() + ' supplemental'";
     const xml = '<message xmlns:v="urn:observations" xmlns:w="urn:other">'
         + '<v:OBX><v:value>one</v:value></v:OBX><w:OBX><w:value>other</w:value></w:OBX>'
         + '<v:OBX><v:value>two</v:value></v:OBX></message>';
@@ -656,7 +678,52 @@ test('a standalone namespaced Mapper binds to a Swing wildcard Iterator after sa
     expect(rootMapping(await save())).toMatchObject({ mapping: bound(''), defaultValue: authored });
 });
 
-test('assigning a Message Builder preserves its namespaced writable target', async ({ page }) => {
+test('Message Segment drops preserve the parent Iterator and reject a wildcard attribute write', async ({ page }) => {
+    const prefix = "msg.*::['group']";
+    const builder = { type: BUILDER, name: 'Write attribute', messageSegment: '', mapping: "'updated'" };
+    const xml = '<m xmlns:v="urn:v"><v:group code="first"/><v:group code="second" v:other="qualified"/></m>';
+    const save = await openEditor(page, [iterator('Groups', 'i', [builder], [prefix])], 'transformer', xml);
+    await row(page, builder.name).locator('td.num').click();
+    await page.getByRole('tab', { name: 'Message Trees' }).click();
+    const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+    await tree.getByRole('row').filter({ has: page.getByText('v:group[1]', { exact: true }) }).locator('.twisty').click();
+    const segment = page.locator('[data-message-segment]');
+    await tree.getByRole('row').filter({ has: page.getByText('@v:other', { exact: true }) }).dragTo(segment);
+    const warning = page.getByRole('dialog', { name: 'Warning' });
+    await expect(warning).toContainText('enter a namespace-qualified Message Segment');
+    await warning.getByRole('button', { name: 'Close' }).last().click();
+    await expect(segment).toHaveValue('');
+    await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toBeHidden();
+    await tree.getByRole('row').filter({ has: page.getByText('@code', { exact: true }) }).dragTo(segment);
+    expect(children(await save(), 'Groups')[BUILDER][0].messageSegment).toBe(prefix + "[i]['@code']");
+});
+
+for (const { prefix, xml, branch, field, warning, chooser } of [
+    { prefix: "msg.*::['value']", xml: '<m xmlns:v="urn:v" xmlns:w="urn:w"><v:value>one</v:value><w:value>two</w:value></m>',
+        branch: '', field: 'w:value', warning: 'To write this namespaced field, enter a namespace-qualified Message Segment in the Message Builder.', chooser: false },
+    { prefix: "msg['@code']", xml: '<m code="one"><entry/></m>', branch: '', field: '@code',
+        warning: 'Choose an Iterator over the parent element to write its attribute.', chooser: true },
+    { prefix: "msg[new QName('urn:v', 'group')]", xml: '<m xmlns:v="urn:v"><v:group><value>one</value></v:group><v:group><value>two</value></v:group></m>',
+        branch: 'v:group[1]', field: 'value', warning: 'The Iterator uses a different selector for this repeating field. Enter its indexed Message Segment manually.', chooser: true }
+]) {
+    test(`the editor prevents an ineffective write to ${field} under ${prefix}`, async ({ page }) => {
+        await openEditor(page, [iterator('Values', 'i', [], [prefix])], 'transformer', xml);
+        await row(page, 'Values').locator('td.num').click();
+        await page.getByRole('tab', { name: 'Message Trees' }).click();
+        const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+        if (branch) await tree.getByRole('row').filter({ has: page.getByText(branch, { exact: true }) }).locator('.twisty').click();
+        await tree.getByRole('row').filter({ has: page.getByText(field, { exact: true }) }).click({ button: 'right' });
+        await page.getByRole('menuitem', { name: 'Map to Message' }).click();
+        if (chooser) await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No' }).click();
+        const dialog = page.getByRole('dialog', { name: 'Warning' });
+        await expect(dialog).toContainText(warning);
+        await dialog.getByRole('button', { name: 'Close' }).last().click();
+        await expect(page.locator('tr[data-path="0.0"]')).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toBeHidden();
+    });
+}
+
+test('assigning a Message Builder preserves a manually qualified writable target', async ({ page }) => {
     const prefix = "msg.*::['OBX']";
     const target = "msg[new QName('urn:observations', 'OBX')][1][new QName('urn:observations', 'value')]";
     const step = { type: BUILDER, name: 'Write observation', messageSegment: target, mapping: '', defaultValue: '', replacements: '' };

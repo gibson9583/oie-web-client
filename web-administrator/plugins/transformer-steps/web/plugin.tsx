@@ -29,6 +29,7 @@
  *                                 children (polymorphic element list) }
  */
 
+import { ElementType } from '/core/element-types.js';
 import { platform } from '@oie/web-shell';
 import type { Platform } from '@oie/web-shell';
 import { isJavaBlank, iteratorName } from '/core/oie.js';
@@ -274,7 +275,7 @@ function emptyIteratorProperties(newFilter = false) {
 }
 
 function makeIteratorEditor(isRule: boolean) {
-    const type = isRule ? 'com.mirth.connect.model.IteratorRule' : 'com.mirth.connect.model.IteratorStep';
+    const type = isRule ? ElementType.IteratorRule : ElementType.IteratorStep;
     const childNoun = isRule ? 'rule' : 'step';
 
     function IteratorEditor({ element, onChange, onRenameIteratorIndex }: any) {
@@ -486,6 +487,7 @@ function MessageBuilderEditor({ element, onChange }: any) {
             <div className="span-2">
                 <Field label="Message Segment">
                     <input
+                        data-message-segment
                         type="text"
                         placeholder="tmp['MSH']['MSH.3']['MSH.3.1']"
                         value={element.messageSegment ?? ''}
@@ -715,21 +717,21 @@ export function register(platform: Platform) {
 
     /* ---- transformer steps ---- */
 
-    platform.registerStepType('com.mirth.connect.plugins.javascriptstep.JavaScriptStep', {
+    platform.registerStepType(ElementType.JavaScriptStep, {
         label: 'JavaScript',
         create: () => ({
-            __type: 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep',
+            __type: ElementType.JavaScriptStep,
             name: '', enabled: true,
             script: '// Write your JavaScript here\n'
         }),
         component: ScriptEditor
     });
 
-    platform.registerStepType('com.mirth.connect.plugins.mapper.MapperStep', {
+    platform.registerStepType(ElementType.Mapper, {
         label: 'Mapper',
         nameEditable: false,
         create: () => ({
-            __type: 'com.mirth.connect.plugins.mapper.MapperStep',
+            __type: ElementType.Mapper,
             name: '', enabled: true,
             variable: '', mapping: '', defaultValue: '', replacements: '', scope: 'CHANNEL'
         }),
@@ -737,10 +739,10 @@ export function register(platform: Platform) {
         component: MapperEditor
     });
 
-    platform.registerStepType('com.mirth.connect.plugins.messagebuilder.MessageBuilderStep', {
+    platform.registerStepType(ElementType.MessageBuilder, {
         label: 'Message Builder',
         create: () => ({
-            __type: 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep',
+            __type: ElementType.MessageBuilder,
             name: '', enabled: true,
             messageSegment: '', mapping: '', defaultValue: '', replacements: ''
         }),
@@ -748,10 +750,10 @@ export function register(platform: Platform) {
         component: MessageBuilderEditor
     });
 
-    platform.registerStepType('com.mirth.connect.plugins.xsltstep.XsltStep', {
+    platform.registerStepType(ElementType.Xslt, {
         label: 'XSLT Step',
         create: () => ({
-            __type: 'com.mirth.connect.plugins.xsltstep.XsltStep',
+            __type: ElementType.Xslt,
             name: '', enabled: true,
             sourceXml: '', resultVariable: '', template: '',
             useCustomFactory: false, customFactory: ''
@@ -765,14 +767,14 @@ export function register(platform: Platform) {
         component: XsltEditor
     });
 
-    platform.registerStepType('com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep', {
+    platform.registerStepType(ElementType.DestinationSetFilter, {
         label: 'Destination Set Filter',
         nameEditable: false,
         // Only available on the source transformer (DestinationSetFilterPlugin
         // .onlySourceConnector()); destinations/response transformers exclude it.
         onlySource: true,
         create: () => ({
-            __type: 'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep',
+            __type: ElementType.DestinationSetFilter,
             name: '', enabled: true,
             behavior: 'REMOVE', metaDataIds: '', field: '', condition: 'EXISTS', values: ''
         }),
@@ -780,10 +782,10 @@ export function register(platform: Platform) {
         component: DestinationSetFilterEditor
     });
 
-    platform.registerStepType('com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep', {
+    platform.registerStepType(ElementType.ExternalScriptStep, {
         label: 'External Script',
         create: () => ({
-            __type: 'com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep',
+            __type: ElementType.ExternalScriptStep,
             name: '', enabled: true,
             scriptPath: ''
         }),
@@ -791,25 +793,25 @@ export function register(platform: Platform) {
         component: ScriptPathEditor
     });
 
-    platform.registerStepType('com.mirth.connect.model.IteratorStep', makeIteratorEditor(false));
+    platform.registerStepType(ElementType.IteratorStep, makeIteratorEditor(false));
 
     /* ---- filter rules ---- */
 
-    platform.registerRuleType('com.mirth.connect.plugins.javascriptrule.JavaScriptRule', {
+    platform.registerRuleType(ElementType.JavaScriptRule, {
         label: 'JavaScript',
         create: () => ({
-            __type: 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule',
+            __type: ElementType.JavaScriptRule,
             name: '', enabled: true, operator: 'AND',
             script: '// Return true to accept the message, false to filter it\nreturn true;'
         }),
         component: ScriptEditor
     });
 
-    platform.registerRuleType('com.mirth.connect.plugins.rulebuilder.RuleBuilderRule', {
+    platform.registerRuleType(ElementType.RuleBuilder, {
         label: 'Rule Builder',
         nameEditable: false,
         create: () => ({
-            __type: 'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule',
+            __type: ElementType.RuleBuilder,
             name: '', enabled: true, operator: 'AND',
             field: '', condition: 'EXISTS', values: ''
         }),
@@ -817,10 +819,10 @@ export function register(platform: Platform) {
         component: RuleBuilderEditor
     });
 
-    platform.registerRuleType('com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule', {
+    platform.registerRuleType(ElementType.ExternalScriptRule, {
         label: 'External Script',
         create: () => ({
-            __type: 'com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule',
+            __type: ElementType.ExternalScriptRule,
             name: '', enabled: true, operator: 'AND',
             scriptPath: ''
         }),
@@ -828,5 +830,5 @@ export function register(platform: Platform) {
         component: ScriptPathEditor
     });
 
-    platform.registerRuleType('com.mirth.connect.model.IteratorRule', makeIteratorEditor(true));
+    platform.registerRuleType(ElementType.IteratorRule, makeIteratorEditor(true));
 }

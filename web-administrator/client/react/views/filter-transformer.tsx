@@ -1,3 +1,4 @@
+import { ElementType, isElementEnabled } from '../../core/element-types.js';
 import { isNewChannelDraft, loadChannelForEdit } from '../../core/channel-save.js';
 import { loadErrorMessage } from '../load-error.js';
 import { channelDependencyState } from '../../core/channel-dependencies.js';
@@ -51,7 +52,7 @@ import { generateElementScript } from '../../core/step-script.js';
 import { isIteratorType, iteratorName } from '../../core/oie.js';
 import { childrenOf, serializeEditorElements, rewriteElementIteratorVariables, getIteratorInfo, iteratorExpressionParts,
     iteratorWizardPrefixes, validIteratorIndex, preferredIterator, isIteratorIndexName, renameIteratorIndex,
-    relocateElementIteratorVariables, rewriteIteratorExpression, rewriteTreeIteratorExpression } from './iterator-substitutions.js';
+    relocateElementIteratorVariables, rewriteIteratorExpression, treeWritePath } from './iterator-substitutions.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { normalizeLineEndings } from '../../core/content-highlight.js';
 import * as router from '../../core/router.js';
@@ -121,10 +122,6 @@ function pathOf(target: any, list: any, parent: any[] = []): any {
 }
 const pathEquals = (a: any, b: any) => !!a && !!b && a.length === b.length && a.every((v: any, i: any) => v === b[i]);
 const isAncestorPath = (anc: any, p: any) => anc.length < p.length && anc.every((v: any, i: any) => v === p[i]);
-
-function isElementEnabled(el: { enabled?: unknown }) {
-    return el.enabled !== false && el.enabled !== 'false';
-}
 
 // Flatten the tree to display rows in order, carrying each row's path/depth.
 function flattenRows(list: any[], parentPath: number[] = [], parentEnabled = true, out: { el: any; path: number[]; depth: number; parentEnabled: boolean }[] = []) {
@@ -318,77 +315,99 @@ function escapeKey(key: any) {
         ch => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'));
 }
 
-function qnameKey(namespace: string, localName: string): string {
-    return `[new QName('${escapeKey(namespace)}', '${escapeKey(localName)}')]`;
+function repeatedPositions<T>(siblings: T[], keyOf: (sibling: T) => string) {
+    const groups = new Map<string, T[]>();
+    for (const sibling of siblings) {
+        const key = keyOf(sibling);
+        const group = groups.get(key);
+        if (group) group.push(sibling);
+        else groups.set(key, [sibling]);
+    }
+    const positions = new Map<T, number>();
+    for (const group of groups.values()) {
+        if (group.length > 1) group.forEach((sibling, i) => positions.set(sibling, i));
+    }
+    return positions;
 }
 
-function xmlAttributePart(attribute: Attr): string {
-    if (attribute.name === 'xmlns') return ".namespace('')";
-    if (attribute.prefix === 'xmlns') return `.namespace('${escapeKey(attribute.localName)}')`;
-    if (attribute.namespaceURI) return '.@' + qnameKey(attribute.namespaceURI, attribute.localName);
-    return `['@${escapeKey(attribute.name)}']`;
+function position(index?: number) {
+    return index === undefined ? '' : `[${index}]`;
 }
-
-type LegacyXmlPath = { accessor: string; wildcardBranch: boolean };
 
 function xmlElementNode(element: Element, accessor: string, suffix: string, descriptions: Record<string, string> | null,
-    defaultNamespace: string, legacy: LegacyXmlPath) {
+    wildcardBranch = false) {
     const children: any[] = [];
-    for (const attr of element.attributes) {
-        const part = xmlAttributePart(attr);
+    const attributes = [...element.attributes];
+    // Stock Rhino's underlying XML DOM enumerates attributes by qualified name.
+    const ordinary = attributes.filter(attr => attr.name !== 'xmlns' && attr.prefix !== 'xmlns');
+    const attrPositions = repeatedPositions(ordinary.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
+        attr => attr.localName);
+    for (const attr of attributes) {
+        let part: string;
+        const declaration = attr.name === 'xmlns' || attr.prefix === 'xmlns';
+        if (declaration) {
+            part = `.namespace('${attr.prefix ? escapeKey(attr.localName) : ''}')`;
+        } else if (attr.prefix) {
+            part = `.@*::['${escapeKey(attr.localName)}']` + position(attrPositions.get(attr));
+        } else part = `['@${escapeKey(attr.name)}']`;
         children.push({
             label: `@${attr.name}`, name: `@${attr.name}`, desc: '', value: attr.value,
-            accessor: accessor + part + suffix,
-            legacyAccessor: legacy.accessor === accessor ? undefined : legacy.accessor + part + suffix,
-            children: []
+            accessor: accessor + part + suffix, declaration, wildcard: !!attr.prefix, attribute: true, children: []
         });
     }
     const childElements = [...element.children];
-    const keyPart = (child: Element) => {
-        const namespace = child.namespaceURI ?? '';
-        return namespace === defaultNamespace ? `['${escapeKey(child.localName)}']` : qnameKey(namespace, child.localName);
-    };
-    const counts = new Map<string, number>();
-    const wildcardNames = new Set<string>();
+    const exactPositions = repeatedPositions(childElements, child => (child.namespaceURI ?? '') + '\0' + child.localName);
+    const wildcardPositions = repeatedPositions(childElements, child => child.localName);
     for (const child of childElements) {
-        const part = keyPart(child);
-        counts.set(part, (counts.get(part) ?? 0) + 1);
-        if (child.prefix || legacy.wildcardBranch || child.hasAttribute('xmlns')) wildcardNames.add(child.localName);
-    }
-    const seen = new Map<string, number>();
-    for (const child of childElements) {
-        const part = keyPart(child);
-        const index = seen.get(part) ?? 0;
-        seen.set(part, index + 1);
-        const repeated = (counts.get(part) ?? 0) > 1;
-        const position = repeated ? `[${index}]` : '';
-        const wildcardBranch = legacy.wildcardBranch || child.hasAttribute('xmlns');
-        // Older tree-created Iterators may collect all namespaces for this
-        // local name. The binding rechecks the selected namespace at runtime.
-        const legacyPart = wildcardNames.has(child.localName)
-            ? `.*::['${escapeKey(child.localName)}']` : part;
-        const node = xmlElementNode(child, accessor + part + position, suffix, descriptions, defaultNamespace,
-            { accessor: legacy.accessor + legacyPart + position, wildcardBranch });
-        if (repeated) node.index = index;
+        // Swing starts wildcarding descendants at a non-root default namespace
+        // declaration. A prefixed element alone does not change its descendants.
+        const childBranch = wildcardBranch || child.hasAttribute('xmlns');
+        const wildcard = childBranch || !!child.prefix;
+        const key = `['${escapeKey(child.localName)}']`;
+        const index = exactPositions.get(child);
+        const part = wildcard ? '.*::' + key + position(wildcardPositions.get(child)) : key + position(index);
+        const node = xmlElementNode(child, accessor + part, suffix, descriptions, childBranch);
+        node.wildcard = wildcard;
+        if (index !== undefined) node.index = index;
         children.push(node);
     }
     const text = childElements.length ? null : (element.textContent ?? '');
-    // Overlay the engine vocabulary description on the display label only;
-    // the accessor stays the raw node name (matches the Swing tree).
     const desc = descriptions && Object.hasOwn(descriptions, element.tagName) ? descriptions[element.tagName] : '';
     const label = desc ? `${element.tagName} (${desc})` : element.tagName;
-    return { label, name: element.tagName, desc, value: text, accessor: accessor + suffix,
-        legacyAccessor: legacy.accessor === accessor ? undefined : legacy.accessor + suffix, children } as any;
+    return { label, name: element.tagName, desc, value: text, accessor: accessor + suffix, children } as any;
+}
+
+type TreeAccessorSource = { accessor: string; declaration?: boolean; wildcard?: boolean; attribute?: boolean };
+
+function treeMessageSegment(source: TreeAccessorSource, ancestors: any[]): string {
+    if (source.declaration) {
+        toast('A namespace declaration cannot be assigned by a Message Builder.', 'warn');
+        return '';
+    }
+    // Rhino can change the namespace on wildcard element assignment. A
+    // wildcard attribute assignment either throws or leaves the value intact.
+    if (source.wildcard) {
+        toast('To write this namespaced field, enter a namespace-qualified Message Segment in the Message Builder.', 'warn');
+        return '';
+    }
+    const raw = source.accessor.replace(/\.toString\(\)$/, '');
+    const target = treeWritePath(raw, ancestors);
+    if (target === null) {
+        toast('The Iterator uses a different selector for this repeating field. Enter its indexed Message Segment manually.', 'warn');
+        return '';
+    }
+    if (source.attribute && ancestors.some(it => target.endsWith(`[${it.properties?.indexVariable ?? 'i'}]`))) {
+        toast('Choose an Iterator over the parent element to write its attribute.', 'warn');
+        return '';
+    }
+    return target;
 }
 
 function xmlTree(text: any, varName: string, meta?: any) {
     const doc = new DOMParser().parseFromString(text, 'text/xml');
     if (doc.getElementsByTagName('parsererror').length) throw new Error('not XML');
-    // The E4X root element is the msg/tmp variable itself.
     const descriptions = (meta && meta.descriptions) || null;
-    const defaultNamespace = doc.documentElement.lookupNamespaceURI(null) ?? '';
-    const root = xmlElementNode(doc.documentElement, varName, varName === 'msg' ? '.toString()' : '', descriptions, defaultNamespace,
-        { accessor: varName, wildcardBranch: false });
+    const root = xmlElementNode(doc.documentElement, varName, varName === 'msg' ? '.toString()' : '', descriptions);
     // Label the root with the message type/version/description (e.g.
     // "OML-O21 (2.5.1) (Laboratory Order)") while keeping its accessor.
     if (meta && meta.root) root.label = meta.root;
@@ -420,15 +439,13 @@ function jsonTree(text: any, varName: any) {
 
 /* Steps created from a tree node's accessor — the Swing TreePanel popup
    ("Map to Variable" → Mapper, "Map to Message" → Message Builder). */
-const MAPPER_TYPE = 'com.mirth.connect.plugins.mapper.MapperStep';
-const MSGBUILDER_TYPE = 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep';
 
 function availableMapperKey(channel: any, base: string): string {
     if (!base) return base;
     const keys = new Set<string>();
     function collect(elements: any): void {
         for (const el of oie.elementsToArray(elements)) {
-            if (el.__type === MAPPER_TYPE && (!el.scope || el.scope === 'CHANNEL')) keys.add(el.variable);
+            if (el.__type === ElementType.Mapper && (!el.scope || el.scope === 'CHANNEL')) keys.add(el.variable);
             if (isIteratorType(el.__type)) collect(el.properties?.children);
         }
     }
@@ -442,7 +459,6 @@ function availableMapperKey(channel: any, base: string): string {
     for (let suffix = 2; keys.has(key); suffix++) key = `${base}_${suffix}`;
     return key;
 }
-const RULE_BUILDER_TYPE = 'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule';
 
 type TreeNameNode = { name: string; desc?: string; index?: number; arrayIndex?: number };
 type TreeNamePath = { node: TreeNameNode; parent: TreeNamePath | null };
@@ -724,6 +740,8 @@ function BottomTabs({ tabs, active, onActive }: any) {
    value is pushed by an effect whenever the selection or the tree changes
    (recompute-on-commit: unlike the legacy pane this can never go stale, which
    matches Swing's regenerate-on-every-trigger behavior). */
+const iteratorPreviewUnavailable = 'The web client cannot generate the script for this Message Builder target. Use Swing to preview or validate its Iterator.';
+
 function GeneratedScriptPane({ kind, element, rev }: any) {
     const hostRef = useRef<any>(null);
     const editorRef = useRef<any>(null);
@@ -746,8 +764,8 @@ function GeneratedScriptPane({ kind, element, rev }: any) {
             // Generate the script client-side (mirrors each element's engine
             // getScript(false)); falls back for types with no generator.
             const generated = generateElementScript(element, childrenOf);
-            script = generated != null ? generated
-                : `// ${oie.elementTypeLabel(element.__type)} ${kind.noun.toLowerCase()} — no preview available`;
+            script = generated ?? (isIteratorType(element.__type) ? `// ${iteratorPreviewUnavailable}`
+                : `// ${oie.elementTypeLabel(element.__type)} ${kind.noun.toLowerCase()} — no preview available`);
         }
         if (editorRef.current) editorRef.current.setValue(script);
     }, [kind, element, rev]);
@@ -1182,20 +1200,22 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
     });
 
     function addFromTree(action: 'mapper' | 'builder' | 'rule', source: any, path: TreeNamePath | null, fromGrid = false) {
-        const { accessor, legacyAccessor } = source;
+        const { accessor } = source;
         const { variable, description } = treeFieldNames(path);
         if (action === 'mapper') {
-            onAddStep(MAPPER_TYPE, 'Mapper', variable, (el: any) => { el.mapping = accessor; el.variable = variable; }, legacyAccessor);
+            onAddStep(ElementType.Mapper, 'Mapper', variable, (el: any) => { el.mapping = accessor; el.variable = variable; });
         } else if (action === 'builder') {
-            onAddStep(MSGBUILDER_TYPE, 'Message Builder', `${description} (out)`,
-                (el: any) => { el.messageSegment = accessor.replace(/\.toString\(\)\s*$/, ''); });
+            const segment = treeMessageSegment(source, []);
+            if (!segment) return;
+            onAddStep(ElementType.MessageBuilder, 'Message Builder', `${description} (out)`,
+                (el: any) => { el.messageSegment = segment; }, source);
         } else {
-            onAddStep(RULE_BUILDER_TYPE, 'Rule Builder', fromGrid ? description : '', (el: any) => { el.field = accessor; }, legacyAccessor);
+            onAddStep(ElementType.RuleBuilder, 'Rule Builder', fromGrid ? description : '', (el: any) => { el.field = accessor; });
         }
     }
     const dragProps = (source: any, path: TreeNamePath | null) => accessorDragProps(
         dragRef,
-        event => treeAccessor(source.accessor, event, side === 'inbound' ? source.legacyAccessor : undefined),
+        event => treeAccessor(source, event),
         event => {
             const action = isFilter ? 'rule' : side === 'inbound' && !treeDragModifier(event) ? 'mapper' : 'builder';
             addFromTree(action, source, path, true);
@@ -1669,7 +1689,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     function addElement() {
         if (!canEditElements()) return;
         const entries = availableTypeEntries();
-        const defaultType = isFilter ? RULE_BUILDER_TYPE : MAPPER_TYPE;
+        const defaultType = isFilter ? ElementType.RuleBuilder : ElementType.Mapper;
         const entry = entries.find(([type]) => type === defaultType) ?? entries[0];
         if (!entry) { toast('No element types registered', 'warn'); return; }
         const [type, def] = entry;
@@ -1701,10 +1721,10 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         }
         const nextType = typeDef(newType);
         if (!nextType) return;
-        const isCurrent = channelSessionActive();
+        const editActive = captureElementEdit();
         const original = JSON.stringify(old);
         const replace = () => {
-            if (!isCurrent() || !canEditElements() || JSON.stringify(old) !== original) return;
+            if (!editActive() || JSON.stringify(old) !== original) return;
             const current = pathOf(old, elementsRef.current);
             if (!current) return;
             const created = nextType.create?.() ?? { name: '', enabled: true };
@@ -1717,8 +1737,8 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const defaults = typeDef(old.__type)?.create?.();
         // Swing 4.6 starts both JavaScript panels empty. The web panels offer starter text.
         if (defaults && (old.script == null || old.script === '')
-            && (old.__type === 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep'
-                || old.__type === 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule')) {
+            && (old.__type === ElementType.JavaScriptStep
+                || old.__type === ElementType.JavaScriptRule)) {
             defaults.script = '';
         }
         // The hydrated children were checked above. The wire copy can still contain a removed child.
@@ -1740,9 +1760,9 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         if (!canEditElements()) return;
         const element = elementAtPath(elementsRef.current, selectedPathRef.current);
         if (!element) { toast(`Select a ${kind.noun.toLowerCase()} first`, 'warn'); return; }
-        const isCurrent = channelSessionActive();
+        const editActive = captureElementEdit();
         const remove = () => {
-            if (!isCurrent() || !canEditElements()) return;
+            if (!editActive()) return;
             const elements = elementsRef.current;
             const rows = flattenRows(elements);
             const index = rows.findIndex(row => row.el === element);
@@ -1773,12 +1793,12 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         if (next >= 0 && next < listAtPath(elements, path).length) {
             relocateElement(path, parent, { index: next });
         } else if (parent) {
-            const isCurrent = channelSessionActive();
+            const editActive = captureElementEdit();
             modal({
                 title: `Move ${kind.noun} ${delta < 0 ? 'Up' : 'Down'}`,
                 body: h('p', `This will move the ${kind.noun.toLowerCase()} out of its parent Iterator. Are you sure you wish to continue?`),
                 buttons: [{ label: 'Cancel' }, { label: 'OK', primary: true, onClick: () => {
-                    if (!isCurrent() || !canEditElements()) return;
+                    if (!editActive()) return;
                     const current = pathOf(el, elementsRef.current);
                     if (!current || elementAtPath(elementsRef.current, current.slice(0, -1)) !== parent) return;
                     const boundary = delta < 0 ? 0 : childrenOf(parent).length - 1;
@@ -1927,13 +1947,21 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         if (fieldErrors.length) { showValidationErrors(fieldErrors); return 'fail'; }
         // (b) Rhino syntax check of each element's generated script. Iterator
         // children roll into the parent's generated script.
+        let unavailable = false;
         for (const el of elementsRef.current) {
             const src = generateElementScript(el, childrenOf);
-            if (src == null) continue;
+            if (src == null) {
+                unavailable ||= isIteratorType(el.__type);
+                continue;
+            }
             const result = await validateScript(src);
             if (!active()) return 'stale';
             if (result.ok === null) { toast(result.message, 'warn'); return 'unavailable'; }
             if (result.ok === false) { showValidationErrors([elementError(el, result.message)]); return 'fail'; }
+        }
+        if (unavailable) {
+            if (announce) toast(iteratorPreviewUnavailable, 'warn');
+            return 'unavailable';
         }
         if (announce) toast(`All ${kind.noun.toLowerCase()}s validated successfully`);
         return 'ok';
@@ -1950,6 +1978,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         if (fieldMsg) { showValidationErrors([elementError(el, fieldMsg)]); return; }
         // (b) Rhino syntax check of its generated script.
         const src = generateElementScript(el, childrenOf);
+        if (src == null && isIteratorType(el.__type)) { toast(iteratorPreviewUnavailable, 'warn'); return; }
         if (src != null) {
             const result = await validateScript(src);
             if (result.ok === false) { showValidationErrors([elementError(el, result.message)]); return; }
@@ -1980,16 +2009,23 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             && !store.getState('editorSave') && platform.checkTask('channelEdit', 'doSaveChannel');
     }
 
+    function captureElementEdit() {
+        const sessionActive = channelSessionActive();
+        return () => sessionActive() && canEditElements();
+    }
+
     function editorSessionActive() {
         const sessionActive = channelSessionActive();
         return () => sessionActive() && mountedRef.current && store.getState('editingChannel') === channel;
     }
 
     function updateIteratorIndex(iterator: any, index: string): string {
-        if (!canEditElements()) return 'This Iterator can no longer be edited.';
-        if (index === (iterator.properties.indexVariable ?? 'i')) return '';
         const path = pathOf(iterator, elementsRef.current);
-        if (!path || !isIteratorIndexName(index)
+        if (!canEditElements() || !path || !isIteratorType(iterator.__type) || !iterator.properties) {
+            return 'This Iterator can no longer be edited.';
+        }
+        if (index === (iterator.properties.indexVariable ?? 'i')) return '';
+        if (!isIteratorIndexName(index)
             || iteratorAncestors(path).some(el => el.properties?.indexVariable === index)
             || allIteratorPaths(childrenOf(iterator)).some(childPath =>
                 elementAtPath(childrenOf(iterator), childPath).properties?.indexVariable === index)) return 'Enter an unused JavaScript variable name.';
@@ -2020,7 +2056,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // iterator or create one from a target prefix, with an optional outbound
     // prefix for Message Builder. No model changes occur before acceptance.
     function chooseIterator(el: any, parent: any, onChoose: (iterator: any, created: boolean) => void) {
-        const isCurrent = channelSessionActive();
+        const editActive = captureElementEdit();
         const elements = elementsRef.current;
         const sourcePath = pathOf(el, elements);
         const parentPath = parent ? pathOf(parent, elements) : null;
@@ -2037,7 +2073,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const descendantIndices = () => allIteratorPaths([el]).map(path => elementAtPath([el], path).properties?.indexVariable);
         const index = validIteratorIndex(ancestorIndices, descendantIndices());
         const createIterator = (target = '', outbound = '') => {
-            const type = isFilter ? 'com.mirth.connect.model.IteratorRule' : 'com.mirth.connect.model.IteratorStep';
+            const type = isFilter ? ElementType.IteratorRule : ElementType.IteratorStep;
             const iterator = typeDef(type)?.create?.();
             if (!iterator) return false;
             iterator.__type = type;
@@ -2064,7 +2100,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 const indent = depth ? '\u00a0'.repeat(4 + (depth - 1) * 8) + '— ' : '';
                 return h('option', { value: String(i) }, indent + (it.name || `Iterator ${i + 1}`));
             })) as HTMLSelectElement;
-        const preferred = parent || preferredIterator(wizardTarget, elements, sourcePath ? el : undefined, el.__type === MAPPER_TYPE);
+        const preferred = parent || preferredIterator(wizardTarget, elements, sourcePath ? el : undefined);
         const preferredIndex = targets.indexOf(preferred);
         if (preferredIndex >= 0) choice.value = String(preferredIndex);
         else if (!targetPrefixes.choices.length && targets.length) choice.value = '0';
@@ -2107,7 +2143,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             buttons: [
                 { label: 'Cancel' },
                 { label: 'Use Iterator', primary: true, onClick: () => {
-                    if (!isCurrent() || !canEditElements()) return;
+                    if (!editActive()) return;
                     const currentPath = sourcePath ? pathOf(el, elementsRef.current) : null;
                     const currentParentPath = parent ? pathOf(parent, elementsRef.current) : null;
                     const currentAncestors = currentPath ? iteratorAncestors(currentPath)
@@ -2172,7 +2208,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     }
 
     // Elements created from a message-tree node or a tree drop on the grid.
-    function addTreeStep(typeId: any, label: any, baseName: any, setup: any, legacyAccessor?: string) {
+    function addTreeStep(typeId: any, label: any, baseName: any, setup: any, writeSource?: TreeAccessorSource) {
         if (!canEditElements()) return;
         const def = typeDef(typeId);
         if (!def) { toast(`${label} is not available`, 'warn'); return; }
@@ -2188,28 +2224,25 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const parentPath = parent ? pathOf(parent, elementsRef.current) : null;
         const ancestors = parentPath ? [...iteratorAncestors(parentPath), parent] : [];
         const ancestorState = iteratorContext(ancestors);
-        const isCurrent = channelSessionActive();
+        const editActive = captureElementEdit();
         const contextCurrent = () => {
             const currentPath = parent ? pathOf(parent, elementsRef.current) : null;
             const currentAncestors = currentPath ? [...iteratorAncestors(currentPath), parent] : [];
-            return isCurrent() && canEditElements() && (!parent || currentPath)
+            return editActive() && (!parent || currentPath)
                 && currentAncestors.length === ancestors.length && currentAncestors.every((it, i) => it === ancestors[i])
                 && iteratorContext(currentAncestors) === ancestorState;
         };
-        const rewriteTreeStep = (el: any, ancestors: any[]) => {
-            const field = typeId === MAPPER_TYPE ? 'mapping' : typeId === RULE_BUILDER_TYPE ? 'field' : null;
-            if (legacyAccessor && field) el[field] = rewriteTreeIteratorExpression(el[field], legacyAccessor, ancestors);
-            else rewriteElementIteratorVariables(el, ancestors, true);
-        };
-        // Keep the wizard's candidate paths as member chains. Apply any
-        // legacy namespace guard only after choosing the receiving Iterator.
         const preview = structuredClone(el);
         if (parent) rewriteElementIteratorVariables(preview, ancestors, true);
         const insert = (iterator: any, created = false) => {
             if (!contextCurrent()) return;
             if (iterator && !created && (!pathOf(iterator, elementsRef.current) || !isIteratorType(iterator.__type))) return;
+            if (writeSource && iterator) {
+                const scope = created ? [...ancestors, iterator] : [...iteratorAncestors(pathOf(iterator, elementsRef.current)), iterator];
+                if (!treeMessageSegment(writeSource, scope)) return;
+            }
             const list = parent ? childrenOf(parent) : elementsRef.current;
-            if (typeId === MAPPER_TYPE) el.name = el.variable = availableMapperKey(channel, el.variable);
+            if (typeId === ElementType.Mapper) el.name = el.variable = availableMapperKey(channel, el.variable);
             if (created) {
                 list.push(iterator);
                 const path = pathOf(iterator, elementsRef.current);
@@ -2218,7 +2251,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             }
             (iterator ? childrenOf(iterator) : list).push(el);
             const path = pathOf(el, elementsRef.current);
-            if (path.length > 1) rewriteTreeStep(el, iteratorAncestors(path));
+            if (path.length > 1) rewriteElementIteratorVariables(el, iteratorAncestors(path), true);
             setSelected(path);
             commitRef.current();
             toast(`Added ${label} "${el.name}"`);
@@ -2230,7 +2263,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 title: 'Select An Option',
                 body: h('div', h('p', `Would you like to create a new or choose an existing Iterator for this ${kind.title.toLowerCase()} ${kind.noun.toLowerCase()}?`),
                     h('label', checkbox, 'Do not show this dialog again (may be re-enabled in the Administrator settings)')),
-                onClose: () => { if (isCurrent() && checkbox.checked) setPrefs({ filterTransformerShowIteratorDialog: false }); },
+                onClose: () => { if (editActive() && checkbox.checked) setPrefs({ filterTransformerShowIteratorDialog: false }); },
                 buttons: [
                     { label: 'Cancel' },
                     { label: 'No', onClick: () => insert(parent) },
@@ -2348,18 +2381,18 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             channelId: params.channelId,
             target: isFilter ? connector.transformer : target, version, connectorType, channel,
             dragRef,
-            treeAccessor: (text: string, event: DragEvent, legacyAccessor?: string) => {
-                const expression = treeDragModifier(event) ? text.replace(/\.toString\(\)$/, '') : text;
+            treeAccessor: (source: TreeAccessorSource, event: DragEvent) => {
+                const segment = event.target instanceof Element && event.target.closest('[data-message-segment]');
+                const raw = source.accessor.replace(/\.toString\(\)$/, '');
                 const ancestors = iteratorAncestors(selectedPathRef.current || []);
-                return legacyAccessor && expression === text ? rewriteTreeIteratorExpression(expression, legacyAccessor, ancestors)
-                    : rewriteIteratorExpression(expression, ancestors, true);
+                if (segment) return treeMessageSegment(source, ancestors);
+                return rewriteIteratorExpression(treeDragModifier(event) ? raw : source.accessor, ancestors, true);
             },
             referenceRefreshRef,
             getVariables: () => collectStepVariables(elementsRef.current, selectedPathRef.current),
             canEdit: canEditElements,
             commit: () => commitRef.current(),
-            onAddStep: (typeId: any, label: any, baseName: any, setup: any, legacyAccessor?: string) =>
-                addTreeStepRef.current(typeId, label, baseName, setup, legacyAccessor),
+            onAddStep: (...args: Parameters<typeof addTreeStep>) => addTreeStepRef.current(...args),
             // The panel's collapse flag, mirrored onto the wrapper the MAIN tree
             // renders: .side-collapsed squeezes the fixed width down to the strip
             // (its splitter hides via CSS :has — nothing left to drag). Class

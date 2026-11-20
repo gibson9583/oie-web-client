@@ -3,6 +3,7 @@
  * Only the shipped expression fields participate, never arbitrary script text.
  */
 
+import { ElementType } from '../../core/element-types.js';
 import { readMemberBoundaries, referencesIteratorIdentifier } from '../../core/iterator-expression.js';
 import { arrayToElements, isIteratorType, isJavaBlank } from '../../core/oie.js';
 import { REPLACEMENT_PAIR } from '../../core/step-replacements.js';
@@ -99,200 +100,21 @@ function memberAfterPrefix(expression: string, prefix: string) {
     return boundary < 0 || members[boundary + 1]?.call ? null : members[boundary + 1] ?? { end: prefix.length };
 }
 
-const treeBindingStart = '(<r>{';
-const treeBindingEnd = '}</r>)';
-const treeGuardStart = treeBindingStart
-    + "(function (rows, accept) { var selected = ''; for each (var row in rows) { if (accept(row)) selected = typeof selected === 'xml' ? selected + row : row; } return selected; })(";
-
-function treeBinding(path: string, suffix: string, tests: string[]): string {
-    if (!tests.length) return treeBindingStart + path + treeBindingEnd + suffix;
-    return treeGuardStart + path + ', function (row) { return ' + tests.join(' && ') + '; })' + treeBindingEnd + suffix;
-}
-
-function readTreeBinding(expression: string) {
-    if (!expression.startsWith(treeBindingStart)) return null;
-    const guarded = expression.startsWith(treeGuardStart);
-    const start = guarded ? treeGuardStart : treeBindingStart;
-    const body = expression.slice(start.length);
-    const end = readMemberBoundaries(body).at(-1)?.end;
-    if (end === undefined) return null;
-    // Reading the arguments as a call also handles quoted delimiters in QNames.
-    const callEnd = guarded ? readMemberBoundaries('f(' + body).find(member => member.call)?.end : undefined;
-    const wrapperEnd = guarded ? (callEnd ?? 0) - 2 : end;
-    if (wrapperEnd < end || !body.startsWith(treeBindingEnd, wrapperEnd)) return null;
-    return {
-        start, path: body.slice(0, end),
-        end: body.slice(end, wrapperEnd) + treeBindingEnd,
-        suffix: body.slice(wrapperEnd + treeBindingEnd.length)
-    };
-}
-
-const treeLiteral = String.raw`'((?:[^'\\]|\\(?:['\\]|u[0-9a-f]{4}))*)'`;
-const treeQualified = new RegExp(String.raw`^\[new QName\(${treeLiteral}, ${treeLiteral}\)\]$`);
-const treeUnqualified = new RegExp(String.raw`^\[${treeLiteral}\]$`);
-const treeWildcard = new RegExp(String.raw`^\.\*::\[${treeLiteral}\]$`);
-const treeAttribute = new RegExp(String.raw`^\.@\[new QName\(${treeLiteral}, ${treeLiteral}\)\]$`);
-const treeAncestorCheck = new RegExp(
-    String.raw`row((?:\.parent\(\))+)\.name\(\) == (new QName\(${treeLiteral}(?:, ${treeLiteral})?\))`, 'g');
-
-function treeMembers(expression: string) {
-    return readMemberBoundaries(expression).map((member, index, members) => {
-        const text = expression.slice(members[index - 1]?.end ?? 0, member.end);
-        const qualified = treeQualified.exec(text);
-        const unqualified = treeUnqualified.exec(text);
-        const wildcard = treeWildcard.exec(text);
-        return {
-            ...member, text, wildcard: !!wildcard,
-            name: qualified?.[2] ?? unqualified?.[1] ?? wildcard?.[1],
-            qname: qualified ? text.slice(1, -1) : unqualified ? `new QName(${text.slice(1, -1)})` : undefined
-        };
-    });
-}
-
-function expandTreeBinding(binding: NonNullable<ReturnType<typeof readTreeBinding>>, detachedIndices?: number[]) {
-    const path = treeMembers(binding.path);
-    let selected = path.length - 1;
-    while (selected > 0 && path[selected].name === undefined) selected--;
-    const selector = treeMembers('msg' + binding.suffix)[1];
-    if (selected < 1 || !selector?.qname || path[0]?.text !== 'msg') return null;
-    const ancestorSelectors = new Map(Array.from(binding.end.matchAll(treeAncestorCheck), match => [
-        match[1].length / '.parent()'.length, match[4] === undefined ? `['${match[3]}']` : `[${match[2]}]`
-    ]));
-    path[selected].text = selector.text;
-    let depth = 0;
-    for (let index = selected - 1; index > 0; index--) {
-        const member = path[index];
-        if (member.name === undefined) continue;
-        depth++;
-        if (!member.wildcard) continue;
-        const exact = ancestorSelectors.get(depth);
-        if (!exact) return null;
-        member.text = exact;
-    }
-    let prefix = '';
-    const offsets = new Map<number, number>();
-    for (const member of path) {
-        prefix += member.text;
-        offsets.set(member.end, prefix.length);
-    }
-    return {
-        expression: prefix + binding.suffix.slice(selector.text.length),
-        detachedIndices: detachedIndices?.map(offset => offsets.get(offset) ?? offset)
-    };
-}
-
-/** Bind the legacy row index and check each namespace widened by the configured prefix. */
-export function rewriteTreeIteratorExpression(expression: string, legacy: string | undefined, ancestors: Element[]): string {
-    return rewriteTreeIteratorIndices(expression, legacy, ancestors);
-}
-
-function rewriteTreeIteratorIndices(expression: string, legacy: string | undefined, ancestors: Element[],
-    detachedIndices?: number[], knownAncestors = ancestors): string {
-    if (!ancestors.length) return expression;
-    let binding = readTreeBinding(expression);
-    if (binding) {
-        for (const [index, iterator] of ancestors.entries()) {
-            const path = binding.path;
-            const end = treeMembers(path).filter(member => member.name !== undefined).at(-1)?.end ?? path.length;
-            if (iteratorPrefixes(iterator).map(prefix => prefix.trim())
-                .some(prefix => prefix.length >= end && memberAfterPrefix(path, prefix))) {
-                expression = rewriteIteratorIndex(expression, iterator, true, undefined, detachedIndices);
-                binding = readTreeBinding(expression);
-                if (!binding) break;
-                continue;
-            }
-            // A deeper Iterator's prefix can extend beyond a previous wrapper.
-            // Recover the original qualified path from the wrapper's selectors.
-            const expanded = expandTreeBinding(binding, detachedIndices);
-            if (expanded) {
-                const rewritten = rewriteTreeIteratorIndices(expanded.expression, legacy, ancestors.slice(index),
-                    expanded.detachedIndices, knownAncestors);
-                if (rewritten !== expanded.expression) return rewritten;
-            }
-        }
-        return expression;
-    }
-
-    const indices = new Set(knownAncestors.map(iterator => iterator.properties?.indexVariable ?? 'i'));
-    const source = treeMembers(withoutStringSuffix(expression));
-    // Saved Mapper expressions have no tree metadata. Recognize the emitted
-    // read syntax, including indices belonging to the surrounding Iterators.
-    const infer = expression.endsWith(stringSuffix) && source[0]?.text === 'msg' && source[1]?.qname
-        && source.at(-1)?.end === expression.length - stringSuffix.length
-        && source.slice(1).every(member => member.qname || member.numeric || indices.has(member.key)
-            || (member === source.at(-1) && treeAttribute.test(member.text)));
-    const hints = legacy ? treeMembers(withoutStringSuffix(legacy)).filter(member => member.name !== undefined) : null;
-    let result = expression;
-    for (const iterator of ancestors) {
-        const direct = rewriteIteratorIndex(expression, iterator, true, undefined, detachedIndices);
-        if (direct !== expression) {
-            expression = result = direct;
-            continue;
-        }
-        const prefixes = iteratorPrefixes(iterator).map(prefix => prefix.trim()).sort((a, b) => b.length - a.length);
-        if ((!hints && !infer) || prefixes.some(prefix => memberAfterPrefix(expression, prefix))) continue;
-
-        const exact = treeMembers(withoutStringSuffix(expression));
-        for (const prefix of prefixes) {
-            const alias = treeMembers(prefix);
-            const selected = alias.length - 1;
-            if (exact[0]?.text !== 'msg' || alias.at(-1)?.end !== prefix.length || !alias[selected]?.name
-                || !exact[selected]?.qname || !alias.some(member => member.wildcard)) continue;
-            let elementIndex = -1;
-            const compatible = alias.every((member, index) => {
-                if (exact[index]?.qname) elementIndex++;
-                if (member.text === exact[index]?.text) return true;
-                return member.wildcard && exact[index]?.qname && member.name === exact[index].name
-                    && (!hints || hints[elementIndex]?.text === member.text);
-            });
-            if (!compatible) continue;
-            const tests: string[] = [];
-            let depth = 0;
-            for (let index = selected - 1; index > 0; index--) {
-                const member = exact[index];
-                if (!member.qname) continue;
-                depth++;
-                if (alias[index].text === member.text) continue;
-                const ancestor = 'row' + '.parent()'.repeat(depth);
-                tests.push(`${ancestor}.name() == ${member.qname}`);
-                if (exact[index + 1].numeric) {
-                    const sibling = `${ancestor}.parent()[${member.qname}]${exact[index + 1].text}`;
-                    // Rhino can return distinct wrappers for the same XML
-                    // node. Compare sibling positions within the same parent.
-                    tests.push(`typeof ${sibling} !== 'undefined' && ${sibling}.childIndex() === ${ancestor}.childIndex()`);
-                }
-            }
-            const index = iterator.properties?.indexVariable ?? 'i';
-            const next = exact[selected + 1];
-            const end = next?.numeric || next?.key === index ? next.end : exact[selected].end;
-            const suffix = expression.slice(end);
-            result = treeBinding(prefix + `[${index}]`, exact[selected].text + suffix, tests);
-            // A nested legacy prefix can refer to this Iterator's index.
-            expression = expression.slice(0, exact[selected].end) + `[${index}]` + suffix;
-            break;
-        }
-    }
-    return result;
-}
-
 /** The first matching iterator at the greatest matched ancestor depth wins. */
-export function preferredIterator(expression: string, iterators: Element[], selected?: Element, treeRead = false): Element | null {
+export function preferredIterator(expression: string, iterators: Element[], selected?: Element): Element | null {
     let preferred: Element | null = null;
     let maxDepth = -1;
-    const visit = (nodes: Element[], target: string, parents: Element[], parentBinding: string) => {
+    const visit = (nodes: Element[], target: string, depth: number) => {
         for (const iterator of nodes) {
             if (iterator === selected || !isIteratorType(elementType(iterator))) continue;
             const direct = iteratorPrefixes(iterator).some(prefix => memberAfterPrefix(target.trimStart(), prefix.trim()));
-            const ancestors = [...parents, iterator];
-            const bound = treeRead ? rewriteTreeIteratorExpression(expression, undefined, ancestors) : expression;
-            if (direct || (bound !== parentBinding && bound !== expression)) {
-                const depth = parents.length;
+            if (direct) {
                 if (depth > maxDepth) { preferred = iterator; maxDepth = depth; }
-                visit(childrenOf(iterator), rewriteIteratorExpression(target, [iterator], true), ancestors, bound);
+                visit(childrenOf(iterator), rewriteIteratorExpression(target, [iterator], true), depth + 1);
             }
         }
     };
-    visit(iterators, expression, [], expression);
+    visit(iterators, expression, 0);
     return preferred;
 }
 
@@ -303,12 +125,47 @@ export function rewriteIteratorExpression(expression: any, ancestors: Element[],
     return expression;
 }
 
-function rewriteIteratorIndex(expression: string, iterator: Element, insert: boolean, rename?: string, detachedIndices?: number[]): string {
-    const binding = readTreeBinding(expression);
-    if (binding) {
-        const path = rewriteIteratorIndex(binding.path, iterator, insert, rename, detachedIndices);
-        return binding.start + path + binding.end + binding.suffix;
+function treeMemberName(member: string): string | undefined {
+    member = member.trim();
+    const qualified = /^\[\s*new\s+QName\s*\(\s*(?:'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*")\s*,\s*(['"])([^'"\\]+)\1\s*\)\s*\]$/.exec(member);
+    if (qualified) return qualified[2];
+    const key = member.replace(/^\.\s*(?:(?:\*|[$_\p{ID_Start}][$\p{ID_Continue}]*)\s*::\s*)?/u, '');
+    const literal = /^\[\s*(['"])([^'"\\]+)\1\s*\]$/.exec(key);
+    if (literal) return literal[2];
+    return key !== member && /^[$_\p{ID_Start}][$\p{ID_Continue}]*$/u.test(key) ? key : undefined;
+}
+
+// A named namespace can resolve to the wildcard's namespace at runtime. Only
+// guard a literal path to the selected repeated ancestor; other writes can
+// intentionally address a fixed field while the loop runs.
+function overlapsRepeatedTreeAncestor(path: string, prefix: string): boolean {
+    const members = (value: string) => readMemberBoundaries(value).map((member, i, list) =>
+        ({ ...member, text: value.slice(list[i - 1]?.end ?? 0, member.end) }));
+    const selected = members(path);
+    const configured = members(prefix);
+    if (!configured.length || configured.at(-1)?.end !== prefix.length) return false;
+    let i = 0;
+    for (const member of configured) {
+        if (selected[i]?.numeric && selected[i - 1]?.text.startsWith('.*::') && !member.numeric) i++;
+        const tree = selected[i++];
+        if (!tree) return false;
+        if (tree.text === member.text) continue;
+        if (!tree.text.startsWith('.*::') || treeMemberName(tree.text) !== treeMemberName(member.text)) return false;
     }
+    return selected[i - 1].text.startsWith('.*::') && !!selected[i]?.numeric;
+}
+
+export function treeWritePath(path: string, ancestors: Element[]): string | null {
+    for (const iterator of ancestors) {
+        const scoped = rewriteIteratorIndex(path, iterator, true);
+        if (scoped === path && path.includes('.*::[') && iteratorPrefixes(iterator).some(prefix =>
+            overlapsRepeatedTreeAncestor(path, prefix.trim()))) return null;
+        path = scoped;
+    }
+    return path;
+}
+
+function rewriteIteratorIndex(expression: string, iterator: Element, insert: boolean, rename?: string, detachedIndices?: number[]): string {
     const index = iterator.properties?.indexVariable ?? 'i';
     const source = expression.trimStart();
     for (const prefix of iteratorPrefixes(iterator).map(value => value.trim()).sort((a, b) => b.length - a.length)) {
@@ -369,17 +226,17 @@ function rewriteReplacements(element: Element, rewrite: (value: any) => any) {
     }
 }
 
-function rewriteSubtree(element: Element, rewrite: (value: any, element?: Element, field?: string) => any): void {
+function rewriteSubtree(element: Element, rewrite: (value: any) => any): void {
     const type = elementType(element);
     const iterator = isIteratorType(type);
     let fields: string[] = [];
-    if (type === 'com.mirth.connect.plugins.mapper.MapperStep') fields = ['mapping', 'defaultValue'];
-    else if (type === 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep') fields = ['messageSegment', 'mapping', 'defaultValue'];
-    else if (type === 'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule' || type === 'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep') {
+    if (type === ElementType.Mapper) fields = ['mapping', 'defaultValue'];
+    else if (type === ElementType.MessageBuilder) fields = ['messageSegment', 'mapping', 'defaultValue'];
+    else if (type === ElementType.RuleBuilder || type === ElementType.DestinationSetFilter) {
         fields = ['field']; rewriteStringList(element, 'values', rewrite);
-    } else if (type === 'com.mirth.connect.plugins.xsltstep.XsltStep') fields = ['sourceXml'];
-    for (const field of fields) if (Object.hasOwn(element, field)) element[field] = rewrite(element[field], element, field);
-    if (type === 'com.mirth.connect.plugins.mapper.MapperStep' || type === 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep') rewriteReplacements(element, rewrite);
+    } else if (type === ElementType.Xslt) fields = ['sourceXml'];
+    for (const field of fields) if (Object.hasOwn(element, field)) element[field] = rewrite(element[field]);
+    if (type === ElementType.Mapper || type === ElementType.MessageBuilder) rewriteReplacements(element, rewrite);
     if (iterator) {
         const props = element.properties || {};
         if (Object.hasOwn(props, 'target')) props.target = rewrite(props.target);
@@ -399,14 +256,11 @@ export function relocateElementIteratorVariables(element: Element, previous: Ele
     const departed = previous.slice(shared).reverse();
     const entered = current.slice(shared);
     if (!departed.length && !entered.length) return;
-    rewriteSubtree(element, (value, step, field) => {
+    rewriteSubtree(element, value => {
         if (typeof value !== 'string') return value;
         // An explicit index following a detached loop index belongs to its selected item.
         const detachedIndices: number[] = [];
         for (const iterator of departed) value = rewriteIteratorIndex(value, iterator, false, undefined, detachedIndices);
-        if (field === 'mapping' && step && elementType(step) === 'com.mirth.connect.plugins.mapper.MapperStep') {
-            return rewriteTreeIteratorIndices(value, undefined, entered, detachedIndices, current);
-        }
         for (const iterator of entered) value = rewriteIteratorIndex(value, iterator, true, undefined, detachedIndices);
         return value;
     });
@@ -415,19 +269,12 @@ export function relocateElementIteratorVariables(element: Element, previous: Ele
 export function renameIteratorIndex(element: Element, index: string): boolean {
     const previous = element.properties.indexVariable ?? 'i';
     if (previous === index) return true;
+    // IteratorRuleProperties generates a result flag for each nesting depth.
+    if (elementType(element) === ElementType.IteratorRule && /^_iterator_flag_\d+$/.test(index)) return false;
     const target = element.properties.target;
     const binding = { properties: { indexVariable: previous, prefixSubstitutions: [...iteratorPrefixes(element), target] } };
     const rewrite = (value: any) => typeof value === 'string' ? rewriteIteratorIndex(value, binding, false, index) : value;
-    const unsafeReference = (value: unknown, name: string) => {
-        if (typeof value !== 'string') return false;
-        const binding = readTreeBinding(value);
-        if (binding && name === index) {
-            // Rhino resolves XML literals through XML. A tested ancestor can
-            // use QName even when neither the runtime path nor the leaf does.
-            if (name === 'XML' || (name === 'QName' && binding.end.includes(' == new QName('))) return true;
-        }
-        return referencesIteratorIdentifier(binding ? binding.path + binding.suffix : value, name);
-    };
+    const unsafeReference = (value: unknown, name: string) => typeof value === 'string' && referencesIteratorIdentifier(value, name);
     const hasScriptReferences = (el: Element): boolean =>
         unsafeReference(el.script, previous) || unsafeReference(el.script, index) || !!el.scriptPath
         || (isIteratorType(elementType(el)) && childrenOf(el).some(hasScriptReferences));
@@ -465,13 +312,13 @@ export function getIteratorInfo(element: Element): { target: string; outbound: s
     // JSON imports can supply primitives even when the release model declares a String.
     const text = (value: unknown) => String(value ?? '');
     if (isIteratorType(type)) return { target: text(element.properties?.target), outbound: null };
-    if (type === 'com.mirth.connect.plugins.mapper.MapperStep') return { target: text(element.mapping), outbound: null };
-    if (type === 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep') {
+    if (type === ElementType.Mapper) return { target: text(element.mapping), outbound: null };
+    if (type === ElementType.MessageBuilder) {
         const mapping = text(element.mapping);
         const segment = text(element.messageSegment);
         return isJavaBlank(mapping) ? { target: segment, outbound: null } : { target: mapping, outbound: segment };
     }
-    if (type === 'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule' || type === 'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep') return { target: text(element.field), outbound: null };
-    if (type === 'com.mirth.connect.plugins.xsltstep.XsltStep') return { target: text(element.sourceXml), outbound: null };
+    if (type === ElementType.RuleBuilder || type === ElementType.DestinationSetFilter) return { target: text(element.field), outbound: null };
+    if (type === ElementType.Xslt) return { target: text(element.sourceXml), outbound: null };
     return { target: '', outbound: null };
 }

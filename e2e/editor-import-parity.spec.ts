@@ -237,7 +237,7 @@ test('replacing a transformer refreshes the open message tree even if its old te
     Object.assign(channel.sourceConnector.transformer, {
         inboundDataType: 'XML', inboundTemplate: original, outboundTemplate: '', elements: { [stepType]: step('Existing') }
     });
-    await setup(page, channel, 'transformer/0');
+    const writes = await setup(page, channel, 'transformer/0');
     let release!: () => void;
     const oldRequest = new Promise<void>(resolve => { release = resolve; });
     await page.route('**/api/datatypes/_serialize*', async route => {
@@ -259,7 +259,14 @@ test('replacing a transformer refreshes the open message tree even if its old te
         release();
         await (await oldResponse).finished();
     }
-    await tree.getByText('n:after', { exact: true }).click();
-    await expect(tree.locator('.mt-foot')).toContainText("msg[new QName('urn:new', 'after')].toString()");
+    const after = tree.getByText('n:after', { exact: true });
+    await after.click();
+    const mapping = "msg.*::['after'].toString()";
+    await expect(tree.locator('.mt-foot')).toContainText(mapping);
     await expect(tree.getByText('before', { exact: true })).toHaveCount(0);
+    await after.click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
+    await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
+    const saved = await save(page, writes);
+    expect(saved.sourceConnector.transformer.elements['com.mirth.connect.plugins.mapper.MapperStep'][0].mapping).toBe(mapping);
 });
