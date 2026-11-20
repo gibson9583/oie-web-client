@@ -138,6 +138,36 @@ test('response transformer: response entries in, source-only library and plugin 
     await expect(rows(page)).toHaveText(['Resp Helper']);
 });
 
+test('available variables follow the selected step and include preceding Iterator outputs', async ({ page }) => {
+    const channel = makeChannel(CHANNEL_ID);
+    const mapper = 'com.mirth.connect.plugins.mapper.MapperStep';
+    const iterator = 'com.mirth.connect.model.IteratorStep';
+    const mapperStep = (variable: string, sequenceNumber = 0) => ({
+        '@version': '4.6.0', variable, sequenceNumber, name: variable, enabled: true, mapping: "'value'", scope: 'CHANNEL'
+    });
+    const loop = (variable: string, sequenceNumber: number, enabled: boolean) => ({
+        '@version': '4.6.0', name: `${variable} Iterator`, sequenceNumber, enabled,
+        properties: {
+            target: "msg['OBX']", indexVariable: 'i', prefixSubstitutions: { string: "msg['OBX']" },
+            children: { [mapper]: mapperStep(variable) }
+        }
+    });
+    channel.sourceConnector.transformer.elements = {
+        [iterator]: [loop('earlierOutput', 0, true), loop('disabledOutput', 1, false)],
+        [mapper]: mapperStep('currentOutput', 2)
+    };
+    await mockEngine(page, { [`GET /channels/${CHANNEL_ID}`]: { channel } });
+    await page.goto(`/channels/${CHANNEL_ID}/transformer/0`);
+    const select = (path: string) => page.locator(`tr[data-path="${path}"] td.num`).click();
+
+    await select('2');
+    await expect(panel(page).getByText('earlierOutput', { exact: true })).toBeVisible();
+    await expect(panel(page).getByText('disabledOutput', { exact: true })).toHaveCount(0);
+    await expect(panel(page).getByText('currentOutput', { exact: true })).toHaveCount(0);
+    await select('0.0');
+    await expect(panel(page).getByText('earlierOutput', { exact: true })).toHaveCount(0);
+});
+
 // The Reference entries the script editors' completion provider offers now.
 const activeReferences = (page: any) => page.evaluate(async () => {
     const path = '/core/script-completions.js';

@@ -39,6 +39,8 @@ export interface PrefValues {
     formatMessages: boolean;
     /** require the REPROCESSALL / remove confirmations */
     confirmReprocessRemove: boolean;
+    /** ask whether message-tree additions should use an iterator */
+    filterTransformerShowIteratorDialog: boolean;
     /** bundle/import a channel's code template libraries */
     importLibrariesWithChannels: 'yes' | 'no' | 'ask';
     exportLibrariesWithChannels: 'yes' | 'no' | 'ask';
@@ -74,6 +76,7 @@ export const PREF_DEFAULTS: PrefValues = {
     eventPageSize: 100,
     formatMessages: true,
     confirmReprocessRemove: true,
+    filterTransformerShowIteratorDialog: true,
     importLibrariesWithChannels: 'ask',
     exportLibrariesWithChannels: 'ask',
     newChannelDefault: 'ask',

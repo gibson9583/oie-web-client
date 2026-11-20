@@ -9,6 +9,11 @@
  *     object keyed by Java class name: { "com.x.JavaScriptStep": {...}|[...] }
  *   - single-element lists arrive as a bare object instead of an array
  */
+import { ElementType } from './element-types.js';
+// StringUtils.isBlank follows Java whitespace, excluding non-breaking spaces and the byte-order mark.
+export function isJavaBlank(text) {
+    return text == null || /^[\u0009-\u000d\u001c-\u0020\u1680\u2000-\u2006\u2008-\u200a\u2028\u2029\u205f\u3000]*$/.test(text);
+}
 export function uuid() {
     // randomUUID needs a secure context; plain-HTTP LAN deployments don't have
     // one. getRandomValues is available everywhere we run — only its absence
@@ -28,6 +33,20 @@ export function uuid() {
     });
 }
 /* ---- polymorphic element collections (filter rules / transformer steps) ---- */
+export function isIteratorType(type) {
+    return type === ElementType.IteratorStep || type === ElementType.IteratorRule;
+}
+export function iteratorName(element, target = element.properties?.target ?? '') {
+    const all = String(element.properties?.intersectIterations) === 'true';
+    return (element.__type || element['@class']) === ElementType.IteratorRule
+        ? `Accept message if ${all ? 'all of the iterations return' : 'at least one of the iterations returns'} true for each ${target}`
+        : `For each ${target}`;
+}
+// FilterTransformerElementsConverter compares the digits of Swing positions
+// (e.g. "0-2" and "0-10"). Older web channels use a local number at each level.
+function sequenceValue(position) {
+    return Number(String(position ?? '').replace(/\D/g, ''));
+}
 /**
  * Flatten a class-keyed element map into an ordered array, tagging each entry
  * with `__type` (its Java class) and sorting by `sequenceNumber`. Accepts `''`
@@ -45,7 +64,7 @@ export function elementsToArray(elements) {
                 out.push({ __type: type, ...item });
         }
     }
-    out.sort((a, b) => Number(a.sequenceNumber ?? 0) - Number(b.sequenceNumber ?? 0));
+    out.sort((a, b) => sequenceValue(a.sequenceNumber) - sequenceValue(b.sequenceNumber));
     return out;
 }
 export function arrayToElements(items) {
@@ -109,19 +128,19 @@ export function messageStatusTag(status) {
    datatypes/index.js (dataTypeDef / dataTypeList). */
 /* ---- filter / transformer element types ---------------------------------------------- */
 export const STEP_TYPES = {
-    'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': { label: 'JavaScript' },
-    'com.mirth.connect.plugins.mapper.MapperStep': { label: 'Mapper' },
-    'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep': { label: 'Message Builder' },
-    'com.mirth.connect.plugins.xsltstep.XsltStep': { label: 'XSLT Step' },
-    'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep': { label: 'Destination Set Filter' },
-    'com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep': { label: 'External Script' },
-    'com.mirth.connect.model.IteratorStep': { label: 'Iterator' }
+    [ElementType.JavaScriptStep]: { label: 'JavaScript' },
+    [ElementType.Mapper]: { label: 'Mapper' },
+    [ElementType.MessageBuilder]: { label: 'Message Builder' },
+    [ElementType.Xslt]: { label: 'XSLT Step' },
+    [ElementType.DestinationSetFilter]: { label: 'Destination Set Filter' },
+    [ElementType.ExternalScriptStep]: { label: 'External Script' },
+    [ElementType.IteratorStep]: { label: 'Iterator' }
 };
 export const RULE_TYPES = {
-    'com.mirth.connect.plugins.javascriptrule.JavaScriptRule': { label: 'JavaScript' },
-    'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule': { label: 'Rule Builder' },
-    'com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule': { label: 'External Script' },
-    'com.mirth.connect.model.IteratorRule': { label: 'Iterator' }
+    [ElementType.JavaScriptRule]: { label: 'JavaScript' },
+    [ElementType.RuleBuilder]: { label: 'Rule Builder' },
+    [ElementType.ExternalScriptRule]: { label: 'External Script' },
+    [ElementType.IteratorRule]: { label: 'Iterator' }
 };
 export function elementTypeLabel(type) {
     const known = STEP_TYPES[type] || RULE_TYPES[type];

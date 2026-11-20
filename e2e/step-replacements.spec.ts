@@ -36,7 +36,7 @@ for (const type of ['mapper.MapperStep', 'messagebuilder.MessageBuilderStep']) {
         const group = page.getByRole('group', { name: 'String Replacement', exact: true });
         await expect(group.getByRole('textbox', { name: 'Regular Expression 1', exact: true })).toHaveValue('"^s3://"');
         await expect(group.getByRole('textbox', { name: 'Regular Expression 2', exact: true })).toHaveCount(0);
-        await page.locator('input.grid-name').first().fill('Retry singleton');
+        await page.locator('tr[data-path]').first().getByRole('checkbox').uncheck();
         const save = page.getByRole('button', { name: 'Save Channel', exact: true });
         await save.click();
         await expect.poll(() => attempts.length).toBe(1);
@@ -91,8 +91,8 @@ for (const type of ['mapper.MapperStep', 'messagebuilder.MessageBuilderStep']) {
             await expect(replacement(2)).toHaveValue('"result"');
             await expect(group.getByRole('button', { name: 'Delete', exact: true })).toBeDisabled();
 
-            // Selecting an editor and saving a name edit must leave native pairs untouched.
-            await page.locator('input.grid-name').first().fill('Renamed folder mapping');
+            // Selecting an editor and toggling Enabled must leave native pairs untouched.
+            await page.locator('tr[data-path]').first().getByRole('checkbox').uncheck();
             await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
             await expect.poll(() => written.length).toBe(1);
             expect(connector(written[0])[surface.target].elements[className][0].replacements).toEqual(element.replacements);
