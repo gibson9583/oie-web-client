@@ -233,7 +233,7 @@ export function register() {
 
 The framework surface — the `platform` registries plus the `@oie/web-*` exports —
 is versioned by an **API contract version**, `platform.apiVersion`. Web Administrator
-implements **4.11.0** against OIE **4.6.0**. The API minor can advance independently
+implements **4.10.0** against OIE **4.6.0**. The API minor can advance independently
 when exports are added; it is not the application or engine version. It follows
 major.minor (the patch is ignored for compatibility): the **minor** bumps when the
 surface *grows* (new registry, export or supported descriptor field), the **major** bumps on any *breaking*
@@ -271,16 +271,6 @@ Guidance:
 - For runtime feature-detection, read `platform.apiVersion` directly (import
   `OIE_API_VERSION` / `apiCompatible` from `@oie/web-shell` if you need the raw value
   or the comparison helper).
-
-### API 4.11 Iterator helpers and editors
-
-Declare `"oie": { "apiMin": "4.11" }` when using these additions.
-
-- `isIteratorType(type)` from `@oie/web-api` recognizes the engine's IteratorStep and IteratorRule class names.
-- `iteratorName(element, target?)` returns the Swing display name for an Iterator. It uses the stored target by default and includes the rule's all/any setting.
-- `isJavaBlank(text)` accepts a string, null or undefined. It follows Java whitespace rules, so a nonbreaking space counts as content.
-- Set `nameEditable: false` on a step or rule definition when the plugin generates the grid name. Omitting it leaves the name editable.
-- In an Iterator editor, call `ctx.onRenameIteratorIndex(ctx.element, newIndex)` to update the index and supported descendant expressions together. The host records the edit. An empty string indicates success. On rejection, display the returned message and keep the saved index.
 
 ### API 4.10 plugin contracts
 
@@ -779,7 +769,7 @@ platform.setAuthorizationController({
 
 | API | Purpose |
 |---|---|
-| `platform.apiVersion` | The `@oie/*` API contract version this web administrator implements — is `"4.11.0"`, independently of the engine version. Read it for runtime feature-detection; declare your minimum via `oie.apiMin` in `plugin.json`. See [API version compatibility](#api-version-compatibility). |
+| `platform.apiVersion` | The `@oie/*` API contract version this web administrator implements — is `"4.10.0"`, independently of the engine version. Read it for runtime feature-detection; declare your minimum via `oie.apiMin` in `plugin.json`. See [API version compatibility](#api-version-compatibility). |
 | `platform.React` | The host's React instance — `const React = platform.React` at module scope, then write JSX. Sharing it is mandatory (one instance app-wide); never `import 'react'`. |
 | `platform.reactView(Component)` | Wraps a React component as a routed-view handler for `registerView(path, platform.reactView(Component), { title })`. The component gets `{ params, query }` props. |
 | `platform.api` | Full engine REST client (`api.channels`, `api.messages`, `api.status`, … plus raw `api.get/post/put/del`). All calls share the user's session. |

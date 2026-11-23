@@ -131,26 +131,6 @@ test('full transformer XML replacement imports data types, properties and templa
     expect(sent.destinationConnectors.connector[0].transformer.inboundDataType).toBe('XML');
 });
 
-test('an open template editor edits the replacement transformer after import', async ({ page }) => {
-    await page.route('**/vendor/monaco/**', route => route.abort());
-    const channel = makeChannel('replace-open-templates');
-    const original = channel.sourceConnector.transformer;
-    Object.assign(original, { inboundDataType: 'RAW', inboundTemplate: 'old sample', elements: { [stepType]: step('Existing') } });
-    const writes = await setup(page, channel, 'transformer/0');
-    await page.getByRole('tab', { name: 'Message Templates', exact: true }).click();
-    const input = page.getByRole('textbox', { name: 'Inbound Template', exact: true });
-    await expect(input).toHaveValue('old sample');
-    const transformer = { ...original, inboundDataType: 'XML', inboundTemplate: '<new/>' };
-    await upload(page, 'Import Transformer', JSON.stringify({ transformer }), 'transformer.json');
-    await page.getByRole('button', { name: 'Replace', exact: true }).click();
-    await expect(input).toHaveValue('<new/>');
-    await expect(page.locator('.field').filter({ has: page.getByText('Inbound Data Type', { exact: true }) }).getByRole('combobox')).toHaveValue('XML');
-    await input.press('End');
-    await input.pressSequentially(' ');
-    const saved = await save(page, writes);
-    expect(templateText(saved.sourceConnector.transformer.inboundTemplate)).toBe('<new/> ');
-});
-
 test('cancelled replacement and malformed XML preserve the edited draft', async ({ page }) => {
     const channel = makeChannel('cancel-transformer');
     channel.sourceConnector.transformer.elements = { [stepType]: step('Existing') };
@@ -248,45 +228,4 @@ test('connector import stops when the engine session expires during resource loo
     expect(await page.evaluate(() => (window as any).importChannelBeforeExpiry.destinationConnectors.connector.length)).toBe(1);
     await expect(page.getByRole('dialog')).toHaveCount(0);
     expect(writes).toHaveLength(0);
-});
-
-test('replacing a transformer refreshes the open message tree even if its old template finishes last', async ({ page }) => {
-    const channel = makeChannel('replace-open-tree');
-    const original = '<message><before>old</before></message>';
-    const replacement = '<message xmlns:n="urn:new"><n:after>new</n:after></message>';
-    Object.assign(channel.sourceConnector.transformer, {
-        inboundDataType: 'XML', inboundTemplate: original, outboundTemplate: '', elements: { [stepType]: step('Existing') }
-    });
-    const writes = await setup(page, channel, 'transformer/0');
-    let release!: () => void;
-    const oldRequest = new Promise<void>(resolve => { release = resolve; });
-    await page.route('**/api/datatypes/_serialize*', async route => {
-        const text = route.request().postData();
-        if (text === original) await oldRequest;
-        await route.fulfill({ json: { format: 'xml', data: text, meta: {} } });
-    });
-    const pending = page.waitForRequest(request => request.postData() === original);
-    await page.getByRole('tab', { name: 'Message Trees', exact: true }).click();
-    await pending;
-    const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
-    const oldResponse = page.waitForResponse(response => response.request().postData() === original);
-    try {
-        const transformer = { ...channel.sourceConnector.transformer, inboundTemplate: replacement };
-        await upload(page, 'Import Transformer', JSON.stringify({ transformer }), 'transformer.json');
-        await page.getByRole('button', { name: 'Replace', exact: true }).click();
-        await expect(tree.getByText('n:after', { exact: true })).toBeVisible();
-    } finally {
-        release();
-        await (await oldResponse).finished();
-    }
-    const after = tree.getByText('n:after', { exact: true });
-    await after.click();
-    const mapping = "msg.*::['after'].toString()";
-    await expect(tree.locator('.mt-foot')).toContainText(mapping);
-    await expect(tree.getByText('before', { exact: true })).toHaveCount(0);
-    await after.click({ button: 'right' });
-    await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
-    await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
-    const saved = await save(page, writes);
-    expect(saved.sourceConnector.transformer.elements['com.mirth.connect.plugins.mapper.MapperStep'][0].mapping).toBe(mapping);
 });

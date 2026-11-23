@@ -5,7 +5,6 @@
  * and the Rhino scope cheat-sheet for channel scripts (filter/transformer steps,
  * auth scripts). Public lists keep the [label, insertText] shape.
  */
-import { isElementEnabled } from './element-types.js';
 import { destinationsOf, elementsToArray } from './oie.js';
 import { generateElementScript } from './step-script.js';
 // [label, Velocity token, JavaScript transfer text]. Match Swing's
@@ -80,10 +79,10 @@ function unescapeMapKey(key) {
 function addVariables(target, stage, includeLocal) {
     const pattern = mapVariablePattern(includeLocal);
     for (const element of elementsToArray(stage?.elements)) {
-        if (!isElementEnabled(element))
+        if (element.enabled === false || element.enabled === 'false')
             continue;
         try {
-            const script = generateElementScript(element, child => elementsToArray(child.properties?.children), 'mapDiscovery');
+            const script = generateElementScript(element, child => elementsToArray(child.properties?.children));
             if (!script)
                 continue;
             // Keep the same simple-comment then block-comment order as Swing.

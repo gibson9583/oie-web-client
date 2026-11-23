@@ -190,16 +190,8 @@ export interface AttachmentViewer {
 }
 export interface StepRuleType {
     label: string;
-    /** Set false when the plugin generates the name shown in the grid. Defaults to true. */
-    nameEditable?: boolean;
     create(): OieObject;
-    component: PluginComponent<{
-        element: OieObject;
-        onChange(): void;
-        platform: Platform;
-        /** Commit an Iterator index and its child references together. An empty string means success. */
-        onRenameIteratorIndex(element: OieObject, index: string): string;
-    }>;
+    component: PluginComponent<{ element: OieObject; onChange(): void; platform: Platform }>;
     [key: string]: any;
 }
 /** A custom properties class backed by an installed engine plugin. The engine
@@ -395,7 +387,7 @@ export interface PluginManifest {
  * plugin built for 4.6 keeps working on 4.7, 4.9, … (older APIs never removed
  * within a major); it's rejected only when THIS web admin is too old (its apiMin
  * is newer than us) or a major bump dropped what it relies on. */
-export const OIE_API_VERSION = '4.11.0';   // 4.11: Iterator helpers and step/rule editor contracts
+export const OIE_API_VERSION = '4.10.0';   // 4.10: plugin code-template types and on-demand editor languages
 
 function parseApiVersion(v: unknown): { major: number; minor: number } {
     const [major, minor] = String(v == null ? '' : v).split('.');

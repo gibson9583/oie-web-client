@@ -494,64 +494,6 @@ test.describe('Channel editor', () => {
         await expect(page).toHaveURL(new RegExp(`/channels/${CHANNEL_ID}/edit$`));
     });
 
-    test('Back to Channel discards validation that finishes after leaving the editor', async ({ page }) => {
-        const channel = structuredClone(FULL_CHANNEL);
-        channel.sourceConnector.transformer.elements = {
-            'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': {
-                '@version': '4.6.0', name: 'Validate Me', sequenceNumber: '0', enabled: true,
-                script: "logger.info('ok');",
-            },
-        };
-        let release!: () => void;
-        const gate = new Promise<void>(resolve => { release = resolve; });
-        await mockEngine(page, {
-            ...CHANNEL_FIXTURES,
-            [`GET /channels/${CHANNEL_ID}`]: { channel },
-            'POST /javascript/_validate': async () => { await gate; return { error: '' }; },
-        });
-        await page.goto(`/channels/${CHANNEL_ID}/transformer/0`);
-        const validation = page.waitForRequest('**/api/javascript/_validate');
-        await page.getByRole('button', { name: 'Back to Channel', exact: true }).click();
-        await validation;
-        try {
-            await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
-            await expect(page).toHaveURL(/dashboard$/);
-            const response = page.waitForResponse('**/api/javascript/_validate');
-            release();
-            await (await response).finished();
-            await page.evaluate(async () => {
-                await new Promise(requestAnimationFrame);
-                await new Promise(requestAnimationFrame);
-            });
-            await expect(page).toHaveURL(/dashboard$/);
-        } finally { release(); }
-    });
-
-    test('converting a configured Mapper to another ordinary type requires confirmation', async ({ page }) => {
-        const channel = structuredClone(FULL_CHANNEL);
-        const mapper = 'com.mirth.connect.plugins.mapper.MapperStep';
-        const script = 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep';
-        channel.sourceConnector.transformer.elements = {
-            [mapper]: {
-                '@version': '4.6.0', name: 'Read patient ID', sequenceNumber: '0', enabled: true,
-                variable: 'patientId', mapping: "msg['PID']['PID.3'].toString()", scope: 'CHANNEL',
-            },
-        };
-        await mockEngine(page, { ...CHANNEL_FIXTURES, [`GET /channels/${CHANNEL_ID}`]: { channel } });
-        await page.goto(`/channels/${CHANNEL_ID}/transformer/0`);
-        const type = page.locator('tr[data-path="0"] select').last();
-        const dialog = page.getByRole('dialog', { name: 'Change Step Type' });
-        await type.selectOption(script);
-        await dialog.getByRole('button', { name: 'No', exact: true }).click();
-        await expect(type).toHaveValue(mapper);
-        await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toBeHidden();
-        await type.selectOption(script);
-        await dialog.getByRole('button', { name: 'Yes', exact: true }).click();
-        await expect(type).toHaveValue(script);
-        await expect(page.locator('input.grid-name')).toHaveValue('');
-        await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toBeVisible();
-    });
-
     // The Tags field commits on the native change event only (Enter / blur /
     // datalist pick). A regression to React's per-keystroke onChange mints a
     // junk tag for every character typed and clears the input mid-word.
@@ -683,10 +625,9 @@ test.describe('Channel editor', () => {
         await expect(page.getByRole('button', { name: 'Add New Rule', exact: true })).toBeVisible();
         await expect(page.getByRole('button', { name: 'Validate Filter', exact: true })).toBeVisible();
 
-        // Filter routes expose Reference and the connector's inbound template.
+        // Filter routes get a Reference-only side panel — no message-tree tabs.
         await expect(page.getByRole('tab', { name: 'Reference', exact: true })).toBeVisible();
-        await expect(page.getByRole('tab', { name: 'Message Trees', exact: true })).toBeVisible();
-        await expect(page.getByRole('tab', { name: 'Message Templates', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Message Trees', exact: true })).toHaveCount(0);
 
         // The rule's plugin editor mounted from the RULE registry (platform.ruleType).
         await expect(page.locator('.step-editor-fill .field:has(label:text-is("Field")) input'))

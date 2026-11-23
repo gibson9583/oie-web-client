@@ -26,6 +26,7 @@ for (const surface of ['edit', 'guided', 'transformer/0']) {
         await page.goto(`/channels/guard/${surface}`);
         if (surface.startsWith('transformer')) {
             await page.getByRole('button', { name: 'Add New Step', exact: true }).first().click();
+            await page.getByRole('dialog').getByText('JavaScript', { exact: true }).click();
         }
         else await page.locator('.view-body input').first().fill('My unsaved name');
         // Another admin changes the channel within the timestamp's same second.
@@ -77,6 +78,7 @@ for (const surface of ['edit', 'guided', 'transformer/0']) {
         await page.goto(`/channels/same-user/${surface}`);
         if (surface.startsWith('transformer')) {
             await page.getByRole('button', { name: 'Add New Step', exact: true }).first().click();
+            await page.getByRole('dialog').getByText('JavaScript', { exact: true }).click();
         } else await page.locator('.view-body input').first().fill('My local changes');
         channel = { ...channel, revision: Number(channel.revision) + 1, description: 'Saved by the same user in Swing' };
         await page.getByRole('button', { name: surface.startsWith('transformer') ? 'Save Channel' : 'Save Changes', exact: true }).click();

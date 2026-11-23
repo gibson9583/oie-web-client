@@ -33,7 +33,7 @@ for (const width of [1440, 760]) {
             const noun = kind === 'filter' ? 'Rule' : 'Step';
             const add = async () => {
                 await page.getByRole('button', { name: `Add New ${noun}`, exact: true }).first().click();
-                await pane.locator('tr.selected select').last().selectOption({ label: 'JavaScript' });
+                await page.locator('.step-item').filter({ hasText: /^JavaScript$/ }).click();
             };
             for (let i = 0; i < 6; i++) await add();
             await expect(rows).toHaveCount(7);
@@ -86,29 +86,8 @@ for (const width of [1440, 760]) {
         const box = (await pane.boundingBox())!;
         expect(box.height).toBeLessThan(220);
         await pane.getByRole('button', { name: 'Add New Step' }).click();
+        await page.locator('.step-item').filter({ hasText: /^JavaScript$/ }).click();
         await expect(pane.locator('tbody tr')).toHaveCount(1);
         await expect.poll(() => pane.evaluate(el => el.getBoundingClientRect().height)).toBeCloseTo(128, 0);
     });
 }
-
-test('a disabled Iterator keeps its child settings and generated grid names are read-only', async ({ page }) => {
-    const channel = makeChannel('disabled-parent');
-    const loop = CASES.find(c => c.label === 'Iterator Step')!;
-    const mapper = CASES.find(c => c.label === 'Mapper Step')!;
-    const parent = loop.element();
-    parent.enabled = false;
-    parent.properties.children = { [mapper.class]: mapper.element() };
-    channel.sourceConnector.transformer.elements = { [loop.class]: parent };
-    await mockEngine(page, { 'GET /channels/disabled-parent': { channel } });
-    await page.goto('/channels/disabled-parent/transformer/0');
-    const rows = page.locator('tr[data-path]');
-    const child = rows.nth(1);
-    await expect(child.getByRole('checkbox')).toBeChecked();
-    await expect(child.getByRole('checkbox')).toBeDisabled();
-    await expect(child.locator('.grid-name')).not.toBeEditable();
-    await child.locator('.grid-name').focus();
-    await expect(child).toHaveClass(/selected/);
-    await rows.first().getByRole('checkbox').check();
-    await expect(child.getByRole('checkbox')).toBeEnabled();
-    await expect(child.getByRole('checkbox')).toBeChecked();
-});

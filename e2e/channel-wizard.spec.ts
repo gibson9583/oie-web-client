@@ -173,7 +173,7 @@ test.describe('channel wizard', () => {
         await expect(page.getByRole('tab', { name: 'Message Templates', exact: true })).toBeVisible();
 
         await page.getByRole('button', { name: /Add Step/ }).click();
-        await expect(page.locator('tr[data-path].selected select').last()).toHaveValue('com.mirth.connect.plugins.mapper.MapperStep');
+        await expect(page.getByText('Mapper', { exact: true }).first()).toBeVisible();
     });
 
     test('tab labels and destination cards carry live rule/step counts', async ({ page }) => {
@@ -187,6 +187,7 @@ test.describe('channel wizard', () => {
         // Zero-count labels stay bare; adding a step renames the tab in place.
         await page.getByRole('tab', { name: 'Transformer', exact: true }).click();
         await page.getByRole('button', { name: /Add Step/ }).click();
+        await page.locator('.modal .step-item', { hasText: 'Mapper' }).first().click();
         await expect(page.getByRole('tab', { name: 'Transformer (1)', exact: true })).toBeVisible();
         await expect(page.getByRole('tab', { name: 'Filter', exact: true })).toBeVisible();
 
@@ -194,6 +195,7 @@ test.describe('channel wizard', () => {
         await next(page).click();   // Destinations
         await page.getByRole('tab', { name: 'Filter', exact: true }).click();
         await page.getByRole('button', { name: /Add Rule/ }).click();
+        await page.locator('.modal .step-item', { hasText: 'Rule Builder' }).first().click();
         await expect(page.getByRole('tab', { name: 'Filter (1)', exact: true })).toBeVisible();
         await expect(page.locator('.step-list .dest-badge', { hasText: '1' })).toHaveCount(1);
     });

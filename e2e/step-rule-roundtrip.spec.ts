@@ -7,13 +7,15 @@ import { CASES, channelWithSourceElement } from './step-rule-fixtures.js';
  * other serialization-heavy half of the channel the connector round-trip tests
  * don't cover. For each step/rule type: load a channel whose source connector
  * holds an element of that type, open the filter/transformer editor, select the
- * element so ITS editor mounts and reads the element, toggle Enabled to dirty the
+ * element so ITS editor mounts and reads the element, edit the Name to dirty the
  * channel, Save, and assert the serialized elements deep-equal the expected wire
- * shape (the element array-wrapped under its @class, with the edited enabled flag).
+ * shape (the element array-wrapped under its @class, with the edited name).
  *
  * A correct editor renders the loaded element without mutating its other fields,
  * so any dropped/renamed/normalized field fails here before it can break a deploy.
  */
+
+const EDITED = 'RT Edited';
 
 for (const c of CASES) {
     test(`${c.label} (${c.kind}) round-trips its element`, async ({ page }) => {
@@ -54,8 +56,8 @@ for (const c of CASES) {
         await firstRow.locator('td.num').click();
         await expect(page.locator('.step-editor-fill .panel').first()).toBeVisible();
 
-        // Toggle Enabled, which is editable for every top-level plugin.
-        await firstRow.getByRole('checkbox').uncheck();
+        // Dirty via the inline Name, then Save the channel.
+        await firstRow.locator('input.grid-name').fill(EDITED);
         await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
         await expect.poll(() => putBody, { timeout: 8000 }).not.toBeNull();
 
@@ -66,55 +68,8 @@ for (const c of CASES) {
         if (c.class === 'com.mirth.connect.model.IteratorStep' || c.class === 'com.mirth.connect.model.IteratorRule') {
             loadedElement.properties.children = '';
         }
-        const expected = { [c.class]: [{ ...loadedElement, enabled: false, sequenceNumber: '0' }] };
+        const expected = { [c.class]: [{ ...loadedElement, name: EDITED, sequenceNumber: '0' }] };
         expect(target.elements).toEqual(expected);
-    });
-}
-
-for (const label of ['Mapper Step', 'Rule Builder Rule', 'Destination Set Filter Step', 'Iterator Rule']) {
-    test(`${label} keeps its imported name until a naming property changes`, async ({ page }) => {
-        const c = CASES.find(entry => entry.label === label)!;
-        const id = 'generated-element-name';
-        const channel = channelWithSourceElement(id, c.kind, c.class, c.element());
-        let saved: any = null;
-        await mockEngine(page, {
-            [`GET /channels/${id}`]: { channel },
-            [`PUT /channels/${id}`]: (request: any) => { saved = request.postDataJSON().channel; return true; }
-        });
-        await page.goto(`/channels/${id}/${c.kind}/0`);
-        const name = page.locator('input.grid-name');
-        const field = (label: string) => page.locator(`.step-editor-fill .field:has(label:text-is("${label}"))`);
-        await expect(name).toHaveValue('Original');
-        await expect(name).not.toBeEditable();
-
-        let expected: string;
-        if (label === 'Mapper Step') {
-            await field('Mapping').locator('input').fill("'unrelated'");
-            await expect(name).toHaveValue('Original');
-            await field('Variable').locator('input').fill('updatedPatientId');
-            expected = 'updatedPatientId';
-        } else if (label === 'Iterator Rule') {
-            await field('Iterate On (target)').locator('input').fill('msg.rows');
-            await page.getByLabel('Accept Message If', { exact: true }).selectOption('true');
-            expected = 'Accept message if all of the iterations return true for each msg.rows';
-        } else {
-            await field('Field').locator('input').fill('msg.code');
-            if (label === 'Rule Builder Rule') {
-                await field('Condition').locator('select').selectOption('EQUALS');
-                await expect(name).toHaveValue('Accept message if "msg.code" is blank');
-                for (const [index, value] of ['ADT', 'ORU'].entries()) {
-                    await page.getByRole('button', { name: 'New value' }).click();
-                    await page.getByLabel(`Value ${index + 1}`, { exact: true }).fill(`'${value}'`);
-                }
-                expected = "Accept message if \"msg.code\" equals 'ADT' or 'ORU'";
-            } else {
-                await page.getByRole('radio', { name: 'Not Exist', exact: true }).check();
-                expected = 'Filter destination(s) if "msg.code" does not exist';
-            }
-        }
-        await expect(name).toHaveValue(expected);
-        await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
-        await expect.poll(() => saved?.sourceConnector[c.kind].elements[c.class][0].name).toBe(expected);
     });
 }
 

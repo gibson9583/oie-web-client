@@ -1,7 +1,5 @@
 // plugins/transformer-steps/web/plugin.tsx
-import { ElementType } from "/core/element-types.js";
 import { platform } from "@oie/web-shell";
-import { isJavaBlank, iteratorName } from "/core/oie.js";
 import { replacementPairs, replacementsToWire } from "/core/step-replacements.js";
 var React = platform.React;
 var SCOPES = [
@@ -12,12 +10,12 @@ var SCOPES = [
   { value: "RESPONSE", label: "Response Map" }
 ];
 var CONDITIONS = [
-  { value: "EXISTS", label: "Exists", presentTense: "exists" },
-  { value: "NOT_EXIST", label: "Not Exist", presentTense: "does not exist" },
-  { value: "EQUALS", label: "Equals", presentTense: "equals" },
-  { value: "NOT_EQUAL", label: "Not Equal", presentTense: "does not equal" },
-  { value: "CONTAINS", label: "Contains", presentTense: "contains" },
-  { value: "NOT_CONTAIN", label: "Not Contain", presentTense: "does not contain" }
+  { value: "EXISTS", label: "Exists" },
+  { value: "NOT_EXIST", label: "Not Exist" },
+  { value: "EQUALS", label: "Equals" },
+  { value: "NOT_EQUAL", label: "Not Equal" },
+  { value: "CONTAINS", label: "Contains" },
+  { value: "NOT_CONTAIN", label: "Not Contain" }
 ];
 var BEHAVIORS = [
   { value: "REMOVE", label: "Remove the following" },
@@ -26,21 +24,15 @@ var BEHAVIORS = [
 ];
 var CONDITION_USES_VALUES = /* @__PURE__ */ new Set(["EQUALS", "NOT_EQUAL", "CONTAINS", "NOT_CONTAIN"]);
 var isBlank = (v) => v == null || String(v).trim() === "";
-function stringListValues(value) {
+function stringListToLines(value) {
   if (!value || typeof value !== "object") return [];
-  const list = Array.isArray(value) ? value : "string" in value ? value.string : null;
-  if (list == null) return [];
-  return (Array.isArray(list) ? list : [list]).map((item) => String(item ?? ""));
+  const list = value.string;
+  if (list === null || list === void 0) return [];
+  return (Array.isArray(list) ? list : [list]).map((v) => String(v ?? ""));
 }
-function comparisonName(prefix, element) {
-  const condition = CONDITIONS.find((option) => option.value === element.condition) ?? CONDITIONS[0];
-  const field = `${prefix} "${element.field ?? ""}"`;
-  if (!CONDITION_USES_VALUES.has(condition.value)) return `${field} ${condition.presentTense}`;
-  const values = stringListValues(element.values).filter((value) => !isJavaBlank(value));
-  if (values.length) return `${field} ${condition.presentTense} ${values.join(" or ")}`;
-  if (condition.value === "EQUALS") return `${field} is blank`;
-  if (condition.value === "NOT_EQUAL") return `${field} is not blank`;
-  return `${field} ${condition.presentTense} ""`;
+function linesToStringList(text) {
+  const lines = String(text || "").split("\n").map((s) => s.trim()).filter(Boolean);
+  return lines.length ? { string: lines } : "";
 }
 function checkedIdSet(value) {
   if (!value || typeof value !== "object") return /* @__PURE__ */ new Set();
@@ -53,6 +45,9 @@ function idSetToMetaData(set, destinations) {
   for (const id of set) if (!ordered.includes(id)) ordered.push(id);
   return ordered.length ? { int: ordered } : "";
 }
+function stringArrayToList(arr) {
+  return arr.length ? { string: arr.map((s) => String(s ?? "")) } : "";
+}
 function Field({ label, hint, children }) {
   return /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, label), children, hint ? /* @__PURE__ */ React.createElement("div", { className: "hint" }, hint) : null);
 }
@@ -61,59 +56,6 @@ function Select({ options, value, onChange }) {
     const o = typeof opt === "object" ? opt : { value: opt, label: String(opt) };
     return /* @__PURE__ */ React.createElement("option", { key: String(o.value), value: o.value }, o.label);
   }));
-}
-function ExpressionTable({ label, value, condition, keep = Boolean, onChange }) {
-  const [rows, setRows] = React.useState(() => stringListValues(value));
-  const [selected, setSelected] = React.useState(-1);
-  const disabled = condition !== void 0 && !CONDITION_USES_VALUES.has(condition);
-  React.useEffect(() => {
-    setSelected(-1);
-  }, [condition]);
-  const change = (next) => {
-    setRows(next);
-    const saved = next.filter(keep);
-    onChange(saved.length ? { string: saved } : "");
-  };
-  const add = () => {
-    setSelected(rows.length);
-    change([...rows, ""]);
-  };
-  const remove = () => {
-    change(rows.filter((_, i) => i !== selected));
-    setSelected(Math.min(selected, rows.length - 2));
-  };
-  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-1.5" }, /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      type: "button",
-      className: "btn btn-sm",
-      disabled,
-      "aria-label": `New ${label.toLowerCase()}`,
-      onClick: add
-    },
-    "New"
-  ), /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      type: "button",
-      className: "btn btn-sm btn-danger",
-      disabled: disabled || selected < 0,
-      "aria-label": `Delete ${label.toLowerCase()}`,
-      onClick: remove
-    },
-    "Delete"
-  )), /* @__PURE__ */ React.createElement("div", { className: "dt-wrap border border-line rounded max-h-[162px]" }, /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", null, label))), /* @__PURE__ */ React.createElement("tbody", null, rows.map((text, i) => /* @__PURE__ */ React.createElement("tr", { key: i, className: i === selected ? "selected" : void 0 }, /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement(
-    "textarea",
-    {
-      rows: 1,
-      spellCheck: false,
-      disabled,
-      "aria-label": `${label} ${i + 1}`,
-      value: text,
-      onFocus: () => setSelected(i),
-      onChange: (e) => change(rows.map((entry, index) => index === i ? e.target.value : entry))
-    }
-  ))))))));
 }
 function useRerender() {
   const [, force] = React.useReducer((x) => x + 1, 0);
@@ -182,31 +124,18 @@ function ScriptPathEditor({ element, onChange }) {
     )
   );
 }
-function emptyIteratorProperties(newFilter = false) {
-  return {
-    target: "",
-    indexVariable: "i",
-    prefixSubstitutions: "",
-    children: "",
-    ...newFilter ? { intersectIterations: false, breakEarly: true } : {}
-  };
+function emptyIteratorProperties() {
+  return { target: "", indexVariable: "i", prefixSubstitutions: "", children: "" };
 }
 function makeIteratorEditor(isRule) {
-  const type = isRule ? ElementType.IteratorRule : ElementType.IteratorStep;
+  const type = isRule ? "com.mirth.connect.model.IteratorRule" : "com.mirth.connect.model.IteratorStep";
   const childNoun = isRule ? "rule" : "step";
-  function IteratorEditor({ element, onChange, onRenameIteratorIndex }) {
+  function IteratorEditor({ element, onChange }) {
     const force = useRerender();
     if (!element.properties || typeof element.properties !== "object") {
       element.properties = emptyIteratorProperties();
     }
     const props = element.properties;
-    const [index, setIndex] = React.useState(() => props.indexVariable ?? "i");
-    const [indexError, setIndexError] = React.useState("");
-    const updateName = () => {
-      element.name = iteratorName(element, isJavaBlank(props.target) ? "..." : props.target);
-      onChange();
-      force();
-    };
     return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(
       Field,
       {
@@ -221,75 +150,38 @@ function makeIteratorEditor(isRule) {
           value: props.target ?? "",
           onChange: (e) => {
             props.target = e.target.value;
-            updateName();
+            onChange();
+            force();
           }
         }
       )
-    ), /* @__PURE__ */ React.createElement(
-      Field,
+    ), /* @__PURE__ */ React.createElement(Field, { label: "Index Variable" }, /* @__PURE__ */ React.createElement(
+      "input",
       {
-        label: "Index Variable",
-        hint: indexError || "Press Enter or leave this field to apply the change."
-      },
-      /* @__PURE__ */ React.createElement(
-        "input",
-        {
-          type: "text",
-          value: index,
-          "aria-invalid": !!indexError,
-          onChange: (e) => {
-            setIndex(e.target.value);
-            setIndexError("");
-          },
-          onBlur: (e) => setIndexError(onRenameIteratorIndex(element, e.target.value)),
-          onKeyDown: (e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              e.currentTarget.blur();
-            }
-          }
-        }
-      )
-    ), isRule && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Field, { label: "Accept Message If" }, /* @__PURE__ */ React.createElement(
-      "select",
-      {
-        "aria-label": "Accept Message If",
-        value: String(props.intersectIterations ?? false),
+        type: "text",
+        value: props.indexVariable ?? "i",
         onChange: (e) => {
-          props.intersectIterations = e.target.value === "true";
-          updateName();
-        }
-      },
-      /* @__PURE__ */ React.createElement("option", { value: "false" }, "At least one of the iterations returns true"),
-      /* @__PURE__ */ React.createElement("option", { value: "true" }, "All of the iterations return true")
-    )), /* @__PURE__ */ React.createElement(Field, { label: "Break Early" }, /* @__PURE__ */ React.createElement(
-      "select",
-      {
-        "aria-label": "Break Early",
-        value: String(props.breakEarly ?? false),
-        onChange: (e) => {
-          props.breakEarly = e.target.value === "true";
+          props.indexVariable = e.target.value;
           onChange();
           force();
         }
-      },
-      /* @__PURE__ */ React.createElement("option", { value: "true" }, "Yes"),
-      /* @__PURE__ */ React.createElement("option", { value: "false" }, "No")
-    ))), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(
+      }
+    )), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(
       Field,
       {
         label: "Prefix Substitutions",
-        hint: "Dragging a field into a child inserts the index variable after a matching prefix."
+        hint: "One prefix per line \u2014 when dragging values into children, the index variable (e.g. [i]) is injected after these prefixes"
       },
       /* @__PURE__ */ React.createElement(
-        ExpressionTable,
+        "textarea",
         {
-          label: "Prefix",
-          value: props.prefixSubstitutions,
-          keep: (prefix) => !isJavaBlank(prefix),
-          onChange: (value) => {
-            props.prefixSubstitutions = value;
+          rows: 3,
+          placeholder: "msg['OBX']",
+          value: stringListToLines(props.prefixSubstitutions).join("\n"),
+          onChange: (e) => {
+            props.prefixSubstitutions = linesToStringList(e.target.value);
             onChange();
+            force();
           }
         }
       )
@@ -297,13 +189,12 @@ function makeIteratorEditor(isRule) {
   }
   return {
     label: "Iterator",
-    nameEditable: false,
     create: () => ({
       __type: type,
-      name: iteratorName({ __type: type }, "..."),
+      name: "",
       enabled: true,
       ...isRule ? { operator: "AND" } : null,
-      properties: emptyIteratorProperties(isRule)
+      properties: emptyIteratorProperties()
     }),
     validate: (el) => {
       const p = el.properties || {};
@@ -356,7 +247,6 @@ function MapperEditor({ element, onChange }) {
       value: element.variable ?? "",
       onChange: (e) => {
         element.variable = e.target.value;
-        element.name = element.variable;
         onChange();
         force();
       }
@@ -401,7 +291,6 @@ function MessageBuilderEditor({ element, onChange }) {
   return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Message Segment" }, /* @__PURE__ */ React.createElement(
     "input",
     {
-      "data-message-segment": true,
       type: "text",
       placeholder: "tmp['MSH']['MSH.3']['MSH.3.1']",
       value: element.messageSegment ?? "",
@@ -475,17 +364,15 @@ function XsltEditor({ element, onChange }) {
 var dsfUid = 0;
 function DestinationSetFilterEditor({ element, onChange, destinations }) {
   const force = useRerender();
+  const [selValue, setSelValue] = React.useState(-1);
   const uid = React.useMemo(() => ++dsfUid, []);
   const dests = Array.isArray(destinations) ? destinations : [];
   const behavior = element.behavior || "REMOVE";
   const condition = element.condition || "EXISTS";
   const checked = checkedIdSet(element.metaDataIds);
-  const updateName = () => {
-    element.name = comparisonName("Filter destination(s) if", element);
-    onChange();
-    force();
-  };
+  const values = stringListToLines(element.values);
   const listDisabled = behavior === "REMOVE_ALL";
+  const valuesEnabled = CONDITION_USES_VALUES.has(condition);
   const setChecked = (next) => {
     element.metaDataIds = idSetToMetaData(next, dests);
     onChange();
@@ -499,6 +386,27 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
   };
   const selectAll = () => setChecked(new Set(dests.map((d) => String(d.metaDataId))));
   const deselectAll = () => setChecked(/* @__PURE__ */ new Set());
+  const setValues = (arr) => {
+    element.values = stringArrayToList(arr);
+    onChange();
+    force();
+  };
+  const newValue = () => {
+    setValues([...values, ""]);
+    setSelValue(values.length);
+  };
+  const editValue = (i, v) => {
+    const next = values.slice();
+    next[i] = v;
+    setValues(next);
+  };
+  const deleteSelected = () => {
+    if (selValue < 0 || selValue >= values.length) return;
+    const next = values.slice();
+    next.splice(selValue, 1);
+    setValues(next);
+    setSelValue(next.length ? Math.min(selValue, next.length - 1) : -1);
+  };
   return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: "Behavior" }, /* @__PURE__ */ React.createElement(
     Select,
     {
@@ -518,7 +426,8 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
       value: element.field ?? "",
       onChange: (e) => {
         element.field = e.target.value;
-        updateName();
+        onChange();
+        force();
       }
     }
   )), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Destinations" }, /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-1.5" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", disabled: listDisabled, onClick: selectAll }, "Select All"), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", disabled: listDisabled, onClick: deselectAll }, "Deselect All")), /* @__PURE__ */ React.createElement(
@@ -547,29 +456,47 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
       checked: condition === opt.value,
       onChange: () => {
         element.condition = opt.value;
-        updateName();
+        onChange();
+        force();
       }
     }
-  ), opt.label))))), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Values" }, /* @__PURE__ */ React.createElement(
-    ExpressionTable,
+  ), opt.label))))), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Values" }, /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-1.5" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", disabled: !valuesEnabled, onClick: newValue }, "New"), /* @__PURE__ */ React.createElement(
+    "button",
     {
-      label: "Value",
-      value: element.values,
-      condition,
-      onChange: (value) => {
-        element.values = value;
-        updateName();
-      }
-    }
+      type: "button",
+      className: "btn btn-sm btn-danger",
+      disabled: !valuesEnabled || selValue < 0 || selValue >= values.length,
+      onClick: deleteSelected
+    },
+    "Delete"
+  )), /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      className: "dt-wrap border border-line rounded max-h-[162px]",
+      style: !valuesEnabled ? { opacity: 0.5, pointerEvents: "none" } : void 0
+    },
+    /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", null, "Value"))), /* @__PURE__ */ React.createElement("tbody", null, values.length ? values.map((v, i) => /* @__PURE__ */ React.createElement(
+      "tr",
+      {
+        key: i,
+        className: selValue === i ? "selected" : void 0,
+        onClick: () => setSelValue(i)
+      },
+      /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          type: "text",
+          value: v,
+          disabled: !valuesEnabled,
+          onFocus: () => setSelValue(i),
+          onChange: (e) => editValue(i, e.target.value)
+        }
+      ))
+    )) : /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "No values \u2014 use New")))))
   ))));
 }
 function RuleBuilderEditor({ element, onChange }) {
   const force = useRerender();
-  const updateName = () => {
-    element.name = comparisonName("Accept message if", element);
-    onChange();
-    force();
-  };
   return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: "Field" }, /* @__PURE__ */ React.createElement(
     "input",
     {
@@ -578,7 +505,8 @@ function RuleBuilderEditor({ element, onChange }) {
       value: element.field ?? "",
       onChange: (e) => {
         element.field = e.target.value;
-        updateName();
+        onChange();
+        force();
       }
     }
   )), /* @__PURE__ */ React.createElement(Field, { label: "Condition" }, /* @__PURE__ */ React.createElement(
@@ -588,38 +516,40 @@ function RuleBuilderEditor({ element, onChange }) {
       value: element.condition || "EXISTS",
       onChange: (e) => {
         element.condition = e.target.value;
-        updateName();
+        onChange();
+        force();
       }
     }
   )), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Values" }, /* @__PURE__ */ React.createElement(
-    ExpressionTable,
+    "textarea",
     {
-      label: "Value",
-      value: element.values,
-      condition: element.condition || "EXISTS",
-      onChange: (value) => {
-        element.values = value;
-        updateName();
+      rows: 4,
+      placeholder: "One value per line",
+      title: "Only used by Equals / Not Equal / Contains / Not Contain",
+      value: stringListToLines(element.values).join("\n"),
+      onChange: (e) => {
+        element.values = linesToStringList(e.target.value);
+        onChange();
+        force();
       }
     }
   ))));
 }
 function register(platform2) {
-  platform2.registerStepType(ElementType.JavaScriptStep, {
+  platform2.registerStepType("com.mirth.connect.plugins.javascriptstep.JavaScriptStep", {
     label: "JavaScript",
     create: () => ({
-      __type: ElementType.JavaScriptStep,
+      __type: "com.mirth.connect.plugins.javascriptstep.JavaScriptStep",
       name: "",
       enabled: true,
       script: "// Write your JavaScript here\n"
     }),
     component: ScriptEditor
   });
-  platform2.registerStepType(ElementType.Mapper, {
+  platform2.registerStepType("com.mirth.connect.plugins.mapper.MapperStep", {
     label: "Mapper",
-    nameEditable: false,
     create: () => ({
-      __type: ElementType.Mapper,
+      __type: "com.mirth.connect.plugins.mapper.MapperStep",
       name: "",
       enabled: true,
       variable: "",
@@ -631,10 +561,10 @@ function register(platform2) {
     validate: (el) => isBlank(el.variable) ? "The variable name cannot be blank." : "",
     component: MapperEditor
   });
-  platform2.registerStepType(ElementType.MessageBuilder, {
+  platform2.registerStepType("com.mirth.connect.plugins.messagebuilder.MessageBuilderStep", {
     label: "Message Builder",
     create: () => ({
-      __type: ElementType.MessageBuilder,
+      __type: "com.mirth.connect.plugins.messagebuilder.MessageBuilderStep",
       name: "",
       enabled: true,
       messageSegment: "",
@@ -645,10 +575,10 @@ function register(platform2) {
     validate: (el) => isBlank(el.messageSegment) ? "The message segment value cannot be blank." : "",
     component: MessageBuilderEditor
   });
-  platform2.registerStepType(ElementType.Xslt, {
+  platform2.registerStepType("com.mirth.connect.plugins.xsltstep.XsltStep", {
     label: "XSLT Step",
     create: () => ({
-      __type: ElementType.Xslt,
+      __type: "com.mirth.connect.plugins.xsltstep.XsltStep",
       name: "",
       enabled: true,
       sourceXml: "",
@@ -665,14 +595,13 @@ function register(platform2) {
     },
     component: XsltEditor
   });
-  platform2.registerStepType(ElementType.DestinationSetFilter, {
+  platform2.registerStepType("com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep", {
     label: "Destination Set Filter",
-    nameEditable: false,
     // Only available on the source transformer (DestinationSetFilterPlugin
     // .onlySourceConnector()); destinations/response transformers exclude it.
     onlySource: true,
     create: () => ({
-      __type: ElementType.DestinationSetFilter,
+      __type: "com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep",
       name: "",
       enabled: true,
       behavior: "REMOVE",
@@ -684,10 +613,10 @@ function register(platform2) {
     validate: (el) => isBlank(el.field) ? "The field cannot be blank." : "",
     component: DestinationSetFilterEditor
   });
-  platform2.registerStepType(ElementType.ExternalScriptStep, {
+  platform2.registerStepType("com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep", {
     label: "External Script",
     create: () => ({
-      __type: ElementType.ExternalScriptStep,
+      __type: "com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep",
       name: "",
       enabled: true,
       scriptPath: ""
@@ -695,11 +624,11 @@ function register(platform2) {
     validate: (el) => isBlank(el.scriptPath) ? "The script path cannot be blank." : "",
     component: ScriptPathEditor
   });
-  platform2.registerStepType(ElementType.IteratorStep, makeIteratorEditor(false));
-  platform2.registerRuleType(ElementType.JavaScriptRule, {
+  platform2.registerStepType("com.mirth.connect.model.IteratorStep", makeIteratorEditor(false));
+  platform2.registerRuleType("com.mirth.connect.plugins.javascriptrule.JavaScriptRule", {
     label: "JavaScript",
     create: () => ({
-      __type: ElementType.JavaScriptRule,
+      __type: "com.mirth.connect.plugins.javascriptrule.JavaScriptRule",
       name: "",
       enabled: true,
       operator: "AND",
@@ -707,11 +636,10 @@ function register(platform2) {
     }),
     component: ScriptEditor
   });
-  platform2.registerRuleType(ElementType.RuleBuilder, {
+  platform2.registerRuleType("com.mirth.connect.plugins.rulebuilder.RuleBuilderRule", {
     label: "Rule Builder",
-    nameEditable: false,
     create: () => ({
-      __type: ElementType.RuleBuilder,
+      __type: "com.mirth.connect.plugins.rulebuilder.RuleBuilderRule",
       name: "",
       enabled: true,
       operator: "AND",
@@ -722,10 +650,10 @@ function register(platform2) {
     validate: (el) => isBlank(el.field) ? "The field cannot be blank." : "",
     component: RuleBuilderEditor
   });
-  platform2.registerRuleType(ElementType.ExternalScriptRule, {
+  platform2.registerRuleType("com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule", {
     label: "External Script",
     create: () => ({
-      __type: ElementType.ExternalScriptRule,
+      __type: "com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule",
       name: "",
       enabled: true,
       operator: "AND",
@@ -734,7 +662,7 @@ function register(platform2) {
     validate: (el) => isBlank(el.scriptPath) ? "The script path cannot be blank." : "",
     component: ScriptPathEditor
   });
-  platform2.registerRuleType(ElementType.IteratorRule, makeIteratorEditor(true));
+  platform2.registerRuleType("com.mirth.connect.model.IteratorRule", makeIteratorEditor(true));
 }
 export {
   register

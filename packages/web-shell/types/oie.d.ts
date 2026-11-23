@@ -1,13 +1,10 @@
 import type { OieObject, WireChannel, WireConnector, XStreamElements } from './wire-types.js';
-export declare function isJavaBlank(text: string | null | undefined): boolean;
 /** A polymorphic filter rule / transformer step, tagged with its Java `__type`. */
 export interface Element {
     __type: string;
     [key: string]: any;
 }
 export declare function uuid(): string;
-export declare function isIteratorType(type: unknown): boolean;
-export declare function iteratorName(element: OieObject, target?: string): string;
 /**
  * Flatten a class-keyed element map into an ordered array, tagging each entry
  * with `__type` (its Java class) and sorting by `sequenceNumber`. Accepts `''`

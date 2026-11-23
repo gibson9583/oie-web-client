@@ -5,7 +5,6 @@
  * auth scripts). Public lists keep the [label, insertText] shape.
  */
 
-import { isElementEnabled } from './element-types.js';
 import { destinationsOf, elementsToArray } from './oie.js';
 import { generateElementScript } from './step-script.js';
 import type { OieObject } from './wire-types.js';
@@ -86,9 +85,9 @@ function unescapeMapKey(key: string): string {
 function addVariables(target: Set<string>, stage: any, includeLocal: boolean): void {
     const pattern = mapVariablePattern(includeLocal);
     for (const element of elementsToArray(stage?.elements)) {
-        if (!isElementEnabled(element)) continue;
+        if (element.enabled === false || element.enabled === 'false') continue;
         try {
-            const script = generateElementScript(element, child => elementsToArray(child.properties?.children), 'mapDiscovery');
+            const script = generateElementScript(element, child => elementsToArray(child.properties?.children));
             if (!script) continue;
             // Keep the same simple-comment then block-comment order as Swing.
             const uncommented = script.replace(/\/\/[^\r\n\u0085\u2028\u2029]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');

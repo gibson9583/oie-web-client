@@ -50,7 +50,7 @@ for plugin registrations across all contexts. Built-in catalog entries and
 channel code templates are not included. The array is a copy; treat its entries
 as read-only. Use an editor's `completionScope` to select its completion context.
 
-The framework implements API **4.11.0**, independently of the engine
+The framework implements API **4.10.0**, independently of the engine
 version. Script references remain available from API 4.8; declare
 `"oie": { "apiMin": "4.8" }` when using these additions. See
 [Script references](../../web-administrator/PLUGINS.md#script-references) and the

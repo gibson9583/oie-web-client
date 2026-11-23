@@ -683,7 +683,6 @@ function AdministratorTab({ ctx }: any) {
             evtPageSize: String(Number(getPref('eventPageSize')) || PREF_DEFAULTS.eventPageSize),
             formatMsgs: getPref('formatMessages') !== false,
             confirmReprocess: getPref('confirmReprocessRemove') !== false,
-            showIteratorDialog: getPref('filterTransformerShowIteratorDialog') !== false,
             importLibs: yesNoAskValue(getPref('importLibrariesWithChannels')),
             exportLibs: yesNoAskValue(getPref('exportLibrariesWithChannels')),
             newChannelDefault: builderValue(getPref('newChannelDefault')),
@@ -733,7 +732,6 @@ function AdministratorTab({ ctx }: any) {
             eventPageSize: Number(f.evtPageSize),
             formatMessages: f.formatMsgs,
             confirmReprocessRemove: f.confirmReprocess,
-            filterTransformerShowIteratorDialog: f.showIteratorDialog,
             importLibrariesWithChannels: f.importLibs,
             exportLibrariesWithChannels: f.exportLibs,
             newChannelDefault: f.newChannelDefault,
@@ -839,9 +837,6 @@ function AdministratorTab({ ctx }: any) {
                     </PrefRow>
                     <PrefRow label="Reprocess/remove messages confirmation">
                         <YesNo value={form.confirmReprocess} onChange={(v: any) => patch({ confirmReprocess: v })} />
-                    </PrefRow>
-                    <PrefRow label="Show iterator dialog in filter/transformer editors">
-                        <YesNo value={form.showIteratorDialog} onChange={(v: any) => patch({ showIteratorDialog: v })} />
                     </PrefRow>
                     <PrefRow label="Import code template libraries with channels">
                         <select value={form.importLibs} onChange={(e: any) => patch({ importLibs: e.target.value })}>
