@@ -12,6 +12,9 @@
  *
  * Dispatch is by element.__type (the Java class name the model carries).
  */
+import { ElementType, isElementEnabled } from './element-types.js';
+import { elementsToArray, isIteratorType, isJavaBlank } from './oie.js';
+import { readMessageBuilderParts } from './iterator-expression.js';
 import { replacementPairs } from './step-replacements.js';
 /* Scope enum -> map object (MapperStep.Scope.map). */
 const SCOPE_MAP = {
@@ -36,7 +39,8 @@ function buildRegexArray(el) {
    are identical except EXISTS/NOT_EXIST (`.length` vs getArrayOrXmlLength) — the
    Java emits the same operator/join logic otherwise. `field`/`values` are raw. */
 function conditionClause(field, condition, values, existsStyle) {
-    const vals = Array.isArray(values) ? values : (values && values.string ? (Array.isArray(values.string) ? values.string : [values.string]) : []);
+    const items = Array.isArray(values) ? values : values?.string;
+    const vals = items == null ? [] : Array.isArray(items) ? items : [items];
     const exists = existsStyle === 'xml'
         ? { yes: `getArrayOrXmlLength(${field}) > 0) `, no: `getArrayOrXmlLength(${field}) == 0) ` }
         : { yes: `${field}.length > 0) `, no: `${field}.length == 0) ` };
@@ -59,20 +63,21 @@ function conditionClause(field, condition, values, existsStyle) {
     return vals.map((v) => `${field} ${eq} ${v}`).join(` ${join} `) + ') ';
 }
 /* ---- per-type generators (getScript(false)) ---- */
-function mapperScript(el) {
+function mapperScript(el, iterating = false) {
     const scopeMap = SCOPE_MAP[el.scope] || SCOPE_MAP.CHANNEL;
-    const mapping = (el.mapping && String(el.mapping).trim()) ? el.mapping : "''"; // defaultIfBlank
-    const def = (el.defaultValue && String(el.defaultValue).length) ? el.defaultValue : "''";
+    const mapping = isJavaBlank(el.mapping) ? "''" : el.mapping;
+    const def = String(el.defaultValue ?? '') || "''";
+    const write = iterating ? `_${convertIdentifier(el.variable)}.add(` : `${scopeMap}.put('${el.variable ?? ''}', `;
     return `var mapping;\n\ntry {\n\tmapping = ${mapping}; \n} catch (e) {\n\tmapping = '';\n}\n\n`
-        + `${scopeMap}.put('${el.variable ?? ''}', validate( mapping , ${def}, ${buildRegexArray(el)}));`;
+        + `${write}validate( mapping , ${def}, ${buildRegexArray(el)}));`;
 }
 function messageBuilderScript(el) {
-    const mapping = (el.mapping && String(el.mapping).length) ? el.mapping : "''";
-    const def = (el.defaultValue && String(el.defaultValue).length) ? el.defaultValue : "''";
+    const mapping = String(el.mapping ?? '') || "''";
+    const def = String(el.defaultValue ?? '') || "''";
     return `${el.messageSegment ?? ''} = validate(${mapping}, ${def}, ${buildRegexArray(el)});`;
 }
-function xsltScript(el) {
-    const factory = (el.useCustomFactory && el.customFactory)
+function xsltScript(el, iterating = false) {
+    const factory = (String(el.useCustomFactory) === 'true' && el.customFactory)
         ? `Packages.javax.xml.transform.TransformerFactory.newInstance("${el.customFactory}", null)`
         : 'Packages.javax.xml.transform.TransformerFactory.newInstance()';
     return `tFactory = ${factory};\n`
@@ -81,7 +86,8 @@ function xsltScript(el) {
         + `sourceVar = new Packages.java.io.StringReader(${el.sourceXml ?? ''});\n`
         + `resultVar = new Packages.java.io.StringWriter();\n`
         + `transformer.transform(new Packages.javax.xml.transform.stream.StreamSource(sourceVar), new Packages.javax.xml.transform.stream.StreamResult(resultVar));\n`
-        + `channelMap.put('${el.resultVariable ?? ''}', resultVar.toString());\n`;
+        + (iterating ? `_${convertIdentifier(el.resultVariable)}.add(resultVar.toString());\n`
+            : `channelMap.put('${el.resultVariable ?? ''}', resultVar.toString());\n`);
 }
 function externalScript(el) {
     // loadFiles = false (design-time preview)
@@ -106,32 +112,30 @@ function ruleBuilderScript(el) {
 }
 /* ---- dispatcher ---- */
 const GENERATORS = {
-    'com.mirth.connect.plugins.mapper.MapperStep': mapperScript,
-    'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep': messageBuilderScript,
-    'com.mirth.connect.plugins.xsltstep.XsltStep': xsltScript,
-    'com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep': externalScript,
-    'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep': destinationSetFilterScript,
-    'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule': ruleBuilderScript,
-    'com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule': externalScript,
+    [ElementType.Mapper]: mapperScript,
+    [ElementType.MessageBuilder]: messageBuilderScript,
+    [ElementType.Xslt]: xsltScript,
+    [ElementType.ExternalScriptStep]: externalScript,
+    [ElementType.DestinationSetFilter]: destinationSetFilterScript,
+    [ElementType.RuleBuilder]: ruleBuilderScript,
+    [ElementType.ExternalScriptRule]: externalScript,
     // JavaScript step/rule carry their own .script — handled by the caller.
     // Iterator step/rule are recursive over children — handled below.
 };
-const ITERATOR_TYPES = new Set([
-    'com.mirth.connect.model.IteratorStep',
-    'com.mirth.connect.model.IteratorRule'
-]);
 /*
  * Build the generated JavaScript for one element. Returns a string, or null if
  * the type has no client-side generator (the caller falls back to element.script
  * for JavaScript steps/rules, else a notice).
  *   getChildren(el) -> array of child elements (for Iterator recursion).
+ *   Map discovery and partial syntax checks retain assignments whose initializer
+ *   cannot be reproduced. The preview requires the complete script.
  */
-export function generateElementScript(element, getChildren) {
+export function generateElementScript(element, getChildren, mode) {
     if (!element)
         return null;
     const type = element.__type;
-    if (ITERATOR_TYPES.has(type))
-        return iteratorScript(element, getChildren);
+    if (isIteratorType(type))
+        return iteratorScript(element, getChildren, mode);
     const gen = GENERATORS[type];
     if (gen)
         return gen(element);
@@ -143,58 +147,143 @@ export function generateElementScript(element, getChildren) {
 /* IteratorProperties.getScript = pre + iteration + post. Nested accumulators
    are declared before the outer loop and their map writes follow that loop;
    this ordering also determines the destination variable list. */
-function iteratorScript(element, getChildren) {
-    return iteratorPhase(element, 'pre', getChildren)
-        + iteratorPhase(element, 'iteration', getChildren)
-        + iteratorPhase(element, 'post', getChildren);
+function iteratorScript(element, getChildren, mode) {
+    let script = '';
+    for (const phase of ['pre', 'iteration', 'post']) {
+        const section = iteratorPhase(element, phase, getChildren, [], mode);
+        if (section === null)
+            return null;
+        script += section;
+    }
+    return script;
 }
-function iteratorPhase(element, phase, getChildren) {
+function iteratorPhase(element, phase, getChildren, ancestors, mode) {
     const props = element.properties || element;
     const target = props.target ?? '';
-    const idx = props.indexVariable || 'i';
-    const kids = (typeof getChildren === 'function' ? getChildren(element) : (props.children || [])) || [];
-    const enabled = kids.filter((c) => c && c.enabled !== false && c.enabled !== 'false');
+    const idx = props.indexVariable ?? 'i';
+    const indices = [...ancestors, idx];
+    const kids = getChildren?.(element) ?? element.__children
+        ?? (Array.isArray(props.children) ? props.children : elementsToArray(props.children));
+    const enabled = kids.filter(isElementEnabled);
     const childScript = (child) => {
-        if (ITERATOR_TYPES.has(child.__type))
-            return iteratorPhase(child, phase, getChildren);
+        if (isIteratorType(child.__type))
+            return iteratorPhase(child, phase, getChildren, indices, mode);
+        if (child.__type === ElementType.MessageBuilder) {
+            return phase === 'iteration' ? messageBuilderIteration(child, indices, mode) : '';
+        }
         if (phase === 'pre')
             return iterPre(child);
         if (phase === 'post')
             return iterPost(child);
-        return iterIteration(child) ?? generateElementScript(child, getChildren);
+        if (child.__type === ElementType.Mapper)
+            return mapperScript(child, true);
+        if (child.__type === ElementType.Xslt)
+            return xsltScript(child, true);
+        return generateElementScript(child, getChildren, mode) ?? '';
     };
+    const scripts = enabled.map(childScript);
     if (phase !== 'iteration') {
-        return enabled.map(childScript).filter(script => script !== null).map(script => script + '\n').join('');
+        return scripts.filter(script => script !== null).map(script => script + '\n').join('');
     }
-    const body = enabled.map(child => '\n' + (childScript(child) ?? '') + '\n').join('');
-    return `for (var ${idx} = 0; ${idx} < getArrayOrXmlLength(${target}); ${idx}++) {\n${body}\n}\n`;
+    if (scripts.includes(null))
+        return null;
+    const loop = `for (var ${idx} = 0; ${idx} < getArrayOrXmlLength(${target}); ${idx}++) {\n`;
+    if (element.__type === ElementType.IteratorRule) {
+        const flag = `_iterator_flag_${ancestors.length}`;
+        const all = String(props.intersectIterations) === 'true';
+        const stop = String(props.breakEarly) === 'true' ? 'break; ' : '';
+        const clauses = enabled.map((rule, i) => {
+            const operator = i === 0 ? '' : rule.operator === 'AND' ? '&&' : '||';
+            return `${operator}\n(function() {\n${scripts[i]}\n}() == true)\n`;
+        }).join('');
+        const predicate = all ? `!(${clauses})` : clauses;
+        const body = clauses && `if (${predicate}) { ${flag} = ${!all}; ${stop}}\n`;
+        return `var ${flag} = ${all};\n${loop}${body}\n}\nreturn ${flag};\n`;
+    }
+    return loop + scripts.map(script => '\n' + script + '\n').join('') + '\n}\n';
+}
+const segmentEscapes = {
+    '\b': '\\b', '\f': '\\f', '\n': '\\n', '\r': '\\r', '\t': '\\t'
+};
+// MessageBuilderStep keeps quoted keys and uses escapeEcmaScript for names.
+function quotedSegmentName(name) {
+    if (/^['"]/.test(name))
+        return name;
+    const escaped = name.replace(/['"\\/\x00-\x1f\x80-\uffff]/g, ch => {
+        if (segmentEscapes[ch])
+            return segmentEscapes[ch];
+        const code = ch.charCodeAt(0);
+        if (code >= 32 && code < 128)
+            return '\\' + ch;
+        return '\\u' + code.toString(16).toUpperCase().padStart(4, '0');
+    });
+    return "'" + escaped + "'";
+}
+// MessageBuilderStep.getIterationScript initializes missing outbound segments
+// before the ordinary assignment. XML and JavaScript objects use different
+// creation rules, and fixed numeric indices participate in both.
+function messageBuilderIteration(el, indices, mode) {
+    const parts = readMessageBuilderParts(String(el.messageSegment ?? ''));
+    const assignment = messageBuilderScript(el);
+    if (parts === null)
+        return mode ? assignment : null;
+    if (parts.length < 2)
+        return assignment;
+    let prefix = '';
+    const paths = parts.map(part => (prefix += part.value));
+    const isIndex = (i) => parts[i].numberLiteral || indices.includes(parts[i].propertyName);
+    const segmentName = (i) => quotedSegmentName(parts[i].propertyName);
+    const guard = (path, create) => `if (typeof(${path}) == 'undefined') {\n${create};\n}\n`;
+    let script = `if (typeof(${paths[0]}) == 'xml') {\n`;
+    let lastObject = parts.length - 2;
+    for (const variable of indices) {
+        const i = parts.findIndex(part => part.propertyName === variable);
+        lastObject = Math.max(lastObject, i);
+        if (i < 2 || isIndex(i - 1))
+            continue;
+        if (i > 2 && !isIndex(i - 2)) {
+            script += guard(paths[i - 2] + '[0]', `createSegment(${segmentName(i - 2)}, ${paths[i - 3]})`);
+        }
+        script += guard(paths[i], `createSegment(${segmentName(i - 1)}, ${paths[i - 2]}, ${variable})`);
+    }
+    script += '} else {\n';
+    for (let i = 0; i <= lastObject; i++) {
+        const initial = i + 1 < parts.length && isIndex(i + 1) ? '[]' : '{}';
+        script += guard(paths[i], `${paths[i]} = ${initial}`);
+    }
+    return script + '}\n' + assignment;
+}
+/** Names an enabled step uses in the enclosing Iterator's JavaScript scope. */
+export function usesGeneratedIteratorIdentifier(el, name) {
+    switch (el.__type || el['@class']) {
+        case ElementType.Mapper:
+            return ['mapping', 'validate', 'Array', 'Lists', SCOPE_MAP[el.scope] || SCOPE_MAP.CHANNEL].includes(name)
+                || name === `_${convertIdentifier(el.variable)}`;
+        case ElementType.Xslt:
+            return ['tFactory', 'xsltTemplate', 'transformer', 'sourceVar', 'resultVar', 'Packages', 'Lists', 'channelMap'].includes(name)
+                || name === `_${convertIdentifier(el.resultVariable)}`;
+        case ElementType.MessageBuilder:
+            return ['validate', 'Array', 'createSegment'].includes(name);
+        case ElementType.DestinationSetFilter:
+            return name === 'destinationSet';
+        default:
+            return false;
+    }
 }
 /* Iterable child pre/iteration/post (Mapper/XSLT declare list accumulators). */
 function iterPre(el) {
-    if (el.__type === 'com.mirth.connect.plugins.mapper.MapperStep')
+    if (el.__type === ElementType.Mapper)
         return `var _${convertIdentifier(el.variable)} = Lists.list();`;
-    if (el.__type === 'com.mirth.connect.plugins.xsltstep.XsltStep')
+    if (el.__type === ElementType.Xslt)
         return `var _${convertIdentifier(el.resultVariable)} = Lists.list();`;
     return null;
 }
-function iterIteration(el) {
-    if (el.__type === 'com.mirth.connect.plugins.mapper.MapperStep') {
-        const mapping = (el.mapping && String(el.mapping).trim()) ? el.mapping : "''";
-        const def = (el.defaultValue && String(el.defaultValue).length) ? el.defaultValue : "''";
-        return `var mapping;\n\ntry {\n\tmapping = ${mapping}; \n} catch (e) {\n\tmapping = '';\n}\n\n`
-            + `_${convertIdentifier(el.variable)}.add(validate( mapping , ${def}, ${buildRegexArray(el)}));`;
-    }
-    if (el.__type === 'com.mirth.connect.plugins.xsltstep.XsltStep') {
-        return xsltScript(el).replace(/channelMap\.put\([^\n]*\n$/, `_${convertIdentifier(el.resultVariable)}.add(resultVar.toString());`);
-    }
-    return null; // non-iterable child -> caller uses getScript
-}
 function iterPost(el) {
-    if (el.__type === 'com.mirth.connect.plugins.mapper.MapperStep') {
+    if (el.__type === ElementType.Mapper) {
         const scopeMap = SCOPE_MAP[el.scope] || SCOPE_MAP.CHANNEL;
         return `${scopeMap}.put('${el.variable ?? ''}', _${convertIdentifier(el.variable)}.toArray());`;
     }
-    if (el.__type === 'com.mirth.connect.plugins.xsltstep.XsltStep')
-        return `channelMap.put('${el.resultVariable ?? ''}', _${convertIdentifier(el.resultVariable)}.toArray());`;
+    if (el.__type === ElementType.Xslt)
+        return `channelMap.put('${el.resultVariable ?? ''}', _${convertIdentifier(el.resultVariable)}.toArray());\n`;
     return null;
 }

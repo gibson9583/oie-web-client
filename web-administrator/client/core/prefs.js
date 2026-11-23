@@ -31,6 +31,7 @@ export const PREF_DEFAULTS = {
     eventPageSize: 100,
     formatMessages: true,
     confirmReprocessRemove: true,
+    filterTransformerShowIteratorDialog: true,
     importLibrariesWithChannels: 'ask',
     exportLibrariesWithChannels: 'ask',
     newChannelDefault: 'ask',
