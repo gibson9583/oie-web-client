@@ -665,6 +665,8 @@ test('an ambiguous prefix returned by 4.6.0 never matches unrelated Mapper field
 });
 
 test('a standalone namespaced Mapper binds to a Swing wildcard Iterator after save and reload', async ({ page }) => {
+    // Six saves and two full reloads can exceed 30 seconds on hosted WebKit.
+    test.setTimeout(60_000);
     const prefix = "msg.*::['OBX']";
     const bound = (index: string) => `${prefix}${index}.*::['value'].toString()`;
     const standalone = bound('[2]');
