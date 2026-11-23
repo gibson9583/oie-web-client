@@ -360,7 +360,7 @@ test('text on an attributed XML root stays visible and searchable', async ({ pag
     await row(page, 'value').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
     await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
-    await expect(stepField(page, 'Variable')).toHaveValue('');
+    await expect(stepField(page, 'Variable')).toHaveValue('msg');
     await expect(stepField(page, 'Mapping')).toHaveValue('msg.toString()');
 });
 
