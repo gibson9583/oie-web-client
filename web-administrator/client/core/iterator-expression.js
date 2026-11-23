@@ -12,8 +12,8 @@ const integer = /^(?:0|[1-9]\d*)$/;
 const quoted = /^['"`]/;
 // An unrecognized character ends the scan. In particular, a regexp, XML
 // literal or interpolated template can contain text that looks like a selector.
-const lexeme = /\s+|[$_\p{ID_Start}][$\p{ID_Continue}]*|[0-9]+|'(?:\\[^\r\n\u2028\u2029]|[^'\\\r\n\u2028\u2029])*'|"(?:\\[^\r\n\u2028\u2029]|[^"\\\r\n\u2028\u2029])*"|`(?:\\[^\r\n\u2028\u2029]|[^`\\\r\n\u2028\u2029])*`|::|\.\.\.|\.\.|[.()[\]*@,;{}=+!%|&^~:>?-]/uy;
-function tokensOf(text) {
+const lexeme = /\/\/[^\r\n\u2028\u2029]*|\/\*[\s\S]*?\*\/|\s+|[$_\p{ID_Start}][$\p{ID_Continue}]*|[0-9]+|'(?:\\[^\r\n\u2028\u2029]|[^'\\\r\n\u2028\u2029])*'|"(?:\\[^\r\n\u2028\u2029]|[^"\\\r\n\u2028\u2029])*"|`(?:\\[^\r\n\u2028\u2029]|[^`\\\r\n\u2028\u2029])*`|::|\.\.\.|\.\.|[.()[\]*@,;{}=+!%|&^~:>?-]/uy;
+function tokensOf(text, skipComments = false) {
     // Rhino can ignore format controls in token spellings and in string escapes.
     if (/[\p{Cf}\u0000-\u0008\u000e-\u001b\u007f-\u009f]/u.test(text))
         return null;
@@ -27,7 +27,11 @@ function tokensOf(text) {
         const end = lexeme.lastIndex;
         if (value.startsWith('`') && value.includes('${'))
             return null;
-        if (value.trim())
+        if (value.startsWith('/')) {
+            if (!skipComments)
+                return null;
+        }
+        else if (value.trim())
             tokens.push({ value, start, end });
         start = end;
     }
@@ -201,10 +205,24 @@ export function readMessageBuilderParts(text) {
 export function readMemberBoundaries(text) {
     return readChain(text, false)?.boundaries ?? [];
 }
+function isReference(tokens, index) {
+    return tokens[index + 1]?.value === '::' || !['.', '..', '::', '@'].includes(tokens[index - 1]?.value);
+}
+/** Names to reserve when choosing a fresh loop index for authored JavaScript. */
+export function iteratorIdentifierNames(source) {
+    const tokens = tokensOf(source, true);
+    if (tokens && !tokens.some(token => token.value === 'eval')) {
+        return tokens.filter((token, index) => isName(token.value) && isReference(tokens, index)).map(token => token.value);
+    }
+    // With opaque syntax (e.g. interpolated templates), reserve even ambiguous spellings.
+    const text = source.replace(/\\u([\da-f]{4})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+        .replace(/\p{Cf}/gu, '');
+    return text.match(/[$_\p{ID_Start}][$\p{ID_Continue}]*/gu) ?? [];
+}
 /** Unknown lexical syntax vetoes a rename because it can hide an index reference. */
 export function referencesIteratorIdentifier(text, name) {
-    const tokens = tokensOf(text);
+    const tokens = tokensOf(text, true);
     if (!tokens || tokens.some(token => token.value === 'eval'))
         return true;
-    return tokens.some(({ value }, index) => value === name && (tokens[index + 1]?.value === '::' || !['.', '..', '::', '@'].includes(tokens[index - 1]?.value)));
+    return tokens.some(({ value }, index) => value === name && isReference(tokens, index));
 }

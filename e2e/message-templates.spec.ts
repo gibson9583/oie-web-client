@@ -129,6 +129,86 @@ for (const [route, receiver, xmlBody, locked] of [
     });
 }
 
+for (const [route, handler] of [['filter/0', 'None'], ['transformer/0', 'Regex']] as const) {
+    test(`source ${route} keeps the attachment handler aligned with inbound type (starting with ${handler})`, async ({ page }) => {
+        const channel = makeChannel('attachment-type');
+        const original = handler === 'Regex' ? { type: 'Regex', className: 'com.mirth.connect.server.attachments.regex.RegexAttachmentHandlerProvider',
+            properties: { entry: { string: ['regex.pattern', 'content'] } } } : {};
+        Object.assign(channel.properties.attachmentProperties, original);
+        const initialHandler = structuredClone(channel.properties.attachmentProperties);
+        const writes: any[] = [];
+        await mockEngine(page, {
+            'GET /channels/attachment-type': () => ({ channel: writes.at(-1) ?? channel }),
+            'PUT /channels/attachment-type': (req: any) => { writes.push(req.postDataJSON().channel); return true; }
+        });
+        await page.goto(`/channels/attachment-type/${route}`);
+        await page.getByRole('tab', { name: 'Message Templates', exact: true }).click();
+        for (const [i, type] of ['DICOM', 'JSON'].entries()) {
+            await panel(page).getByRole('combobox').first().selectOption(type);
+            await page.getByRole('dialog', { name: 'Warning' }).getByRole('button', { name: 'Close' }).last().click();
+            await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+            await expect.poll(() => writes.length).toBe(i + 1);
+            expect(writes[i].sourceConnector.transformer.inboundDataType).toBe(type);
+            const saved = writes[i].properties.attachmentProperties;
+            if (handler === 'None' && type === 'DICOM') {
+                expect(saved).toMatchObject({ type: 'DICOM', className: 'com.mirth.connect.server.attachments.dicom.DICOMAttachmentHandlerProvider' });
+            } else {
+                expect(saved).toEqual(initialHandler);
+            }
+        }
+    });
+}
+
+for (const newer of ['template edit', 'type change', 'second file'] as const) {
+    test(`a pending DICOM conversion respects a newer ${newer}`, async ({ page }) => {
+        await page.route('**/vendor/monaco/**', route => route.abort());
+        const channel = makeChannel('dicom-template');
+        Object.assign(channel.sourceConnector.transformer, { inboundDataType: 'DICOM', inboundTemplate: '<original/>' });
+        const writes: any[] = [];
+        await mockEngine(page, {
+            'GET /channels/dicom-template': { channel },
+            'PUT /channels/dicom-template': (req: any) => { writes.push(req.postDataJSON().channel); return true; }
+        });
+        let release!: () => void;
+        const wait = new Promise<void>(resolve => { release = resolve; });
+        const first = Buffer.from('first').toString('base64');
+        await page.route('**/api/datatypes/_serialize*', async route => {
+            const old = route.request().postData() === first;
+            if (old) await wait;
+            await route.fulfill({ json: { format: 'xml', data: old ? '<first/>' : '<second/>', meta: {} } });
+        });
+        await page.goto('/channels/dicom-template/filter/0');
+        await page.getByRole('tab', { name: 'Message Templates', exact: true }).click();
+        const openFile = async (name: string) => {
+            const chooser = page.waitForEvent('filechooser');
+            await panel(page).getByRole('button', { name: 'Open File…' }).click();
+            await (await chooser).setFiles({ name: name + '.dcm', mimeType: 'application/dicom', buffer: Buffer.from(name) });
+        };
+        const firstRequest = page.waitForRequest(req => req.url().includes('/datatypes/_serialize') && req.postData() === first);
+        await openFile('first');
+        await firstRequest;
+        const expected = newer === 'second file' ? '<second/>' : newer === 'type change' ? '{"updated":true}' : '<edited/>';
+        if (newer === 'second file') {
+            await openFile('second');
+        } else {
+            if (newer === 'type change') {
+                await panel(page).getByRole('combobox').selectOption('JSON');
+                await page.getByRole('dialog', { name: 'Warning' }).getByRole('button', { name: 'Close' }).last().click();
+            }
+            await field(page).fill(expected);
+        }
+        await expect(field(page)).toHaveValue(expected);
+        const finished = page.waitForEvent('requestfinished', req => req.url().includes('/datatypes/_serialize') && req.postData() === first);
+        release();
+        await finished;
+        await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+        await expect.poll(() => writes.length).toBe(1);
+        const saved = writes[0].sourceConnector.transformer;
+        expect(saved.inboundDataType).toBe(newer === 'type change' ? 'JSON' : 'DICOM');
+        expect(decode(saved.inboundTemplate)).toBe(expected);
+    });
+}
+
 test('literal typing preserves multiple cursors, selections and undo/redo', async ({ page }) => {
     await setup(page, 'transformer/0', '', '');
     await expect(panel(page).locator('.ce-monaco')).toHaveCount(2);

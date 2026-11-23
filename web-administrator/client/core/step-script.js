@@ -254,14 +254,14 @@ function messageBuilderIteration(el, indices, mode) {
     return script + '}\n' + assignment;
 }
 /** Names an enabled step uses in the enclosing Iterator's JavaScript scope. */
-export function usesGeneratedIteratorIdentifier(el, name) {
+export function usesGeneratedIteratorIdentifier(el, name, iterating = true) {
     switch (el.__type || el['@class']) {
         case ElementType.Mapper:
-            return ['mapping', 'validate', 'Array', 'Lists', SCOPE_MAP[el.scope] || SCOPE_MAP.CHANNEL].includes(name)
-                || name === `_${convertIdentifier(el.variable)}`;
+            return ['mapping', 'validate', 'Array', SCOPE_MAP[el.scope] || SCOPE_MAP.CHANNEL].includes(name)
+                || (iterating && (name === 'Lists' || name === `_${convertIdentifier(el.variable)}`));
         case ElementType.Xslt:
-            return ['tFactory', 'xsltTemplate', 'transformer', 'sourceVar', 'resultVar', 'Packages', 'Lists', 'channelMap'].includes(name)
-                || name === `_${convertIdentifier(el.resultVariable)}`;
+            return ['tFactory', 'xsltTemplate', 'transformer', 'sourceVar', 'resultVar', 'Packages', 'channelMap'].includes(name)
+                || (iterating && (name === 'Lists' || name === `_${convertIdentifier(el.resultVariable)}`));
         case ElementType.MessageBuilder:
             return ['validate', 'Array', 'createSegment'].includes(name);
         case ElementType.DestinationSetFilter:

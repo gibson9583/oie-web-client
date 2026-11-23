@@ -39,11 +39,11 @@ test('Message Builder guards use the 4.6 XML field names and numeric indices', (
 });
 
 test('rename recognizes index and namespace bindings and vetoes ambiguous lexical syntax', () => {
-    for (const text of ['fields[i]', 'msg.i::row', 'msg.@i::value', 'f(...i)', '`hello ${i}`', "eval('i')",
+    for (const text of ['fields[i]', 'msg.i::row', 'msg.@i::value', 'f(...i)', '/* i */ fields[i]', '// skip this\nfields[i]', '/* unfinished', '`hello ${i}`', "eval('i')",
         String.raw`msg[\u0069]`, 'field\u200dname', "/['\"]/g.test(s) && i", '<r attr="text">{i}</r>']) {
         assert.equal(referencesIteratorIdentifier(text, 'i'), true, text);
     }
-    for (const text of [`msg['i']["i"].i.@i`, "msg.*::['i']", "channelMap.put('i', msg.i);",
+    for (const text of ['// i is only a comment', '/* i */ msg.i', `msg['i']["i"].i.@i`, "msg.*::['i']", "channelMap.put('i', msg.i);",
         "tmp[new QName('urn:i', 'i')]", "'i'"]) {
         assert.equal(referencesIteratorIdentifier(text, 'i'), false, text);
     }

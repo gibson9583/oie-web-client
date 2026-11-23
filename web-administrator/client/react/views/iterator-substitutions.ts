@@ -4,10 +4,10 @@
  */
 
 import { ElementType } from '../../core/element-types.js';
-import { readMemberBoundaries, referencesIteratorIdentifier } from '../../core/iterator-expression.js';
+import { iteratorIdentifierNames, readMemberBoundaries, referencesIteratorIdentifier } from '../../core/iterator-expression.js';
 import { arrayToElements, isIteratorType, isJavaBlank } from '../../core/oie.js';
 import { REPLACEMENT_PAIR } from '../../core/step-replacements.js';
-import { usesGeneratedIteratorIdentifier } from '../../core/step-script.js';
+import { generateElementScript, usesGeneratedIteratorIdentifier } from '../../core/step-script.js';
 
 type Element = Record<string, any>;
 
@@ -82,8 +82,26 @@ export function iteratorWizardPrefixes(expression: string, ancestorIndices: stri
     return { root: parts[0]?.value, choices, selected: preferred(choices.filter(choice => choice.index >= minIndex)) || preferred(choices) };
 }
 
-export function validIteratorIndex(ancestorIndices: string[], descendantIndices: string[]): string {
+export function validIteratorIndex(ancestorIndices: string[], descendantIndices: string[], scope: Element[] = []): string {
     const used = new Set([...ancestorIndices, ...descendantIndices]);
+    // Rhino's var bindings are function-scoped. A new loop must leave existing
+    // selectors and script variables available before, inside and after the loop.
+    function reserve(source: string, bound: Set<string>) {
+        for (const name of iteratorIdentifierNames(source)) {
+            if (!bound.has(name)) used.add(name);
+        }
+    }
+    function visit(element: Element, bound: Set<string>) {
+        if (isIteratorType(elementType(element))) {
+            for (const prefix of iteratorPrefixes(element)) reserve(prefix, bound);
+            reserve(String(element.properties?.target ?? ''), bound);
+            const nested = new Set(bound).add(element.properties?.indexVariable ?? 'i');
+            for (const child of childrenOf(element)) visit(child, nested);
+        } else {
+            reserve(generateElementScript(element) ?? '', bound);
+        }
+    }
+    for (const element of scope) visit(element, new Set());
     let index = 'i';
     while (used.has(index)) {
         const next = String.fromCharCode(index.charCodeAt(0) + 1);
@@ -145,21 +163,26 @@ function overlapsRepeatedTreeAncestor(path: string, prefix: string): boolean {
     const configured = members(prefix);
     if (!configured.length || configured.at(-1)?.end !== prefix.length) return false;
     let i = 0;
+    let differentSelector = false;
     for (const member of configured) {
         if (selected[i]?.numeric && selected[i - 1]?.text.startsWith('.*::') && !member.numeric) i++;
         const tree = selected[i++];
         if (!tree) return false;
         if (tree.text === member.text) continue;
         if (!tree.text.startsWith('.*::') || treeMemberName(tree.text) !== treeMemberName(member.text)) return false;
+        differentSelector = true;
     }
-    return selected[i - 1].text.startsWith('.*::') && !!selected[i]?.numeric;
+    // A single sample row has no numeric selector, even when production messages repeat it.
+    return differentSelector;
 }
 
 export function treeWritePath(path: string, ancestors: Element[]): string | null {
     for (const iterator of ancestors) {
         const scoped = rewriteIteratorIndex(path, iterator, true);
-        if (scoped === path && path.includes('.*::[') && iteratorPrefixes(iterator).some(prefix =>
-            overlapsRepeatedTreeAncestor(path, prefix.trim()))) return null;
+        if (scoped === path && path.includes('.*::[')) {
+            const prefixes = [...iteratorPrefixes(iterator), iterator.properties?.target];
+            if (prefixes.some(prefix => typeof prefix === 'string' && overlapsRepeatedTreeAncestor(path, prefix.trim()))) return null;
+        }
         path = scoped;
     }
     return path;
@@ -266,7 +289,7 @@ export function relocateElementIteratorVariables(element: Element, previous: Ele
     });
 }
 
-export function renameIteratorIndex(element: Element, index: string): boolean {
+export function renameIteratorIndex(element: Element, index: string, scope: Element[] = [element]): boolean {
     const previous = element.properties.indexVariable ?? 'i';
     if (previous === index) return true;
     // IteratorRuleProperties generates a result flag for each nesting depth.
@@ -281,11 +304,12 @@ export function renameIteratorIndex(element: Element, index: string): boolean {
         || (elementType(el) === ElementType.Xslt && mentionsEitherIndex(el.template))
         || (isIteratorType(elementType(el)) && childrenOf(el).some(hasScriptReferences));
     // A disabled descendant can be enabled later without another index edit.
-    const hasGeneratedCollision = (el: Element): boolean => usesGeneratedIteratorIdentifier(el, index)
-        || (isIteratorType(elementType(el)) && childrenOf(el).some(hasGeneratedCollision));
+    const hasGeneratedCollision = (el: Element, iterating: boolean): boolean =>
+        usesGeneratedIteratorIdentifier(el, index, iterating) || (isIteratorType(elementType(el))
+            && childrenOf(el).some(child => hasGeneratedCollision(child, true)));
     const children = childrenOf(element);
     let unsafe = mentionsEitherIndex(target) || children.some(hasScriptReferences)
-        || index === 'getArrayOrXmlLength' || children.some(hasGeneratedCollision);
+        || index === 'getArrayOrXmlLength' || scope.some(el => hasGeneratedCollision(el, false));
     if (unsafe) return false;
     // Read from a draft first so a successful edit updates all references together.
     for (const child of children) {

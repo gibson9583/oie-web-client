@@ -66,6 +66,23 @@ async function assign(page: Page, element: string, destination: string) {
     await dialog.getByRole('button', { name: 'Use Iterator' }).click();
 }
 
+test('a new Iterator preserves an existing column selector from a preceding script', async ({ page }) => {
+    const mapping = "msg['rows'][0]['values'][i]";
+    const save = await openEditor(page, [
+        { type: 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep', name: 'Choose column', script: 'var i = 1;' },
+        { ...mapper(), mapping }
+    ]);
+    await row(page, 'Observation').locator('td.num').click();
+    await click(page, 'Assign To Iterator');
+    const dialog = page.getByRole('dialog', { name: 'Assign To Iterator' });
+    await dialog.getByLabel('Iterate On', { exact: true }).selectOption("msg['rows']");
+    await expect(dialog.getByLabel('Index Variable')).toHaveValue('j');
+    await dialog.getByRole('button', { name: 'Use Iterator' }).click();
+    const props = (await save())[ITERATOR][0].properties;
+    expect(props.indexVariable).toBe('j');
+    expect(props.children[MAPPER][0].mapping).toBe("msg['rows'][j]['values'][i]");
+});
+
 test('moving a child and its Iterator preserves the stored mapping and default', async ({ page }) => {
     const expression = PREFIX + "[i]['OBX.5'][1].toString()";
     const observation = { ...mapper(), mapping: expression, defaultValue: expression };
@@ -98,6 +115,25 @@ test('renaming a populated Iterator updates child paths and rejects a nested ind
     expect(saved.indexVariable).toBe('k');
     expect(saved.children[MAPPER][0].mapping).toBe(PREFIX + '[k].value.toString()');
     expect(saved.children[ITERATOR][0].properties.target).toBe(PREFIX + '[k].item');
+});
+
+test('a nested index rename checks a sibling accumulator and accepts the default script comment', async ({ page }) => {
+    const inner = iterator('Inner', 'j', [], [PREFIX + "[i]['OBX.5']"]);
+    const save = await openEditor(page, [iterator('Outer', 'i', [{ ...mapper(), mapping: mapping('i') }, inner])]);
+    await row(page, 'Inner').locator('td.num').click();
+    const index = page.locator('.step-editor-fill .field:has(label:text-is("Index Variable")) input');
+    await index.fill('_observations');
+    await index.press('Enter');
+    await expect(index).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toHaveCount(0);
+
+    await click(page, 'Add New Step');
+    await page.locator('tr[data-path="0.1.0"] select').selectOption('com.mirth.connect.plugins.javascriptstep.JavaScriptStep');
+    await row(page, 'Inner').locator('td.num').click();
+    await index.fill('k');
+    await index.press('Enter');
+    await expect(index).toHaveAttribute('aria-invalid', 'false');
+    expect(children(await save(), 'Outer')[ITERATOR][0].properties.indexVariable).toBe('k');
 });
 
 test('an index edit leaves the original stored mapping when one reference cannot be renamed', async ({ page }) => {
@@ -738,10 +774,12 @@ for (const { prefix, xml, branch, field, warning, chooser } of [
         branch: '', field: 'w:value', warning: 'To write this namespaced field, enter a namespace-qualified Message Segment in the Message Builder.', chooser: false },
     { prefix: "msg['@code']", xml: '<m code="one"><entry/></m>', branch: '', field: '@code',
         warning: 'Choose an Iterator over the parent element to write its attribute.', chooser: true },
+    { prefix: "msg[new QName('urn:v', 'group')]", xml: '<m xmlns:v="urn:v"><v:group><value>one</value></v:group></m>',
+        branch: 'v:group', field: 'value', warning: 'The Iterator uses a different selector for this repeating field.', chooser: true },
     { prefix: "msg[new QName('urn:v', 'group')]", xml: '<m xmlns:v="urn:v"><v:group><value>one</value></v:group><v:group><value>two</value></v:group></m>',
         branch: 'v:group[1]', field: 'value', warning: 'The Iterator uses a different selector for this repeating field. Enter its indexed Message Segment manually.', chooser: true }
 ]) {
-    test(`the editor prevents an ineffective write to ${field} under ${prefix}`, async ({ page }) => {
+    test(`the editor prevents an ineffective write to ${branch}/${field} under ${prefix}`, async ({ page }) => {
         await openEditor(page, [iterator('Values', 'i', [], [prefix])], 'transformer', xml);
         await row(page, 'Values').locator('td.num').click();
         await page.getByRole('tab', { name: 'Message Trees' }).click();

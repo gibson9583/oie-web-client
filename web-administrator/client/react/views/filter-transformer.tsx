@@ -981,6 +981,7 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
         if (fixedInboundType || !canEdit()) return;
         target[`${side}DataType`] = value;
         target[`${side}Properties`] = makeDefaultProps(value);
+        if (side === 'inbound' && connectorType === 'SOURCE') updateImportedAttachmentHandler(channel, value);
         // Swing parity (DataTypesDialog.updateSingleDataType): a destination's
         // inbound data type is the source's outbound, so changing the SOURCE
         // outbound type also sets every destination's inbound type + default props.
@@ -997,23 +998,32 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
         commit();
     };
 
+    const fileLoad = useRef(0);
+    const properties = target[`${side}Properties`];
+    // A changed template, type, import, or closed tab supersedes a pending file load.
+    useLayoutEffect(() => () => { fileLoad.current++; }, [target, template, typeName, properties]);
+
     const openFile = async () => {
         if (!canEdit()) return;
+        const request = ++fileLoad.current;
+        const current = () => request === fileLoad.current && canEdit()
+            && typeName === (target[`${side}DataType`] || 'RAW')
+            && template === String(target[templateKey] ?? '') && properties === target[`${side}Properties`];
         const isDicom = typeName === 'DICOM';
         // DICOM is binary; read it as base64 so it isn't mangled, then
         // serialize to the XML template.
         const file = await pickFile(undefined, { binary: isDicom });
-        if (!file) return;
+        if (!file || !current()) return;
         let text = String(file.content ?? '');
         if (isDicom) {
             // Serialize the binary DICOM to its XML form via the engine's
             // data-type serializer (Swing shows the serialized DICOM XML in
             // the template, not raw bytes).
-            const ser = await serializeTemplate('DICOM', target[`${side}Properties`], text).catch(() => null);
+            const ser = await serializeTemplate('DICOM', properties?.serializationProperties, text).catch(() => null);
+            if (!current()) return;
             if (ser && ser.text) { text = ser.text; }
             else { toast('Could not serialize the DICOM file — the serialize endpoint may be unavailable.', 'warn'); return; }
         }
-        if (!canEdit()) return;
         target[templateKey] = text === '' ? null : text;
         commit();
     };
@@ -2034,7 +2044,8 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             || iteratorAncestors(path).some(el => el.properties?.indexVariable === index)
             || allIteratorPaths(childrenOf(iterator)).some(childPath =>
                 elementAtPath(childrenOf(iterator), childPath).properties?.indexVariable === index)) return 'Enter an unused JavaScript variable name.';
-        if (!renameIteratorIndex(iterator, index)) {
+        // Transformer steps share doTransform's function scope. Filter rules run in separate functions.
+        if (!renameIteratorIndex(iterator, index, isFilter ? [iterator] : elementsRef.current)) {
             return 'Review generated variables, child expressions, and scripts. Update references the editor cannot rename or choose a different index name.';
         }
         commitRef.current();
@@ -2076,7 +2087,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const paths = allIteratorPaths(elements).filter(path => eligibleIterator(path, sourcePath));
         const targets = paths.map(path => elementAtPath(elements, path));
         const descendantIndices = () => allIteratorPaths([el]).map(path => elementAtPath([el], path).properties?.indexVariable);
-        const index = validIteratorIndex(ancestorIndices, descendantIndices());
+        const chooseIndex = () => {
+            const scope = isFilter ? [el] : sourcePath ? elementsRef.current : [...elementsRef.current, el];
+            return validIteratorIndex(ancestorIndices, descendantIndices(), scope);
+        };
+        const index = chooseIndex();
         const createIterator = (target = '', outbound = '') => {
             const type = isFilter ? ElementType.IteratorRule : ElementType.IteratorStep;
             const iterator = typeDef(type)?.create?.();
@@ -2171,7 +2186,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                         }
                         onChoose(iterator, false); return;
                     }
-                    if (validIteratorIndex(currentAncestors.map(it => it.properties?.indexVariable), descendantIndices()) !== index) {
+                    if (chooseIndex() !== index) {
                         error.textContent = 'The iterator context changed. Close this dialog and try again.';
                         return false;
                     }

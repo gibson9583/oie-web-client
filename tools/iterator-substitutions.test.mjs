@@ -67,6 +67,15 @@ test('a nested move rewrites the Iterator target, substitution prefixes and desc
     assert.equal(validIteratorIndex(['i'], ['j']), 'k');
 });
 
+test('new indices reserve authored selectors while allowing property names and independent loop bindings', () => {
+    const mapper = mapping => ({ __type: 'com.mirth.connect.plugins.mapper.MapperStep', variable: 'value', mapping });
+    const sibling = { ...iterator, __children: [mapper(prefix + '[i]')] };
+    assert.equal(validIteratorIndex([], [], [sibling, mapper("msg['i'].j[k]")]), 'i');
+    assert.equal(validIteratorIndex([], [], [mapper('msg[i][j]')]), 'k');
+    assert.equal(validIteratorIndex([], [], [mapper('msg[`column-${i}`]')]), 'j');
+    assert.equal(validIteratorIndex([], [], [mapper('msg[\\u0069]')]), 'j');
+});
+
 test('reassigning an indexed child preserves the fixed index behind its old iterator index', () => {
     const destination = { ...iterator, properties: { ...iterator.properties, indexVariable: 'j' } };
     const child = { __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping: prefix + '[i][1].toString()' };
@@ -126,7 +135,10 @@ test('a tree write under a qualified parent only picks up its configured row ind
         assert.equal(treeWritePath(path, [loop(prefix)]), path);
     }
     const single = groups + "['value']";
-    assert.equal(treeWritePath(single, [loop("msg.v::group")]), single);
+    assert.equal(treeWritePath(single, [loop("msg.v::group")]), null);
+    assert.equal(treeWritePath(single, [{ properties: { target: "msg.v::group" } }]), null);
+    assert.equal(treeWritePath(single, [loop(groups)]), groups + "[i]['value']");
+    assert.equal(treeWritePath(single, [loop("msg.v::audit")]), single);
 });
 
 test('assigning an authored QName read or write only rewrites a configured literal prefix', () => {
