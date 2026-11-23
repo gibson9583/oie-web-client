@@ -161,7 +161,13 @@ test('available variables follow the selected step and include preceding Iterato
         '@version': '4.6.0', name: `${variable} Iterator`, sequenceNumber, enabled,
         properties: {
             target: "msg['OBX']", indexVariable: 'i', prefixSubstitutions: { string: "msg['OBX']" },
-            children: { [mapper]: mapperStep(variable) }
+            children: {
+                [mapper]: mapperStep(variable),
+                'com.mirth.connect.plugins.xsltstep.XsltStep': {
+                    name: 'Transform XML', enabled: true, sequenceNumber: 1, resultVariable: variable + 'Xml',
+                    sourceXml: "'<doc/>'", template: "channelMap.get('stylesheet')"
+                }
+            }
         }
     });
     channel.sourceConnector.transformer.elements = {
@@ -174,9 +180,12 @@ test('available variables follow the selected step and include preceding Iterato
 
     await select('2');
     await expect(panel(page).getByText('earlierOutput', { exact: true })).toBeVisible();
+    await expect(panel(page).getByText('earlierOutputXml', { exact: true })).toBeVisible();
+    await expect(panel(page).getByText('disabledOutputXml', { exact: true })).toHaveCount(0);
     await expect(panel(page).getByText('disabledOutput', { exact: true })).toHaveCount(0);
     await expect(panel(page).getByText('currentOutput', { exact: true })).toHaveCount(0);
     await select('0.0');
+    await expect(panel(page).getByText('earlierOutputXml', { exact: true })).toHaveCount(0);
     await expect(panel(page).getByText('earlierOutput', { exact: true })).toHaveCount(0);
 });
 

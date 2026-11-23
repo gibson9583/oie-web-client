@@ -82,16 +82,17 @@ export function iteratorWizardPrefixes(expression: string, ancestorIndices: stri
     return { root: parts[0]?.value, choices, selected: preferred(choices.filter(choice => choice.index >= minIndex)) || preferred(choices) };
 }
 
-export function validIteratorIndex(ancestorIndices: string[], descendantIndices: string[], scope: Element[] = []): string {
-    const used = new Set([...ancestorIndices, ...descendantIndices]);
-    // Rhino's var bindings are function-scoped. A new loop must leave existing
-    // selectors and script variables available before, inside and after the loop.
+// Rhino transformer steps share one function. An independent loop can reuse
+// an index, but a free reference in a sibling must keep its original binding.
+function freeIteratorScopeNames(scope: Element[], excluded?: Element): Set<string> {
+    const used = new Set<string>();
     function reserve(source: string, bound: Set<string>) {
         for (const name of iteratorIdentifierNames(source)) {
             if (!bound.has(name)) used.add(name);
         }
     }
     function visit(element: Element, bound: Set<string>) {
+        if (element === excluded) return;
         if (isIteratorType(elementType(element))) {
             for (const prefix of iteratorPrefixes(element)) reserve(prefix, bound);
             reserve(String(element.properties?.target ?? ''), bound);
@@ -102,6 +103,12 @@ export function validIteratorIndex(ancestorIndices: string[], descendantIndices:
         }
     }
     for (const element of scope) visit(element, new Set());
+    return used;
+}
+
+export function validIteratorIndex(ancestorIndices: string[], descendantIndices: string[], scope: Element[] = []): string {
+    const used = freeIteratorScopeNames(scope);
+    for (const index of [...ancestorIndices, ...descendantIndices]) used.add(index);
     let index = 'i';
     while (used.has(index)) {
         const next = String.fromCharCode(index.charCodeAt(0) + 1);
@@ -304,12 +311,14 @@ export function renameIteratorIndex(element: Element, index: string, scope: Elem
         || (elementType(el) === ElementType.Xslt && mentionsEitherIndex(el.template))
         || (isIteratorType(elementType(el)) && childrenOf(el).some(hasScriptReferences));
     // A disabled descendant can be enabled later without another index edit.
-    const hasGeneratedCollision = (el: Element, iterating: boolean): boolean =>
-        usesGeneratedIteratorIdentifier(el, index, iterating) || (isIteratorType(elementType(el))
-            && childrenOf(el).some(child => hasGeneratedCollision(child, true)));
+    // External scripts execute in this scope too. Only the engine can read the file.
+    const hasScopeCollision = (el: Element, iterating: boolean): boolean =>
+        !!el.scriptPath || usesGeneratedIteratorIdentifier(el, index, iterating) || (isIteratorType(elementType(el))
+            && childrenOf(el).some(child => hasScopeCollision(child, true)));
+    const siblingNames = freeIteratorScopeNames(scope, element);
     const children = childrenOf(element);
-    let unsafe = mentionsEitherIndex(target) || children.some(hasScriptReferences)
-        || index === 'getArrayOrXmlLength' || scope.some(el => hasGeneratedCollision(el, false));
+    let unsafe = siblingNames.has(index) || siblingNames.has(previous) || mentionsEitherIndex(target) || children.some(hasScriptReferences)
+        || index === 'getArrayOrXmlLength' || scope.some(el => hasScopeCollision(el, false));
     if (unsafe) return false;
     // Read from a draft first so a successful edit updates all references together.
     for (const child of children) {

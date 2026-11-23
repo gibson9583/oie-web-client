@@ -136,6 +136,27 @@ test('a nested index rename checks a sibling accumulator and accepts the default
     expect(children(await save(), 'Outer')[ITERATOR][0].properties.indexVariable).toBe('k');
 });
 
+test('renaming a loop index preserves variables shared by sibling JavaScript steps', async ({ page }) => {
+    const js = 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep';
+    const save = await openEditor(page, [
+        { type: js, name: 'Remember count', script: 'var count = 41;' },
+        iterator('Loop', 'i', [{ ...mapper(), mapping: mapping('i') }]),
+        { type: js, name: 'Use count', script: "channelMap.put('count', count);" }
+    ]);
+    await row(page, 'Loop').locator('td.num').click();
+    const index = page.locator('.step-editor-fill .field:has(label:text-is("Index Variable")) input');
+    await index.fill('count');
+    await index.press('Enter');
+    await expect(index).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toHaveCount(0);
+
+    await index.fill('position');
+    await index.press('Enter');
+    const props = (await save())[ITERATOR][0].properties;
+    expect(props.indexVariable).toBe('position');
+    expect(props.children[MAPPER][0].mapping).toBe(mapping('position'));
+});
+
 test('an index edit leaves the original stored mapping when one reference cannot be renamed', async ({ page }) => {
     const expression = PREFIX + '[i][fields[i]]';
     const save = await openEditor(page, [iterator('Loop', 'i', [{ ...mapper(), mapping: expression }])]);
@@ -371,6 +392,16 @@ test('mapping a repeated leaf under a qualified parent uses the configured Itera
     await page.reload();
     await row(page, mapped.name).locator('td.num').click();
     await expect(page.locator('.step-editor-fill .field:has(label:text-is("Mapping")) input')).toHaveValue(mapped.mapping);
+});
+
+test('mapping the whole message creates a valid Mapper with a unique key', async ({ page }) => {
+    const save = await openEditor(page, [{ ...mapper(), variable: 'msg' }], 'transformer', '<Envelope><id>1</id></Envelope>');
+    await page.getByRole('tab', { name: 'Message Trees' }).click();
+    const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+    await tree.locator('.mt-root-label').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
+    await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
+    expect((await save())[MAPPER][1]).toMatchObject({ name: 'msg_2', variable: 'msg_2', mapping: 'msg.toString()' });
 });
 
 test('tree-created Mappers keep separate map keys for identically named leaves', async ({ page }) => {

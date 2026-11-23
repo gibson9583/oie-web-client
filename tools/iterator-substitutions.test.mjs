@@ -163,6 +163,22 @@ test('iterator names exclude reserved words in the stock Rhino ES6 mode', () => 
     for (const index of ['i', 'static', 'implements']) assert.equal(isIteratorIndexName(index), true, index);
 });
 
+test('rename keeps sibling bindings and permits reuse in independent loops', () => {
+    const child = { __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping: mapped };
+    const loop = { ...iterator, properties: { ...iterator.properties }, __children: [child] };
+    const js = script => ({ __type: 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep', script });
+    const independent = { ...iterator, properties: { ...iterator.properties, indexVariable: 'j' },
+        __children: [js("channelMap.put('last', j)")] };
+    for (const sibling of [js("channelMap.put('length', i)"), { ...child, mapping: 'columns[j]' },
+        { __type: 'com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep', scriptPath: '/channel/sibling.js' }]) {
+        assert.equal(renameIteratorIndex(loop, 'j', [loop, sibling]), false);
+        assert.equal(loop.properties.indexVariable, 'i');
+        assert.equal(child.mapping, mapped);
+    }
+    assert.equal(renameIteratorIndex(loop, 'j', [loop, independent]), true);
+    assert.equal(child.mapping, mapped.replace('[i]', '[j]'));
+});
+
 test('a filter Iterator index cannot shadow its generated result flag after a move', () => {
     const rule = { ...iterator, __type: 'com.mirth.connect.model.IteratorRule', properties: { ...iterator.properties } };
     for (const index of ['_iterator_flag_0', '_iterator_flag_1']) {

@@ -189,6 +189,9 @@ function collectStepVariables(elements: any[], selectedPath: number[] | null) {
     function collect(list: any[]) {
         for (const el of list) {
             if (!isElementEnabled(el)) continue;
+            if (el.__type === ElementType.Xslt && typeof el.resultVariable === 'string' && el.resultVariable.trim()) {
+                vars.add(el.resultVariable);
+            }
             if (typeof el.variable === 'string' && el.variable.trim()) vars.add(el.variable.trim());
             if (typeof el.script === 'string') {
                 let match: RegExpExecArray | null;
@@ -1210,7 +1213,8 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
         const { accessor } = source;
         const { variable, description } = treeFieldNames(path);
         if (action === 'mapper') {
-            onAddStep(ElementType.Mapper, 'Mapper', variable, (el: any) => { el.mapping = accessor; el.variable = variable; });
+            const key = path ? variable : varName;
+            onAddStep(ElementType.Mapper, 'Mapper', key, (el: any) => { el.mapping = accessor; el.variable = key; });
         } else if (action === 'builder') {
             const segment = treeMessageSegment(source, []);
             if (!segment) return;
@@ -2046,7 +2050,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 elementAtPath(childrenOf(iterator), childPath).properties?.indexVariable === index)) return 'Enter an unused JavaScript variable name.';
         // Transformer steps share doTransform's function scope. Filter rules run in separate functions.
         if (!renameIteratorIndex(iterator, index, isFilter ? [iterator] : elementsRef.current)) {
-            return 'Review generated variables, child expressions, and scripts. Update references the editor cannot rename or choose a different index name.';
+            return 'Review generated variables, child expressions, and scripts in the same scope. Update references the editor cannot rename or choose a different index name.';
         }
         commitRef.current();
         return '';
