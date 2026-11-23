@@ -138,6 +138,18 @@ test('response transformer: response entries in, source-only library and plugin 
     await expect(rows(page)).toHaveText(['Resp Helper']);
 });
 
+test('filter reference lists map keys from every enabled filter rule', async ({ page }) => {
+    const channel = makeChannel(CHANNEL_ID);
+    const type = 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule';
+    channel.sourceConnector.filter.elements = { [type]: [
+        { '@version': '4.6.0', name: 'First', enabled: true, sequenceNumber: 0, script: 'return true;' },
+        { '@version': '4.6.0', name: 'Later', enabled: true, sequenceNumber: 1, operator: 'AND', script: "channelMap.put('laterKey', 1); return true;" }
+    ] };
+    await mockEngine(page, { [`GET /channels/${CHANNEL_ID}`]: { channel } });
+    await page.goto(`/channels/${CHANNEL_ID}/filter/0`);
+    await expect(panel(page).getByText('laterKey', { exact: true })).toBeVisible();
+});
+
 test('available variables follow the selected step and include preceding Iterator outputs', async ({ page }) => {
     const channel = makeChannel(CHANNEL_ID);
     const mapper = 'com.mirth.connect.plugins.mapper.MapperStep';

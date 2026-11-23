@@ -275,14 +275,16 @@ export function renameIteratorIndex(element: Element, index: string): boolean {
     const binding = { properties: { indexVariable: previous, prefixSubstitutions: [...iteratorPrefixes(element), target] } };
     const rewrite = (value: any) => typeof value === 'string' ? rewriteIteratorIndex(value, binding, false, index) : value;
     const unsafeReference = (value: unknown, name: string) => typeof value === 'string' && referencesIteratorIdentifier(value, name);
+    const mentionsEitherIndex = (value: unknown) => unsafeReference(value, previous) || unsafeReference(value, index);
     const hasScriptReferences = (el: Element): boolean =>
-        unsafeReference(el.script, previous) || unsafeReference(el.script, index) || !!el.scriptPath
+        mentionsEitherIndex(el.script) || !!el.scriptPath
+        || (elementType(el) === ElementType.Xslt && mentionsEitherIndex(el.template))
         || (isIteratorType(elementType(el)) && childrenOf(el).some(hasScriptReferences));
     // A disabled descendant can be enabled later without another index edit.
     const hasGeneratedCollision = (el: Element): boolean => usesGeneratedIteratorIdentifier(el, index)
         || (isIteratorType(elementType(el)) && childrenOf(el).some(hasGeneratedCollision));
     const children = childrenOf(element);
-    let unsafe = unsafeReference(target, previous) || unsafeReference(target, index) || children.some(hasScriptReferences)
+    let unsafe = mentionsEitherIndex(target) || children.some(hasScriptReferences)
         || index === 'getArrayOrXmlLength' || children.some(hasGeneratedCollision);
     if (unsafe) return false;
     // Read from a draft first so a successful edit updates all references together.
@@ -300,7 +302,6 @@ export function renameIteratorIndex(element: Element, index: string): boolean {
 }
 
 export function isIteratorIndexName(index: string): boolean {
-    if (['await', 'class', 'enum', 'export', 'extends', 'import', 'let', 'super', 'yield'].includes(index)) return false;
     // Rhino ignores format controls in identifiers, so joiners cannot distinguish two indices.
     if (/\p{Cf}/u.test(index) || !/^[$_\p{ID_Start}][$\p{ID_Continue}]*$/u.test(index)) return false;
     const parts = readMemberBoundaries(index);

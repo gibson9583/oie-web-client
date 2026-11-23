@@ -17,6 +17,8 @@ import { elementsToArray, isIteratorType, isJavaBlank } from './oie.js';
 import { readMessageBuilderParts } from './iterator-expression.js';
 import { replacementPairs } from './step-replacements.js';
 
+type PartialScriptPurpose = 'mapDiscovery' | 'partialValidation';
+
 /* Scope enum -> map object (MapperStep.Scope.map). */
 const SCOPE_MAP: Record<string, string> = {
     CONNECTOR: 'connectorMap',
@@ -135,10 +137,10 @@ const GENERATORS: Record<string, (el: any) => string> = {
  * the type has no client-side generator (the caller falls back to element.script
  * for JavaScript steps/rules, else a notice).
  *   getChildren(el) -> array of child elements (for Iterator recursion).
- *   mapDiscovery retains each assignment for scanning when its initializer
- *   cannot be reproduced. Preview and validation require the complete script.
+ *   Map discovery and partial syntax checks retain assignments whose initializer
+ *   cannot be reproduced. The preview requires the complete script.
  */
-export function generateElementScript(element: any, getChildren?: (el: any) => any[], mode?: 'mapDiscovery'): string | null {
+export function generateElementScript(element: any, getChildren?: (el: any) => any[], mode?: PartialScriptPurpose): string | null {
     if (!element) return null;
     const type = element.__type;
 
@@ -155,7 +157,7 @@ export function generateElementScript(element: any, getChildren?: (el: any) => a
 /* IteratorProperties.getScript = pre + iteration + post. Nested accumulators
    are declared before the outer loop and their map writes follow that loop;
    this ordering also determines the destination variable list. */
-function iteratorScript(element: any, getChildren?: (el: any) => any[], mode?: 'mapDiscovery'): string | null {
+function iteratorScript(element: any, getChildren?: (el: any) => any[], mode?: PartialScriptPurpose): string | null {
     let script = '';
     for (const phase of ['pre', 'iteration', 'post'] as const) {
         const section = iteratorPhase(element, phase, getChildren, [], mode);
@@ -166,7 +168,7 @@ function iteratorScript(element: any, getChildren?: (el: any) => any[], mode?: '
 }
 
 function iteratorPhase(element: any, phase: 'pre' | 'iteration' | 'post', getChildren: ((el: any) => any[]) | undefined,
-    ancestors: string[], mode?: 'mapDiscovery'): string | null {
+    ancestors: string[], mode?: PartialScriptPurpose): string | null {
     const props = element.properties || element;
     const target = props.target ?? '';
     const idx = props.indexVariable ?? 'i';
@@ -225,10 +227,10 @@ function quotedSegmentName(name: string): string {
 // MessageBuilderStep.getIterationScript initializes missing outbound segments
 // before the ordinary assignment. XML and JavaScript objects use different
 // creation rules, and fixed numeric indices participate in both.
-function messageBuilderIteration(el: any, indices: string[], mode?: 'mapDiscovery'): string | null {
+function messageBuilderIteration(el: any, indices: string[], mode?: PartialScriptPurpose): string | null {
     const parts = readMessageBuilderParts(String(el.messageSegment ?? ''));
     const assignment = messageBuilderScript(el);
-    if (parts === null) return mode === 'mapDiscovery' ? assignment : null;
+    if (parts === null) return mode ? assignment : null;
     if (parts.length < 2) return assignment;
     let prefix = '';
     const paths = parts.map(part => (prefix += part.value));

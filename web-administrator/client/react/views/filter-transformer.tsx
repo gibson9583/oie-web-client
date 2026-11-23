@@ -891,10 +891,9 @@ function ReferenceTab({ dragRef, channelId, context, getVariables, refreshRef }:
 
 /* ---- right panel: Message Templates ----------------------------------------- */
 
+const subscribeToChannelEdit = (notify: () => void) => store.subscribe('editingChannel', notify);
+
 function TemplatesSide({ side, title, templateKey, target, version, connectorType, channel, commit, canEdit }: any) {
-    // The section renders from the mutable target; bump repaints after each
-    // model write (type change / template edit / file load).
-    const [, bump] = useReducer((x: any) => x + 1, 0);
     const dtOptions = dataTypeList().map(dt => ({ value: dt.name, label: dt.label }));
 
     // Fresh default properties object for a data type (one per call).
@@ -903,7 +902,11 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
         return def ? def.defaults(version) : { '@version': version };
     };
     const dtLabel = (name: any) => (dataTypeDef(name) || { label: name }).label;
-    const typeName = target[`${side}DataType`] || 'RAW';
+    const typeName = useSyncExternalStore(subscribeToChannelEdit, () => target[`${side}DataType`] || 'RAW');
+    const template = useSyncExternalStore(subscribeToChannelEdit, () => String(target[templateKey] ?? ''));
+    const source = channel.sourceConnector;
+    const fixedInboundType = side === 'inbound' && (connectorType === 'DESTINATION' || (connectorType === 'SOURCE'
+        && (source.transportName === 'Database Reader' || (source.transportName === 'HTTP Listener' && String(source.properties?.xmlBody) === 'true'))));
     const readOnly = !canEdit();
     const language = typeName === 'HL7V2' ? 'hl7v2' : typeName === 'JSON' ? 'json' : ['XML', 'HL7V3', 'DICOM'].includes(typeName) ? 'xml' : 'text';
     const editorHostRef = useRef<HTMLDivElement>(null);
@@ -911,7 +914,6 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
     const commitRef = useRef(commit);
     commitRef.current = commit;
     const syncing = useRef(false);
-    const template = String(target[templateKey] ?? '');
     useEffect(() => {
         const host = editorHostRef.current!;
         const editor = createCodeEditor({
@@ -921,7 +923,6 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
                 if (syncing.current || !canEdit()) return;
                 target[templateKey] = value === '' ? null : value;
                 commitRef.current();
-                bump();
             }
         });
         editor.el.style.height = '200px';
@@ -977,7 +978,7 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
     };
 
     const onTypeChange = (value: any) => {
-        if (!canEdit()) return;
+        if (fixedInboundType || !canEdit()) return;
         target[`${side}DataType`] = value;
         target[`${side}Properties`] = makeDefaultProps(value);
         // Swing parity (DataTypesDialog.updateSingleDataType): a destination's
@@ -994,7 +995,6 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
             toast(`${title} data type properties reset to defaults`, 'warn');
         }
         commit();
-        bump();
     };
 
     const openFile = async () => {
@@ -1016,7 +1016,6 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
         if (!canEdit()) return;
         target[templateKey] = text === '' ? null : text;
         commit();
-        bump();
     };
 
     return (
@@ -1024,7 +1023,7 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
             <div className="field">
                 <label>{`${title} Data Type`}</label>
                 <div className="flex gap-2 items-center">
-                    <select value={typeName} disabled={readOnly} onChange={(e: any) => onTypeChange(e.target.value)}>
+                    <select value={typeName} disabled={readOnly || fixedInboundType} onChange={(e: any) => onTypeChange(e.target.value)}>
                         {dtOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                     <button className="btn btn-sm" disabled={readOnly} onClick={openPropsModal}
@@ -1133,8 +1132,6 @@ function copyAccessor(text: string) {
     if (!navigator.clipboard?.writeText) { toast('Clipboard unavailable', 'warn'); return; }
     navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard'), () => toast('Clipboard unavailable', 'warn'));
 }
-
-const subscribeToChannelEdit = (notify: () => void) => store.subscribe('editingChannel', notify);
 
 function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef, treeAccessor, onAddStep, isFilter }: any) {
     const [parse, setParse] = useState<any>({ status: 'idle' });   // idle | parsing | ready | failed | empty
@@ -1931,6 +1928,14 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         });
     }
 
+    // A custom Builder target can hide its generated initializer. The rest of
+    // the loop still has its original control flow and can be syntax checked.
+    function scriptForValidation(el: any) {
+        const script = generateElementScript(el, childrenOf);
+        const incomplete = script === null && isIteratorType(el.__type);
+        return { script: incomplete ? generateElementScript(el, childrenOf, 'partialValidation') : script, incomplete };
+    }
+
     // Full validation for "Validate <Kind>" and "Back to Channel". Mirrors Swing
     // BaseEditorPane.validateAll: (a) per-element field checks, then (b) a Rhino
     // syntax check of every element's generated script (engine bridge), covering
@@ -1949,18 +1954,16 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         // children roll into the parent's generated script.
         let unavailable = false;
         for (const el of elementsRef.current) {
-            const src = generateElementScript(el, childrenOf);
-            if (src == null) {
-                unavailable ||= isIteratorType(el.__type);
-                continue;
-            }
-            const result = await validateScript(src);
+            const { script, incomplete } = scriptForValidation(el);
+            unavailable ||= incomplete;
+            if (script === null) continue;
+            const result = await validateScript(script);
             if (!active()) return 'stale';
             if (result.ok === null) { toast(result.message, 'warn'); return 'unavailable'; }
             if (result.ok === false) { showValidationErrors([elementError(el, result.message)]); return 'fail'; }
         }
         if (unavailable) {
-            if (announce) toast(iteratorPreviewUnavailable, 'warn');
+            toast(iteratorPreviewUnavailable, 'warn');
             return 'unavailable';
         }
         if (announce) toast(`All ${kind.noun.toLowerCase()}s validated successfully`);
@@ -1977,14 +1980,16 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const fieldMsg = def && typeof def.validate === 'function' ? String(def.validate(el) || '').trim() : '';
         if (fieldMsg) { showValidationErrors([elementError(el, fieldMsg)]); return; }
         // (b) Rhino syntax check of its generated script.
-        const src = generateElementScript(el, childrenOf);
-        if (src == null && isIteratorType(el.__type)) { toast(iteratorPreviewUnavailable, 'warn'); return; }
-        if (src != null) {
-            const result = await validateScript(src);
+        const { script, incomplete } = scriptForValidation(el);
+        const active = editorSessionActive();
+        if (script !== null) {
+            const result = await validateScript(script);
+            if (!active()) return;
             if (result.ok === false) { showValidationErrors([elementError(el, result.message)]); return; }
             if (result.ok === null) { toast(result.message, 'warn'); return; }
         }
-        toast(`${kind.noun} "${elementName(el)}" validated successfully`);
+        if (incomplete) toast(iteratorPreviewUnavailable, 'warn');
+        else toast(`${kind.noun} "${elementName(el)}" validated successfully`);
     }
 
     /* ---- iterator membership (matches the Swing tree-table) ---- */
@@ -2389,7 +2394,8 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 return rewriteIteratorExpression(treeDragModifier(event) ? raw : source.accessor, ancestors, true);
             },
             referenceRefreshRef,
-            getVariables: () => collectStepVariables(elementsRef.current, selectedPathRef.current),
+            // Swing lists keys from the whole filter. Transformer outputs depend on the selected step.
+            getVariables: () => collectStepVariables(elementsRef.current, isFilter ? null : selectedPathRef.current),
             canEdit: canEditElements,
             commit: () => commitRef.current(),
             onAddStep: (...args: Parameters<typeof addTreeStep>) => addTreeStepRef.current(...args),

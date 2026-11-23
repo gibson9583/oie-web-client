@@ -115,6 +115,24 @@ test('an index edit leaves the original stored mapping when one reference cannot
     expect(stored.children[MAPPER][0].mapping).toBe(expression);
 });
 
+test('a dynamic XSLT stylesheet prevents a partial Iterator index rename', async ({ page }) => {
+    const xslt = { type: 'com.mirth.connect.plugins.xsltstep.XsltStep', name: 'Dynamic stylesheet',
+        sourceXml: "'<r/>'", resultVariable: 'out', template: 'styles[i]' };
+    const observation = { ...mapper(), mapping: mapping('i') };
+    const save = await openEditor(page, [iterator('Loop', 'i', [observation, xslt])]);
+    const index = page.locator('.step-editor-fill .field:has(label:text-is("Index Variable")) input');
+    await index.fill('j');
+    await index.press('Tab');
+    await expect(index).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toHaveCount(0);
+
+    await row(page, observation.name).getByRole('checkbox').uncheck();
+    const stored = (await save())[ITERATOR][0].properties;
+    expect(stored.indexVariable).toBe('i');
+    expect(stored.children[xslt.type][0].template).toBe(xslt.template);
+    expect(stored.children[MAPPER][0]).toMatchObject({ enabled: false, mapping: observation.mapping });
+});
+
 test('reserved words and generated Mapper variables cannot replace an Iterator index', async ({ page }) => {
     const expression = PREFIX + '[i].value.toString()';
     const save = await openEditor(page, [iterator('Loop', 'i', [{ ...mapper(), mapping: expression }])]);
@@ -532,6 +550,19 @@ test('a Message Builder preview creates missing output objects and XML segments 
     expect(script).toContain(target + ' = validate(');
 });
 
+test('Back checks a JavaScript sibling inside an Iterator with a custom Builder target', async ({ page }) => {
+    await openEditor(page, [iterator('Custom target', 'i', [
+        { type: BUILDER, name: 'Set value', messageSegment: "tmp.rows[i][chooseKey({fallback: 'value'})]", mapping: "'ok'" },
+        { type: 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep', name: 'Unfinished', script: 'var unfinished = ;' }
+    ])]);
+    await page.route('**/javascript/_validate', route => route.fulfill({ json: {
+        error: route.request().postData()?.includes('var unfinished = ;') ? 'syntax error' : null
+    } }));
+    await click(page, 'Back to Channel');
+    await expect(page.getByText('Error validating transformer steps', { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/transformer\/0$/);
+});
+
 test('an opaque Message Builder target reports incomplete Iterator validation and still checks siblings', async ({ page }) => {
     await page.route('**/vendor/monaco/**', route => route.abort());
     const target = "tmp.rows[i][chooseKey({fallback: 'value'})]";
@@ -550,11 +581,13 @@ test('an opaque Message Builder target reports incomplete Iterator validation an
     await click(page, 'Validate Step');
     const warning = page.getByRole('dialog', { name: 'Warning' });
     await expect(warning).toContainText('Use Swing to preview or validate its Iterator');
-    expect(submitted).toHaveLength(0);
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]).toContain(target);
     await warning.getByRole('button', { name: 'Close' }).last().click();
     await click(page, 'Validate Transformer');
-    await expect.poll(() => submitted.length).toBe(1);
-    expect(submitted[0]).toContain("channelMap.put('observations'");
+    await expect.poll(() => submitted.length).toBe(3);
+    expect(submitted[1]).toBe(submitted[0]);
+    expect(submitted[2]).toContain("channelMap.put('observations'");
     await expect(warning).toContainText('Use Swing to preview or validate its Iterator');
 });
 

@@ -127,8 +127,8 @@ const GENERATORS = {
  * the type has no client-side generator (the caller falls back to element.script
  * for JavaScript steps/rules, else a notice).
  *   getChildren(el) -> array of child elements (for Iterator recursion).
- *   mapDiscovery retains each assignment for scanning when its initializer
- *   cannot be reproduced. Preview and validation require the complete script.
+ *   Map discovery and partial syntax checks retain assignments whose initializer
+ *   cannot be reproduced. The preview requires the complete script.
  */
 export function generateElementScript(element, getChildren, mode) {
     if (!element)
@@ -226,7 +226,7 @@ function messageBuilderIteration(el, indices, mode) {
     const parts = readMessageBuilderParts(String(el.messageSegment ?? ''));
     const assignment = messageBuilderScript(el);
     if (parts === null)
-        return mode === 'mapDiscovery' ? assignment : null;
+        return mode ? assignment : null;
     if (parts.length < 2)
         return assignment;
     let prefix = '';

@@ -131,6 +131,26 @@ test('full transformer XML replacement imports data types, properties and templa
     expect(sent.destinationConnectors.connector[0].transformer.inboundDataType).toBe('XML');
 });
 
+test('an open template editor edits the replacement transformer after import', async ({ page }) => {
+    await page.route('**/vendor/monaco/**', route => route.abort());
+    const channel = makeChannel('replace-open-templates');
+    const original = channel.sourceConnector.transformer;
+    Object.assign(original, { inboundDataType: 'RAW', inboundTemplate: 'old sample', elements: { [stepType]: step('Existing') } });
+    const writes = await setup(page, channel, 'transformer/0');
+    await page.getByRole('tab', { name: 'Message Templates', exact: true }).click();
+    const input = page.getByRole('textbox', { name: 'Inbound Template', exact: true });
+    await expect(input).toHaveValue('old sample');
+    const transformer = { ...original, inboundDataType: 'XML', inboundTemplate: '<new/>' };
+    await upload(page, 'Import Transformer', JSON.stringify({ transformer }), 'transformer.json');
+    await page.getByRole('button', { name: 'Replace', exact: true }).click();
+    await expect(input).toHaveValue('<new/>');
+    await expect(page.locator('.field').filter({ has: page.getByText('Inbound Data Type', { exact: true }) }).getByRole('combobox')).toHaveValue('XML');
+    await input.press('End');
+    await input.pressSequentially(' ');
+    const saved = await save(page, writes);
+    expect(templateText(saved.sourceConnector.transformer.inboundTemplate)).toBe('<new/> ');
+});
+
 test('cancelled replacement and malformed XML preserve the edited draft', async ({ page }) => {
     const channel = makeChannel('cancel-transformer');
     channel.sourceConnector.transformer.elements = { [stepType]: step('Existing') };

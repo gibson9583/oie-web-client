@@ -208,6 +208,8 @@ test('rename refuses unresolved or captured index references without changing ch
         ['mapper.MapperStep', 'mapping', prefix + '[i][fields[j]]'],
         ['javascriptstep.JavaScriptStep', 'script', "channelMap.put('x', i);"],
         ['javascriptstep.JavaScriptStep', 'script', 'channelMap.put("x", `hello ${i}`);'],
+        ['xsltstep.XsltStep', 'template', 'styles[i]'],
+        ['xsltstep.XsltStep', 'template', 'styles[j]'],
         ['scriptfilestep.ExternalScriptStep', 'scriptPath', '/example/iterator.js']
     ]) {
         const child = { __type: 'com.mirth.connect.plugins.' + type, [field]: source };

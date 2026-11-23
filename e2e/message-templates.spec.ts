@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { test, expect } from './base.js';
 import { mockEngine } from './mock.js';
-import { makeChannel } from './connector-fixtures.js';
+import { CASES, makeChannel } from './connector-fixtures.js';
 
 const targetOf = (channel: any, route: string) => route === 'transformer/0' ? channel.sourceConnector.transformer
     : channel.destinationConnectors.connector[0][route.startsWith('response') ? 'responseTransformer' : 'transformer'];
@@ -101,6 +101,31 @@ for (const route of ['transformer/0', 'transformer/1', 'response/1']) {
         await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
         await expect.poll(() => writes.length).toBe(2);
         expect(targetOf(writes[1], route).outboundTemplate).toBeNull();
+    });
+}
+
+for (const [route, receiver, xmlBody, locked] of [
+    ['filter/1', 'Channel Reader', false, true],
+    ['transformer/1', 'Channel Reader', false, true],
+    ['response/1', 'Channel Reader', false, false],
+    ['filter/0', 'Database Reader', false, true],
+    ['transformer/0', 'HTTP Listener', true, true],
+    ['filter/0', 'HTTP Listener', false, false]
+] as const) {
+    test(`${route} follows the Swing inbound type restriction for ${receiver} (XML body ${xmlBody})`, async ({ page }) => {
+        await page.route('**/vendor/monaco/**', route => route.abort());
+        const properties = CASES.find(connector => connector.name === receiver)!.properties();
+        if ('xmlBody' in properties) properties.xmlBody = xmlBody;
+        const channel = makeChannel('type-lock', { source: { transportName: receiver, properties } });
+        channel.sourceConnector.transformer.inboundDataType = 'XML';
+        await mockEngine(page, { 'GET /channels/type-lock': { channel } });
+        await page.goto(`/channels/type-lock/${route}`);
+        await page.getByRole('tab', { name: 'Message Templates', exact: true }).click();
+        const type = panel(page).getByRole('combobox').first();
+        if (locked) await expect(type).toBeDisabled();
+        else await expect(type).toBeEnabled();
+        await expect(panel(page).getByRole('button', { name: 'Properties…' }).first()).toBeEnabled();
+        await expect(field(page)).toBeEditable();
     });
 }
 
