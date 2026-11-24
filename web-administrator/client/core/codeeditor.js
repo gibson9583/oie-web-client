@@ -227,13 +227,14 @@ function attachCodeView(editor, opts) {
             e.dataTransfer.dropEffect = 'copy';
         }
     }
-    function onOverlayDrop(e) {
-        const token = dragToken || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
+    function onOverlayDrop(e, token) {
         dragToken = null;
-        if (!token || !el.contains(e.target))
+        if (token == null || !el.contains(e.target))
             return;
         e.preventDefault();
         e.stopPropagation();
+        if (!token)
+            return;
         insertAtDrop(e, token);
     }
     function openCodeView() {
@@ -248,16 +249,19 @@ function attachCodeView(editor, opts) {
         if (rail)
             body.appendChild(rail);
         overlay = h('div.ce-popout-overlay', h('div.ce-popout-head', h('button.btn', { type: 'button', onClick: () => set(false) }, icon('chevL'), 'Back'), h('div.ce-popout-title', String(opts.popoutTitle || 'Code editor')), h('div.ce-popout-esc', 'Esc closes')), body);
+        // A host supplying its own panel can resolve the dragged text at release.
+        const detail = { open: true, overlay, body, editorEl: el, origin,
+            getDropText: (event) => dragToken || event.dataTransfer?.getData('text/plain') || undefined };
         // Capture-phase so the insert wins over Monaco's own dnd handling.
-        overlay.addEventListener('dragover', onOverlayDragOver, true);
-        overlay.addEventListener('drop', onOverlayDrop, true);
+        if (!opts.readOnly) {
+            overlay.addEventListener('dragover', onOverlayDragOver, true);
+            overlay.addEventListener('drop', event => onOverlayDrop(event, detail.getDropText(event)), true);
+        }
         document.body.appendChild(overlay);
         // Host views can react (e.g. the transformer editor moves its full
         // Reference / Message Templates / Message Trees panel into the view).
         // `origin` is where the editor came from, since el itself has moved.
-        document.dispatchEvent(new CustomEvent('oie:code-view', {
-            detail: { open: true, overlay, body, editorEl: el, origin }
-        }));
+        document.dispatchEvent(new CustomEvent('oie:code-view', { detail }));
         if (editor.monaco)
             editor.monaco.layout();
         editor.focus && editor.focus();

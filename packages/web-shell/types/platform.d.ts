@@ -131,11 +131,15 @@ export interface AttachmentViewer {
 }
 export interface StepRuleType {
     label: string;
+    /** Set false when the plugin generates the name shown in the grid. Defaults to true. */
+    nameEditable?: boolean;
     create(): OieObject;
     component: PluginComponent<{
         element: OieObject;
         onChange(): void;
         platform: Platform;
+        /** Commit an Iterator index and its child references together. An empty string means success. */
+        onRenameIteratorIndex(element: OieObject, index: string): string;
     }>;
     [key: string]: any;
 }
@@ -335,7 +339,7 @@ export interface PluginManifest {
     apiMin?: string | null;
     [key: string]: any;
 }
-export declare const OIE_API_VERSION = "4.10.0";
+export declare const OIE_API_VERSION = "4.11.0";
 export declare function apiCompatible(provided: string, requiredMin?: string | null): boolean;
 /** The platform handed to every plugin's `register(platform)`. */
 export interface Platform {

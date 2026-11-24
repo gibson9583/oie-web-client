@@ -5,6 +5,7 @@
  * and the Rhino scope cheat-sheet for channel scripts (filter/transformer steps,
  * auth scripts). Public lists keep the [label, insertText] shape.
  */
+import { isElementEnabled } from './element-types.js';
 import { destinationsOf, elementsToArray } from './oie.js';
 import { generateElementScript } from './step-script.js';
 // [label, Velocity token, JavaScript transfer text]. Match Swing's
@@ -76,13 +77,14 @@ function unescapeMapKey(key) {
         return escapes[value] ?? value;
     });
 }
-function addVariables(target, stage, includeLocal) {
+function addVariables(target, stage, includeLocal, viewRow = -1) {
     const pattern = mapVariablePattern(includeLocal);
-    for (const element of elementsToArray(stage?.elements)) {
-        if (element.enabled === false || element.enabled === 'false')
+    const elements = elementsToArray(stage?.elements);
+    for (const element of viewRow < 0 ? elements : elements.slice(0, viewRow)) {
+        if (!isElementEnabled(element))
             continue;
         try {
-            const script = generateElementScript(element, child => elementsToArray(child.properties?.children));
+            const script = generateElementScript(element, child => elementsToArray(child.properties?.children), 'mapDiscovery');
             if (!script)
                 continue;
             // Keep the same simple-comment then block-comment order as Swing.
@@ -96,16 +98,23 @@ function addVariables(target, stage, includeLocal) {
         }
     }
 }
-function destinationVariables(channel, destination) {
+function connectorVariables(channel, selectedConnector, viewRow = -1, response = false) {
     const rules = new Set();
     const steps = new Set();
     const source = channel.sourceConnector;
+    if (selectedConnector === source) {
+        addVariables(rules, source.filter, true);
+        addVariables(steps, source.transformer, true, viewRow);
+        return new Set([...rules, ...steps]);
+    }
     addVariables(rules, source?.filter, false);
     addVariables(steps, source?.transformer, false);
     for (const connector of destinationsOf(channel)) {
-        const selected = connector === destination || String(connector.metaDataId) === String(destination.metaDataId);
+        const selected = connector === selectedConnector || String(connector.metaDataId) === String(selectedConnector.metaDataId);
         addVariables(rules, connector.filter, selected);
-        addVariables(steps, connector.transformer, selected);
+        if (selected && response)
+            addVariables(steps, connector.transformer, true);
+        addVariables(steps, selected && response ? connector.responseTransformer : connector.transformer, selected, selected ? viewRow : -1);
         if (selected)
             break;
         addVariables(steps, connector.responseTransformer, false);
@@ -115,6 +124,23 @@ function destinationVariables(channel, destination) {
         }
     }
     return new Set([...rules, ...steps]);
+}
+function mapLookup(key) {
+    const quote = key.includes("'") ? '"' : "'";
+    return `$(${quote}${key}${quote})`;
+}
+const swingScriptTransfers = new Map([...JAVASCRIPT_DESTINATION_MAPPINGS, ...JAVASCRIPT_TRANSFER_OVERRIDES]);
+// Swing reserves these labels in its Velocity list only.
+swingScriptTransfers.delete('Channel ID');
+swingScriptTransfers.delete('Channel Name');
+/** The Reference tab uses Swing's JavaScript VariableListHandler transfer mode. */
+export function editorVariableMappings(channel, connector, viewRow, response) {
+    const destinationIds = new Map(connector === channel.sourceConnector ? []
+        : destinationsOf(channel).map(dest => [dest.name, dest.metaDataId]));
+    return [...connectorVariables(channel, connector, viewRow, response)].map(label => {
+        const key = destinationIds.has(label) ? 'd' + destinationIds.get(label) : label;
+        return [label, swingScriptTransfers.get(label) ?? mapLookup(key)];
+    });
 }
 /** Swing's destination list uses the connector's transfer mode, not editor syntax.
  * Source receivers and authentication scripts have separate reference contexts.
@@ -138,13 +164,13 @@ export function destinationMappingsFor(properties, channel, destination) {
     const labels = new Set(mappings.map(([label]) => label));
     const metaDataIds = new Map(connectors.map(connector => [connector.name, connector.metaDataId]));
     const overrides = javascript ? JAVASCRIPT_TRANSFER_OVERRIDES : VELOCITY_TRANSFER_OVERRIDES;
-    for (const label of destinationVariables(channel, selected)) {
+    for (const label of connectorVariables(channel, selected)) {
         if (labels.has(label))
             continue;
         const connector = metaDataIds.has(label);
         const key = connector ? `d${metaDataIds.get(label)}` : label;
         const quote = key.includes("'") ? '"' : "'";
-        const token = overrides.get(label) ?? (javascript ? `$(${quote}${key}${quote})`
+        const token = overrides.get(label) ?? (javascript ? mapLookup(key)
             : connector ? `\${${key}.message}`
                 : /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(key) ? `\${${key}}` : `\${maps.get(${quote}${key}${quote})}`);
         mappings.push([label, token]);

@@ -36,6 +36,13 @@ export function register(p: Platform, context: PluginContext) {
         label: 'Demo Settings',
         component: ({ platform: plat, setSave, markDirty }) => { void plat; void setSave; void markDirty; return null; },
     });
+    p.registerStepType('example.Step', {
+        label: 'Example', nameEditable: false, create: () => ({}),
+        component: ({ element, onRenameIteratorIndex }) => {
+            const message: string = onRenameIteratorIndex(element, 'j');
+            return message;
+        },
+    });
     // Channel tabs are a React component, rendered as <Component {...ctx}/>.
     p.registerChannelTab({
         id: 'demo-tab', label: 'Demo Tab',

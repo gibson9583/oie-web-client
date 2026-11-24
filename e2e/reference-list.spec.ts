@@ -138,6 +138,102 @@ test('response transformer: response entries in, source-only library and plugin 
     await expect(rows(page)).toHaveText(['Resp Helper']);
 });
 
+test('filter reference lists map keys from every enabled filter rule', async ({ page }) => {
+    const channel = makeChannel(CHANNEL_ID);
+    const type = 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule';
+    channel.sourceConnector.filter.elements = { [type]: [
+        { '@version': '4.6.0', name: 'First', enabled: true, sequenceNumber: 0, script: 'return true;' },
+        { '@version': '4.6.0', name: 'Later', enabled: true, sequenceNumber: 1, operator: 'AND', script: "channelMap.put('laterKey', 1); return true;" }
+    ] };
+    await mockEngine(page, { [`GET /channels/${CHANNEL_ID}`]: { channel } });
+    await page.goto(`/channels/${CHANNEL_ID}/filter/0`);
+    await expect(panel(page).getByText('laterKey', { exact: true })).toBeVisible();
+});
+
+test('available variables follow the Swing view row and drop Iterator outputs as map lookups', async ({ page }) => {
+    const channel = makeChannel(CHANNEL_ID);
+    const mapper = 'com.mirth.connect.plugins.mapper.MapperStep';
+    const iterator = 'com.mirth.connect.model.IteratorStep';
+    const mapperStep = (variable: string, sequenceNumber = 0) => ({
+        '@version': '4.6.0', variable, sequenceNumber, name: variable, enabled: true, mapping: "'value'", scope: 'CHANNEL'
+    });
+    const loop = (variable: string, sequenceNumber: number, enabled: boolean) => ({
+        '@version': '4.6.0', name: `${variable} Iterator`, sequenceNumber, enabled,
+        properties: {
+            target: "msg['OBX']", indexVariable: 'i', prefixSubstitutions: { string: "msg['OBX']" },
+            children: {
+                [mapper]: mapperStep(variable),
+                'com.mirth.connect.plugins.xsltstep.XsltStep': {
+                    name: 'Transform XML', enabled: true, sequenceNumber: 1, resultVariable: variable + 'Xml',
+                    sourceXml: "'<doc/>'", template: "channelMap.get('stylesheet')"
+                }
+            }
+        }
+    });
+    channel.sourceConnector.transformer.elements = {
+        [iterator]: [loop('earlierOutput', 0, true), loop('disabledOutput', 1, false)],
+        [mapper]: mapperStep('currentOutput', 2)
+    };
+    const check = 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule';
+    channel.sourceConnector.filter.elements = { [check]: { enabled: true, script: "channelMap.put('fromSourceFilter', 'ok'); return true;" } };
+    await mockEngine(page, { [`GET /channels/${CHANNEL_ID}`]: { channel } });
+    await page.goto(`/channels/${CHANNEL_ID}/transformer/0`);
+    const select = (path: string) => page.locator(`tr[data-path="${path}"] td.num`).click();
+
+    await expect(panel(page).getByText('fromSourceFilter', { exact: true })).toBeVisible();
+    await select('2');
+    await expect(panel(page).getByText('earlierOutput', { exact: true })).toBeVisible();
+    await expect(panel(page).getByText('earlierOutputXml', { exact: true })).toBeVisible();
+    await expect(panel(page).getByText('disabledOutputXml', { exact: true })).toHaveCount(0);
+    await expect(panel(page).getByText('disabledOutput', { exact: true })).toHaveCount(0);
+    // Swing compares the flattened selected view row to the top-level step counter.
+    await expect(panel(page).getByText('currentOutput', { exact: true })).toBeVisible();
+    const mapping = page.locator('.step-editor-fill .field:has(label:text-is("Mapping")) input');
+    await mapping.fill('');
+    await panel(page).locator('.step-item').filter({ hasText: /^earlierOutput$/ }).dragTo(mapping);
+    await expect(mapping).toHaveValue("$('earlierOutput')");
+    await select('0.0');
+    await expect(panel(page).getByText('earlierOutputXml', { exact: true })).toBeVisible();
+    await expect(panel(page).getByText('earlierOutput', { exact: true })).toBeVisible();
+});
+
+test('opening an empty filter excludes its connector’s transformer outputs', async ({ page }) => {
+    const channel = makeChannel(CHANNEL_ID);
+    const js = 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep';
+    channel.sourceConnector.transformer.elements = { [js]: { enabled: true, script: "$c('laterStep', 1);" } };
+    await mockEngine(page, { [`GET /channels/${CHANNEL_ID}`]: { channel } });
+    await page.goto(`/channels/${CHANNEL_ID}/filter/0`);
+    await expect(panel(page).getByText('Available Variables')).toBeVisible();
+    await expect(panel(page).getByText('laterStep', { exact: true })).toHaveCount(0);
+});
+
+for (const kind of ['transformer', 'response']) {
+    test(`${kind} references distinguish earlier destination maps and current connector-local keys`, async ({ page }) => {
+        const channel = makeChannel(CHANNEL_ID);
+        const previous = channel.destinationConnectors.connector[0];
+        const current = structuredClone(previous);
+        current.metaDataId = 2;
+        current.name = 'Current destination';
+        channel.destinationConnectors.connector.push(current);
+        const js = 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep';
+        const script = (code: string) => ({ [js]: { enabled: true, sequenceNumber: 0, script: code } });
+        previous.transformer.elements = script("$co('privateKey', 1); $c('priorKey', 1);");
+        previous.responseTransformer.elements = script("$r('priorResponse', 1);");
+        current.transformer.elements = script("$co('currentLocal', 1);");
+        current.responseTransformer.elements = script("logger.info('response');");
+        await mockEngine(page, { [`GET /channels/${CHANNEL_ID}`]: { channel } });
+        await page.goto(`/channels/${CHANNEL_ID}/${kind}/2`);
+        const variable = (name: string) => panel(page).getByText(name, { exact: true });
+        await expect(variable('priorKey')).toBeVisible();
+        await expect(variable('priorResponse')).toBeVisible();
+        await expect(variable('privateKey')).toHaveCount(0);
+        await expect(variable('currentLocal')).toHaveCount(kind === 'response' ? 1 : 0);
+        const transfer = await page.evaluateHandle(() => new DataTransfer());
+        await variable(previous.name).locator('..').dispatchEvent('dragstart', { dataTransfer: transfer });
+        expect(await transfer.evaluate(data => data.getData('text/plain'))).toBe("$('d1')");
+    });
+}
+
 // The Reference entries the script editors' completion provider offers now.
 const activeReferences = (page: any) => page.evaluate(async () => {
     const path = '/core/script-completions.js';
