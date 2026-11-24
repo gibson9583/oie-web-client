@@ -449,6 +449,7 @@ function availableMapperKey(channel: any, base: string): string {
     function collect(elements: any): void {
         for (const el of oie.elementsToArray(elements)) {
             if (el.__type === ElementType.Mapper && (!el.scope || el.scope === 'CHANNEL')) keys.add(el.variable);
+            if (el.__type === ElementType.Xslt) keys.add(el.resultVariable);
             if (isIteratorType(el.__type)) collect(el.properties?.children);
         }
     }
@@ -2044,6 +2045,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             return 'This Iterator can no longer be edited.';
         }
         if (index === (iterator.properties.indexVariable ?? 'i')) return '';
+        // A loop's var is hoisted into the engine's enclosing doTransform function.
+        if ((!isFilter && ['msg', 'tmp', 'Object', 'JSON', 'toStringResult'].includes(index))
+            || (kindName === 'transformer' && ['phase', 'logger', 'Packages'].includes(index))) {
+            return 'The engine uses this name in the transformer. Choose a different index name.';
+        }
         if (!isIteratorIndexName(index)
             || iteratorAncestors(path).some(el => el.properties?.indexVariable === index)
             || allIteratorPaths(childrenOf(iterator)).some(childPath =>

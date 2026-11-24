@@ -194,7 +194,7 @@ test('reserved words and generated Mapper variables cannot replace an Iterator i
     const expression = PREFIX + '[i].value.toString()';
     const save = await openEditor(page, [iterator('Loop', 'i', [{ ...mapper(), mapping: expression }])]);
     const index = page.locator('.step-editor-fill .field:has(label:text-is("Index Variable")) input');
-    for (const rejected of ['export', 'import', 'extends', 'super', 'mapping', '_observations']) {
+    for (const rejected of ['export', 'import', 'extends', 'super', 'phase', 'Packages', 'Object', 'JSON', 'mapping', '_observations']) {
         await index.fill(rejected);
         await index.press('Enter');
         await expect(index).toHaveAttribute('aria-invalid', 'true');
@@ -395,13 +395,15 @@ test('mapping a repeated leaf under a qualified parent uses the configured Itera
 });
 
 test('mapping the whole message creates a valid Mapper with a unique key', async ({ page }) => {
-    const save = await openEditor(page, [{ ...mapper(), variable: 'msg' }], 'transformer', '<Envelope><id>1</id></Envelope>');
+    const xslt = { type: 'com.mirth.connect.plugins.xsltstep.XsltStep', name: 'Transform', resultVariable: 'msg' };
+    const save = await openEditor(page, [{ ...mapper(), variable: 'msg_2' }, iterator('Loop', 'i', [xslt])],
+        'transformer', '<Envelope><id>1</id></Envelope>');
     await page.getByRole('tab', { name: 'Message Trees' }).click();
     const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
     await tree.locator('.mt-root-label').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
     await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
-    expect((await save())[MAPPER][1]).toMatchObject({ name: 'msg_2', variable: 'msg_2', mapping: 'msg.toString()' });
+    expect((await save())[MAPPER][1]).toMatchObject({ name: 'msg_3', variable: 'msg_3', mapping: 'msg.toString()' });
 });
 
 test('tree-created Mappers keep separate map keys for identically named leaves', async ({ page }) => {
