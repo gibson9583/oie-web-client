@@ -62,6 +62,8 @@ test('regex cleanup keeps the Swing XML sample selector through nested moves and
     const jsonLoop = { properties: { indexVariable: 'i', prefixSubstitutions: [jsonPath] } };
     assert.equal(rewriteIteratorExpression(jsonPath + '[0].value' + suffix, [jsonLoop], true, model), jsonPath + '[i].value' + suffix);
     assert.equal(rewriteIteratorExpression(jsonPath + '[i].value' + suffix, [jsonLoop], false, model), jsonPath + '[0].value' + suffix);
+    const rootLoop = { properties: { indexVariable: 'i', prefixSubstitutions: ['tmp'] } };
+    assert.equal(rewriteIteratorExpression('tmp[i].value' + suffix, [rootLoop], false, model), 'tmp[0].value' + suffix);
     const nestedArray = { ...target, mapping: jsonPath + '[i][0].value' + suffix };
     const other = { properties: { indexVariable: 'j', prefixSubstitutions: [jsonPath] } };
     relocateElementIteratorVariables(nestedArray, [jsonLoop], [other], model);

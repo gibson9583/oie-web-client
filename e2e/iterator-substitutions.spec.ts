@@ -78,16 +78,19 @@ test('assigning and detaching a Mapper preserves its regex cleanup and updates t
     expect((await save())[MAPPER][0].mapping).toBe(mapping() + cleanup);
 });
 
-test('a JSON regex Mapper reads each object on assignment and the first object on detach', async ({ page }) => {
-    const cleanup = ".replace(/-/g, '')";
-    const save = await openEditor(page, [{ ...mapper(), mapping: mapping() + cleanup }, iterator('Groups')], 'transformer', '', 'JSON');
-    await assign(page, 'Observation', 'Groups');
-    expect(children(await save(), 'Groups')[MAPPER][0].mapping).toBe(mapping('i') + cleanup);
-    await page.reload();
-    await row(page, 'Observation').locator('td.num').click();
-    await click(page, 'Remove From Iterator');
-    expect((await save())[MAPPER][0].mapping).toBe(mapping() + cleanup);
-});
+for (const prefix of [PREFIX, 'msg']) {
+    test(`a JSON regex Mapper reads each object in ${prefix} and the first object on detach`, async ({ page }) => {
+        const path = (index: string) => `${prefix}[${index}]['OBX.5'].toString().replace(/-/g, '')`;
+        const save = await openEditor(page, [{ ...mapper(), mapping: path('0') }, iterator('Groups', 'i', [], [prefix])],
+            'transformer', '', 'JSON');
+        await assign(page, 'Observation', 'Groups');
+        expect(children(await save(), 'Groups')[MAPPER][0].mapping).toBe(path('i'));
+        await page.reload();
+        await row(page, 'Observation').locator('td.num').click();
+        await click(page, 'Remove From Iterator');
+        expect((await save())[MAPPER][0].mapping).toBe(path('0'));
+    });
+}
 
 test('a new Iterator preserves an existing column selector from a preceding script', async ({ page }) => {
     const mapping = "msg['rows'][0]['values'][i]";

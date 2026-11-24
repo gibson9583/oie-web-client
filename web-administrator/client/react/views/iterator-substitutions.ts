@@ -227,7 +227,7 @@ function messageChildFormat(prefix: string, transformer?: Element): string | und
     const members = readMemberBoundaries(prefix);
     const root = prefix.slice(0, members[0]?.end);
     if (root !== 'msg' && root !== 'tmp') return;
-    if (members.length < 2 || !members.slice(1).every((member, i) =>
+    if (!members.slice(1).every((member, i) =>
         plainChild(prefix.slice(members[i].end, member.end)) || member.key || member.numeric)) return;
     const side = root === 'msg' ? 'inbound' : 'outbound';
     const type = transformer[side + 'DataType'];
