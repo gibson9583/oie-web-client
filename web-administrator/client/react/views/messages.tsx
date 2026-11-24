@@ -494,7 +494,6 @@ async function discoverSendMessage(platform: any, channelId: any, onSent: any, a
                 onClick: async () => {
                     if (sending || !current()) return false;
                     const rawData = editor.getValue();
-                    if (!rawData) { toast('Enter a message payload', 'warn'); return false; }
                     const selected = destRows.filter(d => (d.input as any).checked).map(d => d.metaDataId);
                     // Match Swing: all selected means all destinations deployed
                     // when processing starts, including any added while open.
