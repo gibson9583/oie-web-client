@@ -56,11 +56,27 @@ function withoutStringSuffix(expression: string): string {
     return expression.endsWith(stringSuffix) ? expression.slice(0, -stringSuffix.length) : expression;
 }
 
-function wizardComponents(expression: string) {
+function wizardComponents(expression: string, transformer?: Element) {
     const parts = readMemberBoundaries(expression);
-    return parts.map((part, index) => ({
-        ...part, callable: parts[index + 1]?.call, value: expression.slice(0, part.end).trimStart()
-    }));
+    if (!parts.length && completeFallback(expression)) {
+        // Swing offers a compound fallback as one editable Iterator target.
+        return [{ value: expression, numeric: false, callable: false, key: undefined }];
+    }
+    let canonical = '';
+    return parts.map((part, index) => {
+        const text = expression.slice(parts[index - 1]?.end ?? 0, part.end);
+        // E4X selects the named child across the list. The tree sample's row
+        // number should not limit a new Iterator over a deeper named field.
+        const sample = part.numeric && isNamedXmlPath(canonical, transformer);
+        if (!sample) canonical += text;
+        return { ...part, callable: parts[index + 1]?.call, value: canonical.trimStart() };
+    });
+}
+
+function completeFallback(expression: string): boolean {
+    if (!expression.includes('||')) return false;
+    const parts = readMemberBoundaries(expression, true);
+    return !!parts.length && parts.at(-1)!.end < expression.trimEnd().length;
 }
 
 /** Cumulative member prefixes offered by the iterator creation dialog. */
@@ -69,8 +85,8 @@ export function iteratorExpressionParts(expression: string): string[] {
 }
 
 /** Swing hides a boundary immediately before an enclosing iterator's index. */
-export function iteratorWizardPrefixes(expression: string, ancestorIndices: string[], field: 'target' | 'outbound' = 'target') {
-    const parts = wizardComponents(field === 'target' ? withoutStringSuffix(expression) : expression)
+export function iteratorWizardPrefixes(expression: string, ancestorIndices: string[], field: 'target' | 'outbound' = 'target', transformer?: Element) {
+    const parts = wizardComponents(field === 'target' ? withoutStringSuffix(expression) : expression, transformer)
         .filter(part => !part.numeric);
     const isAncestorIndex = (index: number) => !!parts[index]?.key && ancestorIndices.includes(parts[index].key!);
     const choices = parts.map(({ value }, index) => ({ value, index }))
@@ -121,13 +137,21 @@ export function validIteratorIndex(ancestorIndices: string[], descendantIndices:
 /** Resolve a configured prefix only at a member boundary. */
 function memberAfterPrefix(expression: string, prefix: string, transformer?: Element) {
     const exactPrefix = expression.startsWith(prefix);
-    if (!exactPrefix && (!transformer || !expression.includes('/'))) return null;
+    if (exactPrefix && completeFallback(prefix)) {
+        const tail = expression.slice(prefix.length);
+        const suffix = readMemberBoundaries('msg' + tail);
+        if (suffix.length === 1 || (suffix.length === 2 && suffix[1].key)) {
+            return { start: prefix.length, end: prefix.length + tail.trimEnd().length,
+                key: suffix[1]?.key, numeric: false, hasFallback: false, callSuffix: false };
+        }
+    }
+    if (!exactPrefix && !transformer) return null;
     const allowFallback = expression.includes('||') && messageChildFormat(prefix, transformer) === 'XML';
     const members = readMemberBoundaries(expression, allowFallback);
     let boundary = exactPrefix ? members.findIndex(member => member.end === prefix.length) : -1;
     // A saved Swing XML path can have [i][0] where a nested Iterator's
     // configured prefix has [i]. Both select the same E4X child.
-    if (boundary < 0 && members.some(part => part.regexArgument) && messageChildFormat(prefix, transformer) === 'XML') {
+    if (boundary < 0 && members.some(part => part.regexArgument || part.signedArgument) && messageChildFormat(prefix, transformer) === 'XML') {
         const configured = readMemberBoundaries(prefix);
         let i = 0;
         for (const [n, member] of configured.entries()) {
@@ -142,7 +166,7 @@ function memberAfterPrefix(expression: string, prefix: string, transformer?: Ele
     const start = members[boundary].end;
     const next = members[boundary + 1] ?? { end: start };
     const hasFallback = members.at(-1)!.end < expression.trimEnd().length;
-    return { ...next, start, hasFallback, regexSuffix: members.slice(boundary + 1).some(part => part.regexArgument) };
+    return { ...next, start, hasFallback, callSuffix: members.slice(boundary + 1).some(part => part.regexArgument || part.signedArgument) };
 }
 
 /** The first matching iterator at the greatest matched ancestor depth wins. */
@@ -152,7 +176,12 @@ export function preferredIterator(expression: string, iterators: Element[], sele
     const visit = (nodes: Element[], target: string, depth: number) => {
         for (const iterator of nodes) {
             if (iterator === selected || !isIteratorType(elementType(iterator))) continue;
-            const direct = iteratorPrefixes(iterator).some(prefix => memberAfterPrefix(target.trimStart(), prefix.trim(), transformer));
+            const source = target.trimStart();
+            const direct = iteratorPrefixes(iterator).some(value => {
+                const prefix = value.trim();
+                return memberAfterPrefix(source, prefix, transformer)
+                    || memberAfterPrefix(matchXmlSamplePrefix(source, prefix, transformer) ?? '', prefix, transformer);
+            });
             if (direct) {
                 if (depth > maxDepth) { preferred = iterator; maxDepth = depth; }
                 visit(childrenOf(iterator), rewriteIteratorExpression(target, [iterator], true, transformer), depth + 1);
@@ -241,29 +270,89 @@ function messageChildFormat(prefix: string, transformer?: Element): string | und
     return format;
 }
 
+function isNamedXmlPath(path: string, transformer?: Element): boolean {
+    return messageChildFormat(path.trimStart(), transformer) === 'XML'
+        && !readMemberBoundaries(path).at(-1)?.key;
+}
+
+/** Remove only sample selectors that prevent the chosen XML prefix from matching.
+ * The suffix belongs to the author's field and keeps its fixed selections. */
+function matchXmlSamplePrefix(source: string, prefix: string, transformer?: Element): string | null {
+    if (!isNamedXmlPath(prefix, transformer)) return null;
+    const actual = readMemberBoundaries(source, true);
+    const expected = readMemberBoundaries(prefix);
+    let i = 0;
+    let skipped = false;
+    for (const [j, member] of expected.entries()) {
+        const token = prefix.slice(expected[j - 1]?.end ?? 0, member.end);
+        const chunk = () => source.slice(actual[i - 1]?.end ?? 0, actual[i]?.end);
+        // The old binding [i][0] is already scoped. Leave its identity selector
+        // to the nested call handling in memberAfterPrefix.
+        if (actual[i]?.numeric && !actual[i - 1]?.key && treeMemberName(token) !== undefined) {
+            i++;
+            skipped = true;
+        }
+        if (i >= actual.length || chunk() !== token) return null;
+        i++;
+    }
+    return skipped ? prefix + source.slice(actual[i - 1].end) : null;
+}
+
 type RewriteOptions = { rename?: string; detachedIndices?: number[]; transformer?: Element };
 
 function rewriteIteratorIndex(expression: string, iterator: Element, insert: boolean,
     { rename, detachedIndices, transformer }: RewriteOptions = {}): string {
     const index = iterator.properties?.indexVariable ?? 'i';
-    const source = expression.trimStart();
-    for (const prefix of iteratorPrefixes(iterator).map(value => value.trim()).sort((a, b) => b.length - a.length)) {
-        const next = memberAfterPrefix(source, prefix, transformer);
+    const prefixes = iteratorPrefixes(iterator).map(value => value.trim());
+    const initial = expression.trimStart();
+    const sorted = [...new Set(prefixes)].sort((a, b) => b.length - a.length);
+    const first = sorted.find(prefix => {
+        const next = memberAfterPrefix(initial, prefix, transformer);
+        return next && (insert || next.key === index);
+    }) ?? (insert ? sorted.find(prefix => matchXmlSamplePrefix(initial, prefix, transformer)) : undefined);
+    if (first === undefined) return expression;
+    const position = prefixes.indexOf(first);
+    const parents = prefixes.slice(0, position).filter(prefix =>
+        first.startsWith(prefix + `[${index}]`) && memberAfterPrefix(initial, prefix, transformer)?.key === index);
+    // Independent prefixes keep their longest matching member. An explicitly
+    // dependent path can consume the index inserted earlier on the same branch.
+    // Rename from the leaf upwards while its old parent binding still matches.
+    let branch = [parents[0] ?? first];
+    if (rename) branch = [first, ...parents.reverse()];
+    else if (insert) branch = [first, ...prefixes.slice(position + 1).filter(prefix => prefix.startsWith(first + `[${index}]`))];
+    for (const prefix of branch) {
+        let source = expression.trimStart();
+        const leading = expression.length - source.length;
+        let next = memberAfterPrefix(source, prefix, transformer);
+        if (!next && insert) {
+            const canonical = matchXmlSamplePrefix(source, prefix, transformer);
+            if (canonical) {
+                next = memberAfterPrefix(canonical, prefix, transformer);
+                if (!next) continue;
+                const removed = source.length - canonical.length;
+                if (detachedIndices) {
+                    for (let n = 0; n < detachedIndices.length; n++) {
+                        if (detachedIndices[n] >= leading + prefix.length + removed) detachedIndices[n] -= removed;
+                    }
+                }
+                expression = expression.slice(0, leading) + canonical;
+                source = canonical;
+            }
+        }
         if (!next) continue;
         const usesIndex = next.key === index;
-        if (insert && usesIndex) return expression;
+        if (insert && usesIndex) continue;
         if (!insert && !usesIndex) continue;
         // Detaching a JSON array row still requires a record index. Preserve
         // any following child selector, including another array subscript.
-        const selectFirst = !insert && !rename && next.regexSuffix && messageChildFormat(prefix, transformer) === 'JSON';
+        const selectFirst = !insert && !rename && next.callSuffix && messageChildFormat(prefix, transformer) === 'JSON';
         const replacement = insert ? `[${index}]` : rename ? `[${rename}]` : selectFirst ? '[0]' : '';
-        const leading = expression.length - source.length;
         const start = leading + next.start;
         const detached = detachedIndices?.indexOf(start) ?? -1;
         // Swing retains the numeric sample for an XML fallback, so detachment
         // restores the exact selection. A regex call keeps only the E4X [0]
         // identity selector; on a JavaScript object that would read key 0.
-        const keepSample = insert && next.numeric && (next.hasFallback || (next.regexSuffix
+        const keepSample = insert && next.numeric && (next.hasFallback || (next.callSuffix
             && /^\[\s*0\s*\]$/.test(source.slice(next.start, next.end)) && messageChildFormat(prefix, transformer) === 'XML'));
         const end = usesIndex || (next.numeric && detached < 0 && !keepSample) ? leading + next.end : start;
         if (detachedIndices) {
@@ -274,7 +363,7 @@ function rewriteIteratorIndex(expression: string, iterator: Element, insert: boo
             }
             if (!insert && !selectFirst) detachedIndices.push(start);
         }
-        return expression.slice(0, start) + replacement + expression.slice(end);
+        expression = expression.slice(0, start) + replacement + expression.slice(end);
     }
     return expression;
 }
@@ -354,19 +443,36 @@ export function relocateElementIteratorVariables(element: Element, previous: Ele
 }
 
 function declaresIndex(script: string, index: string): boolean {
-    const tokens = [...jsTokens(script, { jsx: true })].filter(token =>
-        token.type !== 'WhiteSpace' && token.type !== 'LineTerminatorSequence' && !token.type.endsWith('Comment'));
+    const tokens = [];
+    let lineBreak = false;
+    for (const token of jsTokens(script, { jsx: true })) {
+        if (token.type === 'WhiteSpace' || token.type === 'LineTerminatorSequence' || token.type.endsWith('Comment')) {
+            lineBreak ||= /[\r\n\u2028\u2029]/.test(token.value);
+        } else {
+            tokens.push({ ...token, lineBreak });
+            lineBreak = false;
+        }
+    }
     let depth = 0;
+    let declaration = false;
     for (const [i, token] of tokens.entries()) {
+        const previous = tokens[i - 1];
+        if (!depth) {
+            // A newline before or after a comma (or '=') can continue a declaration.
+            // At other ambiguous statement boundaries, retain the existing rename guard.
+            if (token.lineBreak && ![',', '='].includes(token.value) && ![',', '='].includes(previous?.value)) declaration = false;
+            if (token.type === 'IdentifierName' && token.value === 'var') {
+                // A bare branch body can start with "var" after ")", "else", or "do".
+                declaration = !previous || previous.value === ';' || previous.value === '}' || previous.type.endsWith('Literal');
+            } else if (token.value === ';' || token.type === 'TemplateHead' || token.type.startsWith('JSX')) {
+                declaration = false;
+            }
+            if (declaration && (token.value === 'var' || token.value === ',')
+                && tokens[i + 1]?.value === index && tokens[i + 2]?.value === '=') return true;
+        }
         if (token.type === 'Punctuator') {
             if (['(', '[', '{'].includes(token.value)) depth++;
             if ([')', ']', '}'].includes(token.value)) depth--;
-        } else if (!depth && token.type === 'IdentifierName' && token.value === 'var' &&
-            tokens[i + 1]?.value === index && tokens[i + 2]?.value === '=') {
-            // A bare branch body can start with "var" after ")", "else", or "do".
-            // Accept clear statement boundaries, including a preceding literal followed by ASI.
-            const previous = tokens[i - 1];
-            if (!previous || previous.value === ';' || previous.value === '}' || previous.type.endsWith('Literal')) return true;
         }
     }
     return false;
@@ -423,6 +529,12 @@ export function renameIteratorIndex(element: Element, index: string, scope: Elem
         if (unsafe) return false;
     }
     for (const child of children) rewriteSubtree(child, rewrite);
+    const prefixes = iteratorPrefixes(element);
+    rewriteStringList(element.properties, 'prefixSubstitutions', value => {
+        if (typeof value !== 'string') return value;
+        const earlier = prefixes.slice(0, prefixes.indexOf(value));
+        return earlier.some(prefix => value.startsWith(prefix + `[${previous}]`)) ? rewrite(value) : value;
+    });
     element.properties.indexVariable = index;
     return true;
 }

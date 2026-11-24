@@ -46,8 +46,9 @@ function hl7Xml(er7: string) {
     return `<HL7Message>${segments.join('')}</HL7Message>`;
 }
 
-async function openTrees(page: Page, { serialize = hl7Xml, dataType = 'HL7V2', template = INBOUND, kind = 'transformer', connectorId = 0 } = {}) {
+async function openTrees(page: Page, { serialize = hl7Xml, dataType = 'HL7V2', template = INBOUND, kind = 'transformer', connectorId = 0, preprocessingScript = 'return message;' } = {}) {
     let channel = makeChannel('mtree');
+    channel.preprocessingScript = preprocessingScript;
     const connector = connectorId === 0 ? channel.sourceConnector : channel.destinationConnectors.connector[0];
     Object.assign(connector.transformer, { inboundDataType: dataType, inboundTemplate: template, outboundTemplate: OUTBOUND });
     const writes: any[] = [];
@@ -349,7 +350,8 @@ test('a strict-parser segment with one field keeps its own row and accessor', as
 test('text on an attributed XML root stays visible and searchable', async ({ page }) => {
     // The XML serializer returns this document unchanged.
     const xml = '<value code="patient-name">DOE^JANE</value>';
-    await openTrees(page, { dataType: 'XML', template: xml, serialize: () => xml });
+    const preprocessingScript = "channelMap.put('msg', 'prior'); return message;";
+    const writes = await openTrees(page, { dataType: 'XML', template: xml, serialize: () => xml, preprocessingScript });
     // The root is a row, and starts expanded like the Swing tree's root.
     await expect(row(page, 'value')).toContainText('DOE^JANE');
     await expect(row(page, '@code')).toContainText('patient-name');
@@ -360,8 +362,17 @@ test('text on an attributed XML root stays visible and searchable', async ({ pag
     await row(page, 'value').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
     await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
-    await expect(stepField(page, 'Variable')).toHaveValue('msg');
+    await expect(stepField(page, 'Variable')).toHaveValue('');
     await expect(stepField(page, 'Mapping')).toHaveValue('msg.toString()');
+    await page.getByRole('button', { name: 'Validate Step', exact: true }).click();
+    const error = page.getByRole('dialog', { name: /Error validating transformer steps/i });
+    await expect(error).toContainText('The variable name cannot be blank.');
+    await error.getByRole('button', { name: 'Close' }).last().click();
+    await stepField(page, 'Variable').fill('patientName');
+    await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+    await expect.poll(() => writes.length).toBe(1);
+    expect(writes[0].preprocessingScript).toBe(preprocessingScript);
+    expect(writes[0].sourceConnector.transformer.elements[MAPPER][0]).toMatchObject({ variable: 'patientName', mapping: 'msg.toString()' });
 });
 
 test('XML tree uses Swing accessors and indexes each wildcard in document order', async ({ page }) => {
@@ -389,9 +400,9 @@ test('XML tree uses Swing accessors and indexes each wildcard in document order'
 });
 
 test('Map to Variable gives colliding tree names distinct saved channel keys', async ({ page }) => {
-    const xml = '<message><patient-id>first</patient-id><patientId>second</patientId></message>';
+    const xml = '<message><patient-id>first</patient-id><patientId>second</patientId><測定>third</測定></message>';
     const writes = await openTrees(page, { dataType: 'XML', template: xml, serialize: () => xml });
-    for (const field of ['patient-id', 'patientId']) {
+    for (const field of ['patient-id', 'patientId', '測定']) {
         await row(page, field).click({ button: 'right' });
         await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
         await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
@@ -400,7 +411,8 @@ test('Map to Variable gives colliding tree names distinct saved channel keys', a
     await expect.poll(() => writes.length).toBe(1);
     expect(writes[0].sourceConnector.transformer.elements[MAPPER]).toMatchObject([
         { name: 'patientid', variable: 'patientid', mapping: "msg['patient-id'].toString()" },
-        { name: 'patientid_2', variable: 'patientid_2', mapping: "msg['patientId'].toString()" }
+        { name: 'patientid_2', variable: 'patientid_2', mapping: "msg['patientId'].toString()" },
+        { name: '測定', variable: '測定', mapping: "msg['測定'].toString()" }
     ]);
 });
 

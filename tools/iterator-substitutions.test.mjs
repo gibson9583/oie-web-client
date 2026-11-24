@@ -240,6 +240,101 @@ test('assigning an authored QName read or write only rewrites a configured liter
     assert.equal(child.messageSegment, exact + '[i]');
 });
 
+test('a field below an XML sample row retains its fixed descendant selectors', () => {
+    const target = prefix + "['OBX.5']";
+    const source = prefix + "[0]['OBX.5']['OBX.5.1'][1].toString()";
+    const loop = { ...iterator, properties: { target, indexVariable: 'i', prefixSubstitutions: [target] } };
+    const transformer = { inboundDataType: 'HL7V2' };
+    const wizard = iteratorWizardPrefixes(source, [], 'target', transformer);
+    assert.ok(wizard.choices.some(choice => choice.value === target));
+    assert.equal(preferredIterator(source, [loop], undefined, transformer), loop);
+    const field = { __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping: source };
+    relocateElementIteratorVariables(field, [], [loop], transformer);
+    assert.equal(field.mapping, target + "[i]['OBX.5.1'][1].toString()");
+    relocateElementIteratorVariables(field, [loop], [], transformer);
+    assert.equal(field.mapping, target + "['OBX.5.1'][1].toString()");
+    assert.equal(rewriteIteratorExpression(source, [loop], true, { inboundDataType: 'JSON' }), source);
+});
+
+test('signed call arguments keep the XML sample and select the JSON record directly', () => {
+    const tail = "['OBX.5'].toString().slice(-2)";
+    const original = prefix + '[0]' + tail;
+    for (const [type, binding] of [['HL7V2', '[i][0]'], ['JSON', '[i]']]) {
+        const model = { inboundDataType: type };
+        const assigned = rewriteIteratorExpression(original, [iterator], true, model);
+        assert.equal(assigned, prefix + binding + tail);
+        assert.equal(rewriteIteratorExpression(assigned, [iterator], false, model), original);
+    }
+});
+
+test('a signed suffix resolves a nested XML Iterator across the preceding sample selector', () => {
+    const group = "msg.*::['group']";
+    const field = ".*::['value']";
+    const makeLoop = (prefix, indexVariable) => ({ properties: { prefixSubstitutions: [prefix], indexVariable } });
+    const loops = [makeLoop(group, 'i'), makeLoop(group + '[i]' + field, 'j')];
+    const xml = { inboundDataType: 'XML' };
+    for (const argument of ['-2', '-2.0', '-2e0', '-.5', '+ 0x2']) {
+        const tail = '.toString().slice(' + argument + ')';
+        const source = group + '[0]' + field + '[0]' + tail;
+        const bound = rewriteIteratorExpression(source, loops, true, xml);
+        assert.equal(bound, group + '[i][0]' + field + '[j][0]' + tail);
+        assert.equal(rewriteIteratorExpression(bound, loops, false, xml), source);
+    }
+});
+
+test('the new Iterator chooser offers a complete fallback and detachment restores its source', () => {
+    const original = prefix + "[0]['OBX.5'].toString() || 'unknown'";
+    const wizard = iteratorWizardPrefixes(original, []);
+    assert.deepEqual(wizard.choices.map(choice => choice.value), [original]);
+    const loop = { properties: { indexVariable: 'i', prefixSubstitutions: [wizard.selected.value] } };
+    const assigned = rewriteIteratorExpression(original, [loop], true);
+    assert.equal(assigned, original + '[i]');
+    assert.equal(rewriteIteratorExpression(assigned, [loop], false), original);
+    assert.deepEqual(iteratorWizardPrefixes(prefix + "[0].value || ", []).choices, []);
+});
+
+test('explicitly dependent prefixes apply in configured order and an extra pass leaves them bound', () => {
+    const target = prefix + "[i]['OBX.5']";
+    const loop = { properties: { indexVariable: 'i', prefixSubstitutions: [prefix, target] } };
+    const source = prefix + "[0]['OBX.5'][0]";
+    const assigned = rewriteIteratorExpression(source, [loop], true);
+    assert.equal(assigned, target + '[i]');
+    assert.equal(rewriteIteratorExpression(assigned, [loop], true), assigned);
+    assert.equal(rewriteIteratorExpression(assigned, [loop], false), prefix + "['OBX.5'][i]");
+});
+
+test('dependent and independent substitution branches retain their own assignment, removal and rename order', () => {
+    const primary = 'msg.groups';
+    const nested = primary + '[i].field';
+    const independent = 'tmp.item';
+    const loop = { ...iterator, properties: { target: primary, indexVariable: 'i',
+        prefixSubstitutions: { string: [primary, nested, 'tmp', independent] } } };
+    const mapper = mapping => ({ __type: 'com.mirth.connect.plugins.mapper.MapperStep', variable: 'result', mapping });
+    const first = mapper(primary + '[0].field[0]');
+    const second = mapper(independent + '[0].field[1]');
+    for (const child of [first, second]) relocateElementIteratorVariables(child, [], [loop]);
+    assert.equal(first.mapping, nested + '[i]');
+    assert.equal(second.mapping, independent + '[i].field[1]');
+    assert.equal(rewriteIteratorExpression(second.mapping, [loop], false), independent + '.field[1]');
+    loop.__children = [first, second];
+    assert.equal(renameIteratorIndex(loop, 'j'), true);
+    assert.deepEqual(loop.properties.prefixSubstitutions.string, [primary, primary + '[j].field', 'tmp', independent]);
+    assert.equal(first.mapping, primary + '[j].field[j]');
+    assert.equal(second.mapping, independent + '[j].field[1]');
+    assert.equal(rewriteIteratorExpression(primary + '[0].field[0]', [loop], true), first.mapping);
+    assert.equal(rewriteIteratorExpression(second.mapping, [loop], false), independent + '.field[1]');
+});
+
+test('an unrelated fixed target survives assignment even if it contains a QName constructor', () => {
+    const loop = { ...iterator, properties: { ...iterator.properties, prefixSubstitutions: ["msg.*::['OBX']"] } };
+    const qualified = "msg[new QName('urn:test', 'OBX')][1][new QName('urn:test', 'value')]";
+    for (const write of [qualified, "tmp['audit'][1]['value']"]) {
+        const field = { __type: 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep', messageSegment: write, mapping: "'new'" };
+        relocateElementIteratorVariables(field, [], [loop], { inboundDataType: 'XML', outboundDataType: 'XML' });
+        assert.equal(field.messageSegment, write);
+    }
+});
+
 test('iterator names exclude reserved words in the stock Rhino ES6 mode', () => {
     for (const index of ['await', 'class', 'enum', 'export', 'extends', 'import', 'let', 'super', 'yield', 'ex\u200dport', 'map\u200cping'])
         assert.equal(isIteratorIndexName(index), false, index);
@@ -277,6 +372,9 @@ test('an empty Iterator can release an earlier JavaScript variable after convers
     for (const source of [
         '// Write your JavaScript here\nvar i = 7;',
         "var label = 'id'; var i = 7;",
+        'var label = "column", i = 7;',
+        'var label, columns = [0, 1], /* selected */ i = 7;',
+        'var column = pick(0, 1),\n i = 7;',
         "var label = 'id'\n/* column */ var /* binding */ i\n= 7;",
         'if (ready) { var label = "id"; }\nvar i=7;'
     ]) {
@@ -284,7 +382,9 @@ test('an empty Iterator can release an earlier JavaScript variable after convers
         assert.equal(renameIteratorIndex(saved, 'j', [js(source), saved, consumer]), true, source);
     }
     for (const before of [
-        [], [js('if (ready) { var i = 7; }')], [js('function choose() { var i = 7; }')],
+        [], [js('var label = "column"; if (ready) var other=0, i=7;')],
+        [js('var label = "column"\nchoose(), i=7;')], [js('var choices = [0, i=7];')],
+        [js('if (ready) { var i = 7; }')], [js('function choose() { var i = 7; }')],
         [js('if (ready) var i=7;')], [js('if (ready) pick(); else var i=7;')],
         [js('do var i=7; while (ready);')], [js('for (var i=7; ready;) break;')],
         [js("var label='id'; if (ready) { var i=7; }")], [js('var fn = () => { var i=7; };')],

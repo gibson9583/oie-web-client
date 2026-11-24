@@ -76,24 +76,37 @@ Web Support plugin. Format Document is performed locally in the browser.
 
 ### Iterator behavior compared with Swing 4.6.0
 
-Assigning an XML Mapper such as `msg['OBX'][0]['OBX.5'].toString().replace(/-/g, '')`
-to an Iterator over `msg['OBX']` inserts the loop index before `[0]`, as Swing
-does. Each repetition is read in order. Removing the Mapper from the Iterator
-restores its original first-row expression. For a JSON array of objects, the
-web editor uses `[i]` inside the loop and `[0]` on detach so the expression
-continues to select a record.
+For a Mapper created from an HL7 sample, **Assign To Iterator** offers the same
+field paths as Swing. For example, choosing OBX.5 for
+`msg['OBX'][0]['OBX.5']['OBX.5.1'].toString()` creates a loop over
+`msg['OBX']['OBX.5']`. Its Mapper reads
+`msg['OBX']['OBX.5'][i]['OBX.5.1'].toString()` for each value. Choosing an
+existing Iterator over the same field produces the same mapping.
 
-The same XML round trip preserves a literal fallback such as
-`msg['OBX'][0]['OBX.5'].toString() || 'unknown'` and a regex-cleaned field
-under a namespace selector such as `msg.*::['row']`.
+When one configured prefix extends the path produced by an earlier prefix, the
+editor applies both in list order. For XML cleanup calls such as `.slice(-2)`
+and `.replace(/-/g, '')`, the assigned expression can contain `[i][0]`,
+as in Swing. For a JSON array of objects, the editor uses `[i]` to select the
+current object. It preserves fixed selectors farther down a field or write path.
+A literal fallback such as `msg['OBX'][0]['OBX.5'].toString() || 'unknown'`
+appears as a single choice when creating a new Iterator. **Cancel** keeps the
+step in place.
 
-The web editor adds three safeguards.
+**Available Variables** inserts a JavaScript map lookup when dragged into a
+Mapper. For example, an earlier Mapper with the key `observations` supplies
+`$('observations')`. **Map to Variable** on the inbound message root opens a
+Mapper with an empty variable name. Enter the key before validating the
+transformer. For a field, the editor proposes a tree-derived name and checks
+for keys already in use.
+
+If a preceding JavaScript step declares `var label = "column", i = 7;`, you
+can change an empty Iterator's index from `i` to `j` and preserve the
+script's `i`. Renaming a populated Iterator also updates supported descendant
+expressions.
+The web editor applies these checks when placing steps and creating tree writes.
 
 - If an Iterator index such as `mapping` would be overwritten by the generated
   Mapper script, the editor asks for a different index before placing the step.
-- **Map to Variable** on the inbound message root proposes an available map key.
-  Swing opens that Mapper with an empty key. In a loop, the web editor also
-  checks whether the generated local (for example, `_msg`) is already in use.
 - When a tree drop uses a wildcard namespace and the Iterator names that
   namespace explicitly, the editor warns if it cannot bind the write to the
   current row. The existing draft stays intact. For a loop over

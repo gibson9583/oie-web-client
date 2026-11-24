@@ -108,6 +108,14 @@ function readChain(text, preview, allowFallback = false) {
         do {
             if (peek().startsWith('/'))
                 at++;
+            else if (!preview && ['-', '+'].includes(peek())) {
+                const start = tokens[at++].end;
+                while (at < tokens.length && ![',', ')'].includes(peek()))
+                    at++;
+                const literal = text.slice(start, end()).trim();
+                if (!fallbackNumber.test(literal) || /^0[0-7]+[.e]/i.test(literal))
+                    throw new Error('Invalid signed number');
+            }
             else
                 operand();
         } while (take(','));
@@ -161,8 +169,13 @@ function readChain(text, preview, allowFallback = false) {
                 argumentsList();
                 leaves.length = 0;
                 const call = { end: end(), call: true };
-                if (boundaries && tokens.slice(first, at).some(token => token.value.startsWith('/')))
-                    call.regexArgument = true;
+                if (boundaries) {
+                    const args = tokens.slice(first, at);
+                    if (args.some(token => token.value.startsWith('/')))
+                        call.regexArgument = true;
+                    if (args.some(token => token.value === '-' || token.value === '+'))
+                        call.signedArgument = true;
+                }
                 boundaries?.push(call);
             }
             else if (take('[')) {

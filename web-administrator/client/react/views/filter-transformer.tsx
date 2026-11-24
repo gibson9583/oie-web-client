@@ -51,6 +51,7 @@ import { captureEngineSession } from '../../core/engine-fetch.js';
 import { generateElementScript, usesGeneratedIteratorIdentifier } from '../../core/step-script.js';
 import { availableMapperKey } from './mapper-key.js';
 import { isIteratorType, iteratorName } from '../../core/oie.js';
+import { editorVariableMappings } from '../../core/mappings.js';
 import { childrenOf, serializeEditorElements, rewriteElementIteratorVariables, getIteratorInfo, iteratorExpressionParts,
     iteratorWizardPrefixes, validIteratorIndex, preferredIterator, isIteratorIndexName, renameIteratorIndex,
     relocateElementIteratorVariables, rewriteIteratorExpression, treeWritePath } from './iterator-substitutions.js';
@@ -181,29 +182,6 @@ const REFERENCE_CATEGORY_ORDER = [
 // The code-template ContextType of this view's script editors.
 const scriptContext = (connectorType: any) => connectorType === 'RESPONSE' ? 'DESTINATION_RESPONSE_TRANSFORMER'
     : connectorType === 'SOURCE' ? 'SOURCE_FILTER_TRANSFORMER' : 'DESTINATION_FILTER_TRANSFORMER';
-
-// An Iterator's outputs are published after its loop. Include them when the
-// Iterator precedes the selected row, and keep the current subtree out.
-function collectStepVariables(elements: any[], selectedPath: number[] | null) {
-    const vars = new Set<string>();
-    const putRe = /(?:globalMap|globalChannelMap|channelMap|connectorMap|responseMap|sourceMap)\.put\s*\(\s*['"]([^'"]+)['"]|\$(?:gc|co|g|c|r|s)\s*\(\s*['"]([^'"]+)['"]\s*,/g;
-    function collect(list: any[]) {
-        for (const el of list) {
-            if (!isElementEnabled(el)) continue;
-            if (el.__type === ElementType.Xslt && typeof el.resultVariable === 'string' && el.resultVariable.trim()) {
-                vars.add(el.resultVariable);
-            }
-            if (typeof el.variable === 'string' && el.variable.trim()) vars.add(el.variable.trim());
-            if (typeof el.script === 'string') {
-                let match: RegExpExecArray | null;
-                while ((match = putRe.exec(el.script))) vars.add(match[1] || match[2]);
-            }
-            if (isIteratorType(el.__type)) collect(childrenOf(el));
-        }
-    }
-    collect(selectedPath ? elements.slice(0, selectedPath[0]) : elements);
-    return [...vars];
-}
 
 /* ---- accessor drag-and-drop ---------------------------------------------------
    Native drags carry text/plain. Inside the editor, resolve tree fields on
@@ -777,7 +755,7 @@ function ReferenceTab({ dragRef, channelId, context, getVariables, refreshRef }:
     // references join the engine catalog; both filter on the editor context.
     const builtin = useMemo(() => referencesFor(REFERENCE_CATALOG, [context])
         .map(r => ({ name: r.name, category: r.category, description: r.description, code: r.code, type: r.type })), [context]);
-    const [availableVars, setAvailableVars] = useState<string[]>(getVariables);
+    const [availableVars, setAvailableVars] = useState<Array<[string, string]>>(getVariables);
     useEffect(() => {
         refreshRef.current = () => setAvailableVars(getVariables());
         refreshRef.current();
@@ -866,7 +844,7 @@ function ReferenceTab({ dragRef, channelId, context, getVariables, refreshRef }:
             <div className="font-semibold text-[10px] uppercase tracking-[0.04em] mt-3 mx-0 mb-1">Available Variables</div>
             <div className="border border-line rounded overflow-auto max-h-[126px]">
                 {availableVars.length
-                    ? availableVars.map(v => <ReferenceRow key={v} dragRef={dragRef} name={v} dropText={v} />)
+                    ? availableVars.map(([label, token]) => <ReferenceRow key={label} dragRef={dragRef} name={label} dropText={token} />)
                     : <div className="text-text-faint py-2 px-2.5 text-[10px]">(no variables defined by steps yet)</div>}
             </div>
         </div>
@@ -1194,8 +1172,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
         const { accessor } = source;
         const { variable, description } = treeFieldNames(path);
         if (action === 'mapper') {
-            const key = path ? variable : varName;
-            onAddStep(ElementType.Mapper, 'Mapper', key, (el: any) => { el.mapping = accessor; el.variable = key; });
+            onAddStep(ElementType.Mapper, 'Mapper', variable, (el: any) => { el.mapping = accessor; el.variable = variable; });
         } else if (action === 'builder') {
             const segment = treeMessageSegment(source, []);
             if (!segment) return;
@@ -2089,10 +2066,14 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             : parentPath ? [...iteratorAncestors(parentPath), parent] : [];
         const context = iteratorContext(ancestors);
         const originalInfo = getIteratorInfo(el);
-        const wizardTarget = originalInfo.target;
+        // Swing detaches a selected row's expressions before opening the wizard.
+        // Keep the live model intact if the user cancels.
+        const draft = sourcePath ? structuredClone(el) : el;
+        if (sourcePath) rewriteElementIteratorVariables(draft, ancestors, false, transformer);
+        const { target: wizardTarget, outbound: wizardOutbound } = getIteratorInfo(draft);
         const ancestorIndices = ancestors.map(it => it.properties?.indexVariable);
-        const targetPrefixes = iteratorWizardPrefixes(wizardTarget, ancestorIndices);
-        const outboundPrefixes = iteratorWizardPrefixes(originalInfo.outbound || '', ancestorIndices, 'outbound');
+        const targetPrefixes = iteratorWizardPrefixes(wizardTarget, ancestorIndices, 'target', transformer);
+        const outboundPrefixes = iteratorWizardPrefixes(wizardOutbound || '', ancestorIndices, 'outbound', transformer);
         const paths = allIteratorPaths(elements).filter(path => eligibleIterator(path, sourcePath));
         const targets = paths.map(path => elementAtPath(elements, path));
         const descendantIndices = () => allIteratorPaths([el]).map(path => elementAtPath([el], path).properties?.indexVariable);
@@ -2146,7 +2127,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 return h('div', source, ' → ', rewriteIteratorExpression(source, [previewIterator], true, transformer));
             };
             substitutions.replaceChildren(preview(wizardTarget, target.value));
-            if (outbound.value) substitutions.appendChild(preview(originalInfo.outbound || '', outbound.value));
+            if (outbound.value) substitutions.appendChild(preview(wizardOutbound || '', outbound.value));
         }
         function syncOutbound() {
             const selected = targetPrefixes.choices.find(prefix => prefix.value === target.value);
@@ -2422,8 +2403,10 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 return rewriteIteratorExpression(treeDragModifier(event) ? raw : source.accessor, ancestors, true);
             },
             referenceRefreshRef,
-            // Swing lists keys from the whole filter. Transformer outputs depend on the selected step.
-            getVariables: () => collectStepVariables(elementsRef.current, isFilter ? null : selectedPathRef.current),
+            getVariables: () => {
+                const row = flattenRows(elementsRef.current).findIndex(({ path }) => pathEquals(path, selectedPathRef.current));
+                return editorVariableMappings(channel, connector, Math.max(row, 0), kindName === 'response');
+            },
             canEdit: canEditElements,
             commit: () => commitRef.current(),
             onAddStep: (...args: Parameters<typeof addTreeStep>) => addTreeStepRef.current(...args),

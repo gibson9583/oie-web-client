@@ -9,6 +9,7 @@ type MemberBoundary = {
     numeric?: boolean;
     call?: boolean;
     regexArgument?: boolean;
+    signedArgument?: boolean;
 };
 /** Shipped Message Builder path components, or null when the initializer cannot be reproduced. */
 export declare function readMessageBuilderParts(text: string): ExpressionPart[] | null;

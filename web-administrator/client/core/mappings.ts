@@ -83,9 +83,10 @@ function unescapeMapKey(key: string): string {
     });
 }
 
-function addVariables(target: Set<string>, stage: any, includeLocal: boolean): void {
+function addVariables(target: Set<string>, stage: any, includeLocal: boolean, viewRow = -1): void {
     const pattern = mapVariablePattern(includeLocal);
-    for (const element of elementsToArray(stage?.elements)) {
+    const elements = elementsToArray(stage?.elements);
+    for (const element of viewRow < 0 ? elements : elements.slice(0, viewRow)) {
         if (!isElementEnabled(element)) continue;
         try {
             const script = generateElementScript(element, child => elementsToArray(child.properties?.children), 'mapDiscovery');
@@ -100,16 +101,23 @@ function addVariables(target: Set<string>, stage: any, includeLocal: boolean): v
     }
 }
 
-function destinationVariables(channel: OieObject, destination: OieObject): Set<string> {
+function connectorVariables(channel: OieObject, selectedConnector: OieObject, viewRow = -1, response = false): Set<string> {
     const rules = new Set<string>();
     const steps = new Set<string>();
     const source = channel.sourceConnector;
+    if (selectedConnector === source) {
+        addVariables(rules, source.filter, true);
+        addVariables(steps, source.transformer, true, viewRow);
+        return new Set([...rules, ...steps]);
+    }
     addVariables(rules, source?.filter, false);
     addVariables(steps, source?.transformer, false);
     for (const connector of destinationsOf(channel)) {
-        const selected = connector === destination || String(connector.metaDataId) === String(destination.metaDataId);
+        const selected = connector === selectedConnector || String(connector.metaDataId) === String(selectedConnector.metaDataId);
         addVariables(rules, connector.filter, selected);
-        addVariables(steps, connector.transformer, selected);
+        if (selected && response) addVariables(steps, connector.transformer, true);
+        addVariables(steps, selected && response ? connector.responseTransformer : connector.transformer,
+            selected, selected ? viewRow : -1);
         if (selected) break;
         addVariables(steps, connector.responseTransformer, false);
         if (connector.name != null) {
@@ -118,6 +126,26 @@ function destinationVariables(channel: OieObject, destination: OieObject): Set<s
         }
     }
     return new Set([...rules, ...steps]);
+}
+
+function mapLookup(key: string): string {
+    const quote = key.includes("'") ? '"' : "'";
+    return `$(${quote}${key}${quote})`;
+}
+
+const swingScriptTransfers = new Map([...JAVASCRIPT_DESTINATION_MAPPINGS, ...JAVASCRIPT_TRANSFER_OVERRIDES]);
+// Swing reserves these labels in its Velocity list only.
+swingScriptTransfers.delete('Channel ID');
+swingScriptTransfers.delete('Channel Name');
+
+/** The Reference tab uses Swing's JavaScript VariableListHandler transfer mode. */
+export function editorVariableMappings(channel: OieObject, connector: OieObject, viewRow: number, response: boolean): Array<[string, string]> {
+    const destinationIds = new Map(connector === channel.sourceConnector ? []
+        : destinationsOf(channel).map(dest => [dest.name, dest.metaDataId] as const));
+    return [...connectorVariables(channel, connector, viewRow, response)].map(label => {
+        const key = destinationIds.has(label) ? 'd' + destinationIds.get(label) : label;
+        return [label, swingScriptTransfers.get(label) ?? mapLookup(key)];
+    });
 }
 
 /** Swing's destination list uses the connector's transfer mode, not editor syntax.
@@ -141,12 +169,12 @@ export function destinationMappingsFor(properties?: unknown, channel?: OieObject
     const labels = new Set(mappings.map(([label]) => label));
     const metaDataIds = new Map(connectors.map(connector => [connector.name, connector.metaDataId]));
     const overrides = javascript ? JAVASCRIPT_TRANSFER_OVERRIDES : VELOCITY_TRANSFER_OVERRIDES;
-    for (const label of destinationVariables(channel, selected)) {
+    for (const label of connectorVariables(channel, selected)) {
         if (labels.has(label)) continue;
         const connector = metaDataIds.has(label);
         const key = connector ? `d${metaDataIds.get(label)}` : label;
         const quote = key.includes("'") ? '"' : "'";
-        const token = overrides.get(label) ?? (javascript ? `$(${quote}${key}${quote})`
+        const token = overrides.get(label) ?? (javascript ? mapLookup(key)
             : connector ? `\${${key}.message}`
                 : /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(key) ? `\${${key}}` : `\${maps.get(${quote}${key}${quote})}`);
         mappings.push([label, token]);

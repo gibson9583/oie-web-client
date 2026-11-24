@@ -5,7 +5,7 @@
 import { isJavaBlank } from './oie.js';
 
 type ExpressionPart = { value: string; propertyName: string; numberLiteral?: boolean };
-type MemberBoundary = { end: number; key?: string; numeric?: boolean; call?: boolean; regexArgument?: boolean };
+type MemberBoundary = { end: number; key?: string; numeric?: boolean; call?: boolean; regexArgument?: boolean; signedArgument?: boolean };
 type Leaf = ExpressionPart & { name?: boolean };
 type Token = { value: string; start: number; end: number };
 
@@ -96,6 +96,12 @@ function readChain(text: string, preview: boolean, allowFallback = false) {
         if (take(')')) return;
         do {
             if (peek().startsWith('/')) at++;
+            else if (!preview && ['-', '+'].includes(peek())) {
+                const start = tokens[at++].end;
+                while (at < tokens.length && ![',', ')'].includes(peek())) at++;
+                const literal = text.slice(start, end()).trim();
+                if (!fallbackNumber.test(literal) || /^0[0-7]+[.e]/i.test(literal)) throw new Error('Invalid signed number');
+            }
             else operand();
         } while (take(','));
         expect(')');
@@ -143,7 +149,11 @@ function readChain(text: string, preview: boolean, allowFallback = false) {
                 argumentsList();
                 leaves.length = 0;
                 const call: MemberBoundary = { end: end(), call: true };
-                if (boundaries && tokens.slice(first, at).some(token => token.value.startsWith('/'))) call.regexArgument = true;
+                if (boundaries) {
+                    const args = tokens.slice(first, at);
+                    if (args.some(token => token.value.startsWith('/'))) call.regexArgument = true;
+                    if (args.some(token => token.value === '-' || token.value === '+')) call.signedArgument = true;
+                }
                 boundaries?.push(call);
             } else if (take('[')) {
                 const first = at;

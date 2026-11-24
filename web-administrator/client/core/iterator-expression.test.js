@@ -115,3 +115,16 @@ test('numeric fallback literals use Rhino syntax without changing member selecto
         assert.deepEqual(readMemberBoundaries('msg.rows[' + key + ']'), [], key);
     }
 });
+
+test('signed numeric call arguments preserve their enclosing member chain', () => {
+    const path = "msg['OBX'][0]['OBX.5'].toString().slice(-2)";
+    for (const argument of ['-2', '-2.0', '-2e0', '+0x02', '-.5', '-  1.5', '+0B10']) {
+        const expression = path.replace('-2', argument);
+        const parts = readMemberBoundaries(expression);
+        assert.equal(parts.at(-1)?.signedArgument, true, argument);
+        assert.equal(parts.at(-1)?.end, expression.length);
+    }
+    for (const argument of ['--2', '-', '-1 e2', '-01.2', '-1 + extra']) {
+        assert.deepEqual(readMemberBoundaries(path.replace('-2', argument)), [], argument);
+    }
+});

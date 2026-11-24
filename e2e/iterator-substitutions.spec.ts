@@ -67,8 +67,79 @@ async function assign(page: Page, element: string, destination: string) {
     await dialog.getByRole('button', { name: 'Use Iterator' }).click();
 }
 
+for (const create of [true, false]) {
+    test(`assign a Mapper below a repeated sample row to a ${create ? 'new' : 'Swing-authored'} Iterator`, async ({ page }) => {
+        const target = PREFIX + "['OBX.5']";
+        const source = { ...mapper(), mapping: PREFIX + "[0]['OBX.5']['OBX.5.1'].toString()" };
+        const existing = iterator('All values', 'i', [], [target]);
+        const save = await openEditor(page, create ? [source] : [source, existing], 'transformer', '', 'HL7V2');
+        if (create) {
+            await click(page, 'Assign To Iterator');
+            const dialog = page.getByRole('dialog', { name: 'Assign To Iterator' });
+            await dialog.getByLabel('Iterate On').selectOption(target);
+            await dialog.getByRole('button', { name: 'Use Iterator' }).click();
+        } else await assign(page, source.name, existing.name);
+        const props = (await save())[ITERATOR][0].properties;
+        expect(props.target).toBe(target);
+        expect(props.children[MAPPER][0].mapping).toBe(target + "[i]['OBX.5.1'].toString()");
+    });
+}
+
+test('a fallback expression offers the same single new-Iterator target as Swing', async ({ page }) => {
+    const expression = mapping() + " || 'unknown'";
+    const save = await openEditor(page, [{ ...mapper(), mapping: expression }]);
+    await click(page, 'Assign To Iterator');
+    const dialog = page.getByRole('dialog', { name: 'Assign To Iterator' });
+    await expect(dialog.getByLabel('Iterate On')).toHaveValue(expression);
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.locator('tr[data-path]')).toHaveCount(1);
+    await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toHaveCount(0);
+    await click(page, 'Assign To Iterator');
+    await dialog.getByRole('button', { name: 'Use Iterator' }).click();
+    const props = (await save())[ITERATOR][0].properties;
+    expect(props.target).toBe(expression);
+    expect(props.children[MAPPER][0].mapping).toBe(expression + '[i]');
+});
+
+test('assigning a Mapper applies overlapping Iterator prefixes in configured order', async ({ page }) => {
+    const field = "['OBX.5']";
+    const save = await openEditor(page, [
+        { ...mapper(), mapping: PREFIX + '[0]' + field + '[0]' },
+        iterator('Observations', 'i', [], [PREFIX, PREFIX + '[i]' + field])
+    ], 'transformer', '', 'HL7V2');
+    await assign(page, 'Observation', 'Observations');
+    expect(children(await save(), 'Observations')[MAPPER][0].mapping).toBe(PREFIX + '[i]' + field + '[i]');
+});
+
+test('assignment preserves a fixed repetition after the chosen HL7 field', async ({ page }) => {
+    const suffix = "['OBX.5'][1]['OBX.5.1'].toString()";
+    const save = await openEditor(page, [{ ...mapper(), mapping: PREFIX + '[0]' + suffix }, iterator('Segments')], 'transformer', '', 'HL7V2');
+    await assign(page, 'Observation', 'Segments');
+    expect(children(await save(), 'Segments')[MAPPER][0].mapping).toBe(PREFIX + '[i]' + suffix);
+});
+
+test('assignment keeps a Mapper reading an XML element that shares only part of the prefix', async ({ page }) => {
+    const mapping = 'msg.rowsExtra[0].value.toString()';
+    const save = await openEditor(page, [{ ...mapper(), mapping }, iterator('Rows', 'i', [], ['msg.rows'])], 'transformer', '', 'XML');
+    await assign(page, 'Observation', 'Rows');
+    expect(children(await save(), 'Rows')[MAPPER][0].mapping).toBe(mapping);
+});
+
+for (const [label, prefix, before, after] of [
+    ['a fixed repetition outside the loop', PREFIX, "tmp['aux'][1]", "tmp['aux'][1]"],
+    ['a qualified child inside the loop', "tmp['group']", "tmp['group'][0][new QName('urn:value','child')]", "tmp['group'][i][new QName('urn:value','child')]"],
+]) {
+    test(`assignment preserves the Message Builder target for ${label}`, async ({ page }) => {
+        const step = { type: BUILDER, name: 'Write value', mapping: "'changed'", messageSegment: before };
+        const save = await openEditor(page, [step, iterator('Rows', 'i', [], [prefix])], 'transformer', '', 'XML');
+        await assign(page, step.name, 'Rows');
+        expect(children(await save(), 'Rows')[BUILDER][0]).toMatchObject({ mapping: step.mapping, messageSegment: after });
+    });
+}
+
 for (const { name, dataType, prefix, suffix } of [
     { name: 'HL7 regex cleanup', dataType: 'HL7V2', prefix: PREFIX, suffix: "['OBX.5'].toString().replace(/-/g, '')" },
+    { name: 'HL7 signed suffix', dataType: 'HL7V2', prefix: PREFIX, suffix: "['OBX.5'].toString().slice(-2)" },
     { name: 'HL7 fallback', dataType: 'HL7V2', prefix: PREFIX, suffix: "['OBX.5'].toString() || 'unknown'" },
     { name: 'wildcard XML regex cleanup', dataType: 'XML', prefix: "msg.*::['row']", suffix: "['value'].toString().replace(/-/g, '')" },
 ]) {
@@ -119,7 +190,7 @@ test('a new Iterator preserves an existing column selector from a preceding scri
 test('a converted empty Iterator can relinquish an index used in sibling scripts', async ({ page }) => {
     const script = 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep';
     const save = await openEditor(page, [
-        { type: script, name: 'Select column', script: 'var i = 7;' },
+        { type: script, name: 'Select column', script: 'var label = "column", i = 7;' },
         { type: script, name: 'New loop', script: '' },
         { type: script, name: 'Read column', script: "channelMap.put('after', i);" },
     ]);
@@ -137,7 +208,7 @@ test('a converted empty Iterator can relinquish an index used in sibling scripts
     await expect(index).toHaveAttribute('aria-invalid', 'false');
     const saved = await save();
     expect(saved[ITERATOR][0].properties.indexVariable).toBe('j');
-    expect(saved[script].map((step: Element) => step.script)).toEqual(['var i = 7;', "channelMap.put('after', i);"]);
+    expect(saved[script].map((step: Element) => step.script)).toEqual(['var label = "column", i = 7;', "channelMap.put('after', i);"]);
     await page.reload();
     await middle.locator('td.num').click();
     await expect(index).toHaveValue('j');
@@ -454,16 +525,19 @@ test('mapping a repeated leaf under a qualified parent uses the configured Itera
     await expect(page.locator('.step-editor-fill .field:has(label:text-is("Mapping")) input')).toHaveValue(mapped.mapping);
 });
 
-test('mapping the whole message creates a valid Mapper with a unique key', async ({ page }) => {
-    const xslt = { type: 'com.mirth.connect.plugins.xsltstep.XsltStep', name: 'Transform', resultVariable: 'msg' };
-    const save = await openEditor(page, [{ ...mapper(), variable: 'msg_2' }, iterator('Loop', 'i', [xslt])],
+test('a whole-message Mapper inside an Iterator leaves the key for the author', async ({ page }) => {
+    const save = await openEditor(page, [iterator('Loop', 'i', [{ ...mapper(), variable: 'msg' }])],
         'transformer', '<Envelope><id>1</id></Envelope>');
+    await row(page, 'Loop').locator('td.num').click();
     await page.getByRole('tab', { name: 'Message Trees' }).click();
     const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
     await tree.locator('.mt-root-label').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
     await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
-    expect((await save())[MAPPER][1]).toMatchObject({ name: 'msg_3', variable: 'msg_3', mapping: 'msg.toString()' });
+    const variable = page.locator('.step-editor-fill .field:has(label:text-is("Variable")) input');
+    await expect(variable).toHaveValue('');
+    await variable.fill('envelope');
+    expect(children(await save(), 'Loop')[MAPPER][1]).toMatchObject({ name: 'envelope', variable: 'envelope', mapping: 'msg.toString()' });
 });
 
 test('assigning a subtree checks the destination index before moving any steps', async ({ page }) => {
@@ -502,7 +576,10 @@ test('adding a tree Mapper checks the current index and permits retry after a re
     await index.fill('i');
     await index.press('Enter');
     await mapRoot();
-    expect(children(await save(), 'Loop')[MAPPER][0].variable).toBe('msg');
+    const variable = page.locator('.step-editor-fill .field:has(label:text-is("Variable")) input');
+    await expect(variable).toHaveValue('');
+    await variable.fill('observations');
+    expect(children(await save(), 'Loop')[MAPPER][0].variable).toBe('observations');
 });
 
 test('response transformer Add and type conversion preserve a conflicting Iterator draft', async ({ page }) => {
@@ -533,17 +610,29 @@ test('validation identifies the affected Mapper in a previously saved conflictin
     }
 });
 
+test('mapping a field reserves keys from nested XSLT and existing Mappers', async ({ page }) => {
+    const xslt = { type: 'com.mirth.connect.plugins.xsltstep.XsltStep', name: 'Transform', resultVariable: 'msg' };
+    const save = await openEditor(page, [{ ...mapper(), variable: 'msg_2' }, iterator('Loop', 'i', [xslt])],
+        'transformer', '<Envelope><msg>1</msg></Envelope>');
+    await page.getByRole('tab', { name: 'Message Trees' }).click();
+    const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+    await tree.getByRole('row').filter({ has: page.getByText('msg', { exact: true }) }).click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
+    await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
+    expect((await save())[MAPPER][1]).toMatchObject({ name: 'msg_3', variable: 'msg_3', mapping: "msg['msg'].toString()" });
+});
+
 test('a tree Mapper preserves authored locals in the same transformer function', async ({ page }) => {
     const js = 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep';
     const save = await openEditor(page, [
         { type: js, name: 'Remember', script: "var _msg = 'prior';" },
         iterator('Loop'),
         { type: js, name: 'Publish', script: "channelMap.put('after', _msg); // _msg_2" }
-    ], 'transformer', '<m><OBX>one</OBX><OBX>two</OBX></m>');
+    ], 'transformer', '<m><msg>field</msg><OBX>one</OBX><OBX>two</OBX></m>');
     await row(page, 'Loop').locator('td.num').click();
     await page.getByRole('tab', { name: 'Message Trees' }).click();
     const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
-    await tree.locator('.mt-root-label').click({ button: 'right' });
+    await tree.getByRole('row').filter({ has: page.getByText('msg', { exact: true }) }).click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
     await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
     expect(children(await save(), 'Loop')[MAPPER][0]).toMatchObject({ name: 'msg_2', variable: 'msg_2' });
@@ -553,11 +642,11 @@ test('a tree Mapper reserves the normalized accumulators in its outer Iterator a
     const existing = { ...mapper(), variable: 'msg', scope: 'CONNECTOR' };
     const nested = iterator('Inner', 'j', [{ ...mapper(), variable: 'm-sg_2', scope: 'RESPONSE' }]);
     const independent = iterator('Other', 'k', [{ ...mapper(), variable: 'msg_3', scope: 'CONNECTOR' }]);
-    const save = await openEditor(page, [iterator('Loop', 'i', [existing, nested]), independent], 'transformer', '<m><id>1</id></m>');
+    const save = await openEditor(page, [iterator('Loop', 'i', [existing, nested]), independent], 'transformer', '<m><msg>field</msg></m>');
     await row(page, 'Loop').locator('td.num').click();
     await page.getByRole('tab', { name: 'Message Trees' }).click();
     const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
-    await tree.locator('.mt-root-label').click({ button: 'right' });
+    await tree.getByRole('row').filter({ has: page.getByText('msg', { exact: true }) }).click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
     await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
     expect(children(await save(), 'Loop')[MAPPER].map((step: Element) => [step.variable, step.scope]))
@@ -572,10 +661,10 @@ test('a tree Mapper preserves literal channel-map writes from JavaScript steps',
         "$c('msg_3'); connectorMap.put('msg_3', 'local');"
     ].join('\n');
     const save = await openEditor(page, [{ type: 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep', name: 'Publish', script }],
-        'transformer', '<m><id>1</id></m>');
+        'transformer', '<m><msg>field</msg></m>');
     await page.getByRole('tab', { name: 'Message Trees' }).click();
     const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
-    await tree.locator('.mt-root-label').click({ button: 'right' });
+    await tree.getByRole('row').filter({ has: page.getByText('msg', { exact: true }) }).click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
     await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
     expect((await save())[MAPPER][0]).toMatchObject({ name: 'msg_3', variable: 'msg_3' });
