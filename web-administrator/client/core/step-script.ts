@@ -29,7 +29,7 @@ const SCOPE_MAP: Record<string, string> = {
 };
 
 /* JavaScriptSharedUtil.convertIdentifier — for iterator temp-var names. */
-function convertIdentifier(id: unknown): string {
+export function convertIdentifier(id: unknown): string {
     return String(id ?? '').replace(/[^a-zA-Z0-9_$]/g, '') || '_';
 }
 

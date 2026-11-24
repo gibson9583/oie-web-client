@@ -159,6 +159,26 @@ for (const [route, handler] of [['filter/0', 'None'], ['transformer/0', 'Regex']
     });
 }
 
+test('opening a template file after accepting XML properties uses the current draft', async ({ page }) => {
+    await page.route('**/vendor/monaco/**', route => route.abort());
+    const writes = await setup(page);
+    await panel(page).getByRole('combobox').first().selectOption('XML');
+    await page.getByRole('dialog', { name: 'Warning' }).getByRole('button', { name: 'Close' }).last().click();
+    await panel(page).getByRole('button', { name: 'Properties…' }).first().click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByText('Strip Namespaces', { exact: true }).click();
+    await dialog.getByRole('button', { name: 'OK', exact: true }).click();
+    const chooser = page.waitForEvent('filechooser');
+    await panel(page).getByRole('button', { name: 'Open File…' }).first().click();
+    await (await chooser).setFiles({ name: 'sample.xml', mimeType: 'text/xml', buffer: Buffer.from('<updated/>') });
+    await expect(field(page)).toHaveValue('<updated/>');
+    await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+    await expect.poll(() => writes.length).toBe(1);
+    const transformer = writes[0].sourceConnector.transformer;
+    expect(decode(transformer.inboundTemplate)).toBe('<updated/>');
+    expect(transformer.inboundProperties.serializationProperties.stripNamespaces).toBe(true);
+});
+
 for (const newer of ['template edit', 'type change', 'second file'] as const) {
     test(`a pending DICOM conversion respects a newer ${newer}`, async ({ page }) => {
         await page.route('**/vendor/monaco/**', route => route.abort());

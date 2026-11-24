@@ -49,6 +49,7 @@ import * as oie from '@oie/web-api';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import { generateElementScript } from '../../core/step-script.js';
+import { availableMapperKey } from './mapper-key.js';
 import { isIteratorType, iteratorName } from '../../core/oie.js';
 import { childrenOf, serializeEditorElements, rewriteElementIteratorVariables, getIteratorInfo, iteratorExpressionParts,
     iteratorWizardPrefixes, validIteratorIndex, preferredIterator, isIteratorIndexName, renameIteratorIndex,
@@ -442,27 +443,6 @@ function jsonTree(text: any, varName: any) {
 
 /* Steps created from a tree node's accessor — the Swing TreePanel popup
    ("Map to Variable" → Mapper, "Map to Message" → Message Builder). */
-
-function availableMapperKey(channel: any, base: string): string {
-    if (!base) return base;
-    const keys = new Set<string>();
-    function collect(elements: any): void {
-        for (const el of oie.elementsToArray(elements)) {
-            if (el.__type === ElementType.Mapper && (!el.scope || el.scope === 'CHANNEL')) keys.add(el.variable);
-            if (el.__type === ElementType.Xslt) keys.add(el.resultVariable);
-            if (isIteratorType(el.__type)) collect(el.properties?.children);
-        }
-    }
-    // A channel-scoped variable can cross the source, destination and response transformers.
-    collect(channel.sourceConnector?.transformer?.elements);
-    for (const destination of oie.destinationsOf(channel)) {
-        collect(destination.transformer?.elements);
-        collect(destination.responseTransformer?.elements);
-    }
-    let key = base;
-    for (let suffix = 2; keys.has(key); suffix++) key = `${base}_${suffix}`;
-    return key;
-}
 
 type TreeNameNode = { name: string; desc?: string; index?: number; arrayIndex?: number };
 type TreeNamePath = { node: TreeNameNode; parent: TreeNamePath | null };
@@ -1003,7 +983,7 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
     };
 
     const fileLoad = useRef(0);
-    const properties = target[`${side}Properties`];
+    const properties = useSyncExternalStore(subscribeToChannelEdit, () => target[`${side}Properties`]);
     // A changed template, type, import, or closed tab supersedes a pending file load.
     useLayoutEffect(() => () => { fileLoad.current++; }, [target, template, typeName, properties]);
 
@@ -2272,12 +2252,15 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 if (!treeMessageSegment(writeSource, scope)) return;
             }
             const list = parent ? childrenOf(parent) : elementsRef.current;
-            if (typeId === ElementType.Mapper) el.name = el.variable = availableMapperKey(channel, el.variable);
             if (created) {
                 list.push(iterator);
                 const path = pathOf(iterator, elementsRef.current);
                 iterator.name = iteratorName(iterator);
                 rewriteElementIteratorVariables(iterator, iteratorAncestors(path), true);
+            }
+            if (typeId === ElementType.Mapper) {
+                const outer = iterator && elementsRef.current[pathOf(iterator, elementsRef.current)[0]];
+                el.name = el.variable = availableMapperKey(channel, el.variable, outer);
             }
             (iterator ? childrenOf(iterator) : list).push(el);
             const path = pathOf(el, elementsRef.current);

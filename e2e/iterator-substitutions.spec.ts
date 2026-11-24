@@ -406,6 +406,38 @@ test('mapping the whole message creates a valid Mapper with a unique key', async
     expect((await save())[MAPPER][1]).toMatchObject({ name: 'msg_3', variable: 'msg_3', mapping: 'msg.toString()' });
 });
 
+test('a tree Mapper reserves the normalized accumulators in its outer Iterator across map scopes', async ({ page }) => {
+    const existing = { ...mapper(), variable: 'msg', scope: 'CONNECTOR' };
+    const nested = iterator('Inner', 'j', [{ ...mapper(), variable: 'm-sg_2', scope: 'RESPONSE' }]);
+    const independent = iterator('Other', 'k', [{ ...mapper(), variable: 'msg_3', scope: 'CONNECTOR' }]);
+    const save = await openEditor(page, [iterator('Loop', 'i', [existing, nested]), independent], 'transformer', '<m><id>1</id></m>');
+    await row(page, 'Loop').locator('td.num').click();
+    await page.getByRole('tab', { name: 'Message Trees' }).click();
+    const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+    await tree.locator('.mt-root-label').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
+    await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
+    expect(children(await save(), 'Loop')[MAPPER].map((step: Element) => [step.variable, step.scope]))
+        .toEqual([['msg', 'CONNECTOR'], ['msg_3', 'CHANNEL']]);
+});
+
+test('a tree Mapper preserves literal channel-map writes from JavaScript steps', async ({ page }) => {
+    const script = [
+        "var note = <note>original</note>; channelMap.put('msg', note.toString());",
+        'var url = "https://example.test/"; $c("msg_2", url);',
+        "// channelMap.put('msg_3', 'comment');",
+        "$c('msg_3'); connectorMap.put('msg_3', 'local');"
+    ].join('\n');
+    const save = await openEditor(page, [{ type: 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep', name: 'Publish', script }],
+        'transformer', '<m><id>1</id></m>');
+    await page.getByRole('tab', { name: 'Message Trees' }).click();
+    const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+    await tree.locator('.mt-root-label').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
+    await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
+    expect((await save())[MAPPER][0]).toMatchObject({ name: 'msg_3', variable: 'msg_3' });
+});
+
 test('tree-created Mappers keep separate map keys for identically named leaves', async ({ page }) => {
     const save = await openEditor(page, [], 'transformer', '<m><sending><id>A</id></sending><receiving><id>B</id></receiving></m>');
     await page.getByRole('tab', { name: 'Message Trees' }).click();

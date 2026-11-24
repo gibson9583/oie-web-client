@@ -41,6 +41,7 @@
     "dompurify": "3.4.17",
     "express": "^5.2.1",
     "js-beautify": "^2.0.3",
+    "js-tokens": "10.0.0",
     "monaco-editor": "^0.56.0",
     "qrcode-generator": "2.0.4",
     "react-day-picker": "^10.0.1",

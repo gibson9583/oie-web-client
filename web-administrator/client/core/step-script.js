@@ -25,7 +25,7 @@ const SCOPE_MAP = {
     RESPONSE: 'responseMap'
 };
 /* JavaScriptSharedUtil.convertIdentifier — for iterator temp-var names. */
-function convertIdentifier(id) {
+export function convertIdentifier(id) {
     return String(id ?? '').replace(/[^a-zA-Z0-9_$]/g, '') || '_';
 }
 /* MapperStep.buildRegexArray — new Array(new Array(l,r),…) or new Array(). */
