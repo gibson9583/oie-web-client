@@ -67,16 +67,23 @@ async function assign(page: Page, element: string, destination: string) {
     await dialog.getByRole('button', { name: 'Use Iterator' }).click();
 }
 
-test('assigning and detaching a Mapper preserves its regex cleanup and updates the repetition', async ({ page }) => {
-    const cleanup = ".replace(/-/g, '')";
-    const save = await openEditor(page, [{ ...mapper(), mapping: mapping() + cleanup }, iterator('Groups')]);
-    await assign(page, 'Observation', 'Groups');
-    expect(children(await save(), 'Groups')[MAPPER][0].mapping).toBe(PREFIX + '[i]' + mapping().slice(PREFIX.length) + cleanup);
-    await page.reload();
-    await row(page, 'Observation').locator('td.num').click();
-    await click(page, 'Remove From Iterator');
-    expect((await save())[MAPPER][0].mapping).toBe(mapping() + cleanup);
-});
+for (const { name, dataType, prefix, suffix } of [
+    { name: 'HL7 regex cleanup', dataType: 'HL7V2', prefix: PREFIX, suffix: "['OBX.5'].toString().replace(/-/g, '')" },
+    { name: 'HL7 fallback', dataType: 'HL7V2', prefix: PREFIX, suffix: "['OBX.5'].toString() || 'unknown'" },
+    { name: 'wildcard XML regex cleanup', dataType: 'XML', prefix: "msg.*::['row']", suffix: "['value'].toString().replace(/-/g, '')" },
+]) {
+    test(`assigning and detaching a Mapper preserves its ${name} and first-row selector`, async ({ page }) => {
+        const original = prefix + '[0]' + suffix;
+        const save = await openEditor(page, [{ ...mapper(), mapping: original }, iterator('Groups', 'i', [], [prefix])],
+            'transformer', '', dataType);
+        await assign(page, 'Observation', 'Groups');
+        expect(children(await save(), 'Groups')[MAPPER][0].mapping).toBe(prefix + '[i][0]' + suffix);
+        await page.reload();
+        await row(page, 'Observation').locator('td.num').click();
+        await click(page, 'Remove From Iterator');
+        expect((await save())[MAPPER][0].mapping).toBe(original);
+    });
+}
 
 for (const prefix of [PREFIX, 'msg']) {
     test(`a JSON regex Mapper reads each object in ${prefix} and the first object on detach`, async ({ page }) => {
@@ -107,6 +114,33 @@ test('a new Iterator preserves an existing column selector from a preceding scri
     const props = (await save())[ITERATOR][0].properties;
     expect(props.indexVariable).toBe('j');
     expect(props.children[MAPPER][0].mapping).toBe("msg['rows'][j]['values'][i]");
+});
+
+test('a converted empty Iterator can relinquish an index used in sibling scripts', async ({ page }) => {
+    const script = 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep';
+    const save = await openEditor(page, [
+        { type: script, name: 'Select column', script: 'var i = 7;' },
+        { type: script, name: 'New loop', script: '' },
+        { type: script, name: 'Read column', script: "channelMap.put('after', i);" },
+    ]);
+    const middle = page.locator('tr[data-path="1"]');
+    await middle.locator('td.num').click();
+    await middle.getByRole('combobox').selectOption(ITERATOR);
+    await page.getByPlaceholder("msg['OBX']", { exact: true }).fill('msg.group');
+    const index = page.locator('.step-editor-fill .field:has(label:text-is("Index Variable")) input');
+    await expect(index).toHaveValue('i');
+    expect((await save())[ITERATOR][0].properties.indexVariable).toBe('i');
+    await page.reload();
+    await middle.locator('td.num').click();
+    await index.fill('j');
+    await index.press('Enter');
+    await expect(index).toHaveAttribute('aria-invalid', 'false');
+    const saved = await save();
+    expect(saved[ITERATOR][0].properties.indexVariable).toBe('j');
+    expect(saved[script].map((step: Element) => step.script)).toEqual(['var i = 7;', "channelMap.put('after', i);"]);
+    await page.reload();
+    await middle.locator('td.num').click();
+    await expect(index).toHaveValue('j');
 });
 
 test('moving a child and its Iterator preserves the stored mapping and default', async ({ page }) => {

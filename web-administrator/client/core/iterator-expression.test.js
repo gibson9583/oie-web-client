@@ -84,3 +84,34 @@ test('a regex argument is opaque to membership edits and preview generation', ()
         assert.deepEqual(readMemberBoundaries(`msg.rows[0].replace(${literal}, '')`), []);
     }
 });
+
+test('Iterator fallback expressions expose only the first operand as a path', () => {
+    const lhs = "msg['OBX'][0]['OBX.5'].toString()";
+    for (const rhs of ["'unknown'", '0', 'false', 'defaults[0].value', "'a || b' || fallback()"]) {
+        const expression = lhs + ' || ' + rhs;
+        assert.deepEqual(readMemberBoundaries(expression, true), readMemberBoundaries(lhs));
+        assert.deepEqual(readMemberBoundaries(expression), []);
+        assert.equal(readMessageBuilderParts(expression), null);
+    }
+    for (const tail of [' || ', ' | | value', ' || defaults[', ' || fallback(,)', ' || msg.value; next()', ' || 1 +']) {
+        assert.deepEqual(readMemberBoundaries(lhs + tail, true), [], tail);
+    }
+});
+
+test('numeric fallback literals use Rhino syntax without changing member selectors or Builder previews', () => {
+    const lhs = 'msg.rows[0].value';
+    for (const rhs of ['-1', '+1', '-.5', '0.5', '1.', '1e3', '1.E-3', '0xFA', '-(0B10)', '0o17',
+        '077', '09.5', '((-.5e+2))', '( -(-1) )', '1 || (-2)', '(false)', '((null))']) {
+        const expression = lhs + ' || ' + rhs;
+        assert.deepEqual(readMemberBoundaries(expression, true), readMemberBoundaries(lhs), rhs);
+        assert.deepEqual(readMemberBoundaries(expression), [], rhs);
+        assert.equal(readMessageBuilderParts(expression), null, rhs);
+    }
+    for (const rhs of ['1e', '1e+', '1 e3', '1.2.3', '0x', '0o8', '0b102', '01.5', '077e2', '1_000', '1n',
+        '++1', '--1', '1 2', '(1', '1)', '(-)', '1 + 2']) {
+        assert.deepEqual(readMemberBoundaries(lhs + ' || ' + rhs, true), [], rhs);
+    }
+    for (const key of ['-1', '0.5', '1e3']) {
+        assert.deepEqual(readMemberBoundaries('msg.rows[' + key + ']'), [], key);
+    }
+});

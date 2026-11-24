@@ -83,6 +83,10 @@ restores its original first-row expression. For a JSON array of objects, the
 web editor uses `[i]` inside the loop and `[0]` on detach so the expression
 continues to select a record.
 
+The same XML round trip preserves a literal fallback such as
+`msg['OBX'][0]['OBX.5'].toString() || 'unknown'` and a regex-cleaned field
+under a namespace selector such as `msg.*::['row']`.
+
 The web editor adds three safeguards.
 
 - If an Iterator index such as `mapping` would be overwritten by the generated

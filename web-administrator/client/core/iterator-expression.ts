@@ -1,5 +1,5 @@
-/* Source boundaries for iterator editing. Only a complete member chain can be
- * rewritten. Computed selectors and call arguments own their nested brackets.
+/* Source boundaries for iterator editing. Each editable operand is a complete
+ * member chain. Computed selectors and call arguments own their nested brackets.
  * The reader keeps their source and never evaluates or prints JavaScript.
  */
 import { isJavaBlank } from './oie.js';
@@ -18,7 +18,7 @@ const quoted = /^['"`]/;
 // Scan a regex only in argument position. Brackets, commas and parentheses
 // inside it belong to the pattern, even when they resemble member boundaries.
 const regexArgument = /\/((?:\\[^\r\n\u2028\u2029]|\[(?:\\[^\r\n\u2028\u2029]|[^\\\]\r\n\u2028\u2029])*\]|[^/\\[\r\n\u2028\u2029])+)\/([a-zA-Z]*)/y;
-const lexeme = /\/\/[^\r\n\u2028\u2029]*|\/\*[\s\S]*?\*\/|\s+|[$_\p{ID_Start}][$\p{ID_Continue}]*|[0-9]+|'(?:\\[^\r\n\u2028\u2029]|[^'\\\r\n\u2028\u2029])*'|"(?:\\[^\r\n\u2028\u2029]|[^"\\\r\n\u2028\u2029])*"|`(?:\\[^\r\n\u2028\u2029]|[^`\\\r\n\u2028\u2029])*`|::|\.\.\.|\.\.|[.()[\]*@,;{}=+!%|&^~:>?-]/uy;
+const lexeme = /\/\/[^\r\n\u2028\u2029]*|\/\*[\s\S]*?\*\/|\s+|[$_\p{ID_Start}][$\p{ID_Continue}]*|[0-9]+|'(?:\\[^\r\n\u2028\u2029]|[^'\\\r\n\u2028\u2029])*'|"(?:\\[^\r\n\u2028\u2029]|[^"\\\r\n\u2028\u2029])*"|`(?:\\[^\r\n\u2028\u2029]|[^`\\\r\n\u2028\u2029])*`|::|\|\||\.\.\.|\.\.|[.()[\]*@,;{}=+!%|&^~:>?-]/uy;
 
 function tokensOf(text: string, skipComments = false, allowRegexArguments = false): Token[] | null {
     // Rhino can ignore format controls in token spellings and in string escapes.
@@ -54,7 +54,24 @@ function isName(value: string): boolean {
     return identifier.test(value) && !keywords.has(value) && !/[\uD800-\uDFFF]/.test(value);
 }
 
-function readChain(text: string, preview: boolean) {
+// Rhino ES6 accepts radix prefixes and legacy octal. A leading-zero integer
+// containing 8 or 9 is decimal; an octal integer cannot take a fraction or exponent.
+const fallbackNumber = /^(?:0x[\da-f]+|0b[01]+|0o[0-7]+|(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)$/i;
+
+function isFallbackConstant(source: string): boolean {
+    let signed = false;
+    for (;;) {
+        if (source.startsWith('(') && source.endsWith(')')) source = source.slice(1, -1).trim();
+        else if (/^(?!\+\+|--)[+-]/.test(source)) {
+            signed = true;
+            source = source.slice(1).trimStart();
+        } else break;
+    }
+    if (!signed && ['true', 'false', 'null'].includes(source)) return true;
+    return fallbackNumber.test(source) && !/^0[0-7]+[.e]/i.test(source);
+}
+
+function readChain(text: string, preview: boolean, allowFallback = false) {
     const scanned = tokensOf(text, false, !preview);
     if (!scanned?.length || !isName(scanned[0].value)) return null;
     const tokens = scanned;
@@ -177,6 +194,17 @@ function readChain(text: string, preview: boolean) {
     const leaves: Leaf[] = [{ value: root, propertyName: root, name: true }];
     try {
         members(leaves, boundaries);
+        // Stock Swing retains the sample selector when the member chain has
+        // a fallback. Only its leading operand supplies Iterator boundaries.
+        while (allowFallback && take('||')) {
+            if (at === tokens.length) return null;
+            let stop = at + 1;
+            while (stop < tokens.length && tokens[stop].value !== '||') stop++;
+            // Use the original spelling to distinguish 1e3 from a malformed
+            // "1 e3". Numeric selectors and Message Builder still use integer.
+            if (isFallbackConstant(text.slice(tokens[at].start, tokens[stop - 1].end))) at = stop;
+            else operand();
+        }
         return at === tokens.length ? { boundaries, leaves } : null;
     } catch {
         return null;
@@ -202,9 +230,9 @@ export function readMessageBuilderParts(text: string): ExpressionPart[] | null {
     ));
 }
 
-/** Offsets into the original source, including complete computed keys and calls. */
-export function readMemberBoundaries(text: string): MemberBoundary[] {
-    return readChain(text, false)?.boundaries ?? [];
+/** Offsets into the original member chain. An allowed fallback must parse in full. */
+export function readMemberBoundaries(text: string, allowFallback = false): MemberBoundary[] {
+    return readChain(text, false, allowFallback)?.boundaries ?? [];
 }
 
 function isReference(tokens: Token[], index: number): boolean {

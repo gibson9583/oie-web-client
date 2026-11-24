@@ -3,7 +3,8 @@
  * Only the shipped expression fields participate, never arbitrary script text.
  */
 
-import { ElementType } from '../../core/element-types.js';
+import jsTokens from 'js-tokens';
+import { ElementType, isElementEnabled } from '../../core/element-types.js';
 import { iteratorIdentifierNames, readMemberBoundaries, referencesIteratorIdentifier } from '../../core/iterator-expression.js';
 import { arrayToElements, isIteratorType, isJavaBlank } from '../../core/oie.js';
 import { REPLACEMENT_PAIR } from '../../core/step-replacements.js';
@@ -121,7 +122,8 @@ export function validIteratorIndex(ancestorIndices: string[], descendantIndices:
 function memberAfterPrefix(expression: string, prefix: string, transformer?: Element) {
     const exactPrefix = expression.startsWith(prefix);
     if (!exactPrefix && (!transformer || !expression.includes('/'))) return null;
-    const members = readMemberBoundaries(expression);
+    const allowFallback = expression.includes('||') && messageChildFormat(prefix, transformer) === 'XML';
+    const members = readMemberBoundaries(expression, allowFallback);
     let boundary = exactPrefix ? members.findIndex(member => member.end === prefix.length) : -1;
     // A saved Swing XML path can have [i][0] where a nested Iterator's
     // configured prefix has [i]. Both select the same E4X child.
@@ -139,7 +141,8 @@ function memberAfterPrefix(expression: string, prefix: string, transformer?: Ele
     if (boundary < 0 || members[boundary + 1]?.call) return null;
     const start = members[boundary].end;
     const next = members[boundary + 1] ?? { end: start };
-    return { ...next, start, regexSuffix: members.slice(boundary + 1).some(part => part.regexArgument) };
+    const hasFallback = members.at(-1)!.end < expression.trimEnd().length;
+    return { ...next, start, hasFallback, regexSuffix: members.slice(boundary + 1).some(part => part.regexArgument) };
 }
 
 /** The first matching iterator at the greatest matched ancestor depth wins. */
@@ -227,11 +230,15 @@ function messageChildFormat(prefix: string, transformer?: Element): string | und
     const members = readMemberBoundaries(prefix);
     const root = prefix.slice(0, members[0]?.end);
     if (root !== 'msg' && root !== 'tmp') return;
-    if (!members.slice(1).every((member, i) =>
-        plainChild(prefix.slice(members[i].end, member.end)) || member.key || member.numeric)) return;
     const side = root === 'msg' ? 'inbound' : 'outbound';
     const type = transformer[side + 'DataType'];
-    return transformer[side + 'Properties']?.serializationProperties?.serializationType ?? (xmlDataTypes.has(type) ? 'XML' : type);
+    const format = transformer[side + 'Properties']?.serializationProperties?.serializationType ?? (xmlDataTypes.has(type) ? 'XML' : type);
+    for (const [i, member] of members.slice(1).entries()) {
+        const selector = prefix.slice(members[i].end, member.end);
+        if (plainChild(selector) || member.key || member.numeric) continue;
+        if (format !== 'XML' || treeMemberName(selector) === undefined) return;
+    }
+    return format;
 }
 
 type RewriteOptions = { rename?: string; detachedIndices?: number[]; transformer?: Element };
@@ -253,11 +260,11 @@ function rewriteIteratorIndex(expression: string, iterator: Element, insert: boo
         const leading = expression.length - source.length;
         const start = leading + next.start;
         const detached = detachedIndices?.indexOf(start) ?? -1;
-        // Swing retains [0] after the loop index when the suffix contains a
-        // regex call. On an E4X child [0] selects that same node and restores
-        // the original sample on detach. On a JavaScript object it reads key 0.
-        const keepSample = insert && next.numeric && next.regexSuffix
-            && /^\[\s*0\s*\]$/.test(source.slice(next.start, next.end)) && messageChildFormat(prefix, transformer) === 'XML';
+        // Swing retains the numeric sample for an XML fallback, so detachment
+        // restores the exact selection. A regex call keeps only the E4X [0]
+        // identity selector; on a JavaScript object that would read key 0.
+        const keepSample = insert && next.numeric && (next.hasFallback || (next.regexSuffix
+            && /^\[\s*0\s*\]$/.test(source.slice(next.start, next.end)) && messageChildFormat(prefix, transformer) === 'XML'));
         const end = usesIndex || (next.numeric && detached < 0 && !keepSample) ? leading + next.end : start;
         if (detachedIndices) {
             if (insert && detached >= 0) detachedIndices.splice(detached, 1);
@@ -346,6 +353,38 @@ export function relocateElementIteratorVariables(element: Element, previous: Ele
     });
 }
 
+function declaresIndex(script: string, index: string): boolean {
+    const tokens = [...jsTokens(script, { jsx: true })].filter(token =>
+        token.type !== 'WhiteSpace' && token.type !== 'LineTerminatorSequence' && !token.type.endsWith('Comment'));
+    let depth = 0;
+    for (const [i, token] of tokens.entries()) {
+        if (token.type === 'Punctuator') {
+            if (['(', '[', '{'].includes(token.value)) depth++;
+            if ([')', ']', '}'].includes(token.value)) depth--;
+        } else if (!depth && token.type === 'IdentifierName' && token.value === 'var' &&
+            tokens[i + 1]?.value === index && tokens[i + 2]?.value === '=') {
+            // A bare branch body can start with "var" after ")", "else", or "do".
+            // Accept clear statement boundaries, including a preceding literal followed by ASI.
+            const previous = tokens[i - 1];
+            if (!previous || previous.value === ';' || previous.value === '}' || previous.type.endsWith('Literal')) return true;
+        }
+    }
+    return false;
+}
+
+// An initializer inside a separate loop may never have executed.
+function earlierIndexInitializer(list: Element[], loop: Element, index: string, initialized = false): boolean | undefined {
+    for (const step of list) {
+        if (step === loop) return initialized;
+        if (isIteratorType(elementType(step))) {
+            const inside = earlierIndexInitializer(childrenOf(step), loop, index, initialized);
+            if (inside !== undefined) return inside;
+        } else if (isElementEnabled(step) && elementType(step) === ElementType.JavaScriptStep) {
+            if (declaresIndex(step.script ?? '', index)) initialized = true;
+        }
+    }
+}
+
 export function renameIteratorIndex(element: Element, index: string, scope: Element[] = [element], transformer?: Element): boolean {
     const previous = element.properties.indexVariable ?? 'i';
     if (previous === index) return true;
@@ -367,7 +406,11 @@ export function renameIteratorIndex(element: Element, index: string, scope: Elem
             && childrenOf(el).some(child => hasScopeCollision(child, true)));
     const siblingNames = freeIteratorScopeNames(scope, element);
     const children = childrenOf(element);
-    let unsafe = siblingNames.has(index) || siblingNames.has(previous) || mentionsEitherIndex(target) || children.some(hasScriptReferences)
+    // Correcting an empty loop's default can restore a sibling's independently initialized value.
+    const oldNameConflict = siblingNames.has(previous)
+        && (children.length > 0 || !earlierIndexInitializer(scope, element, previous));
+    let unsafe = siblingNames.has(index) || oldNameConflict
+        || mentionsEitherIndex(target) || children.some(hasScriptReferences)
         || index === 'getArrayOrXmlLength' || scope.some(el => hasScopeCollision(el, false));
     if (unsafe) return false;
     // Read from a draft first so a successful edit updates all references together.

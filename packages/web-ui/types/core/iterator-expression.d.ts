@@ -12,8 +12,8 @@ type MemberBoundary = {
 };
 /** Shipped Message Builder path components, or null when the initializer cannot be reproduced. */
 export declare function readMessageBuilderParts(text: string): ExpressionPart[] | null;
-/** Offsets into the original source, including complete computed keys and calls. */
-export declare function readMemberBoundaries(text: string): MemberBoundary[];
+/** Offsets into the original member chain. An allowed fallback must parse in full. */
+export declare function readMemberBoundaries(text: string, allowFallback?: boolean): MemberBoundary[];
 /** Names to reserve when choosing a fresh loop index for authored JavaScript. */
 export declare function iteratorIdentifierNames(source: string): string[];
 /** Unknown lexical syntax vetoes a rename because it can hide an index reference. */

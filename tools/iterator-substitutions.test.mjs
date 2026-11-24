@@ -73,6 +73,28 @@ test('regex cleanup keeps the Swing XML sample selector through nested moves and
     assert.equal(rewriteIteratorExpression(prefix + '[1].value' + suffix, [iterator], true, model), prefix + '[i].value' + suffix);
 });
 
+test('regex cleanup preserves the sample under literal XML namespace selectors', () => {
+    const suffix = ".toString().replace(/-/g, '')";
+    const xml = { inboundDataType: 'XML' };
+    const loop = (prefix, indexVariable) => ({ properties: { indexVariable, prefixSubstitutions: [prefix] } });
+    const field = ".*::['value']";
+    for (const prefix of ["msg.*::['row']", 'msg.v::row', "msg[new QName('urn:v', 'row')]"]) {
+        const ancestors = [loop(prefix, 'i'), loop(prefix + '[i]' + field, 'j')];
+        const original = prefix + '[0]' + field + '[0]' + suffix;
+        const assigned = rewriteIteratorExpression(original, ancestors, true, xml);
+        assert.equal(assigned, prefix + '[i][0]' + field + '[j][0]' + suffix);
+        assert.equal(rewriteIteratorExpression(assigned, ancestors, false, xml), original);
+    }
+    // A dynamic namespace field or a computed function result can have a different shape.
+    for (const custom of ["msg.*::[field]", "msg.rows()"]) {
+        const source = custom + '[0]' + suffix;
+        assert.equal(rewriteIteratorExpression(source, [loop(custom, 'i')], true, xml), custom + '[i]' + suffix);
+    }
+    const prefix = "msg.*::['row']";
+    assert.equal(rewriteIteratorExpression(prefix + '[0]' + suffix, [loop(prefix, 'i')], true,
+        { inboundDataType: 'JSON' }), prefix + '[i]' + suffix);
+});
+
 test('a nested move rewrites the Iterator target, substitution prefixes and descendants in order', () => {
     const innerPrefix = prefix + "['OBX.5']";
     const inner = { __type: iterator.__type, properties: { target: innerPrefix, indexVariable: 'j', prefixSubstitutions: { string: innerPrefix } },
@@ -89,6 +111,35 @@ test('a nested move rewrites the Iterator target, substitution prefixes and desc
     assert.equal(wizard.selected.value, nestedPrefix);
     assert.ok(!wizard.choices.some(choice => choice.value === prefix));
     assert.equal(validIteratorIndex(['i'], ['j']), 'k');
+});
+
+test('assigning and detaching an HL7 Mapper preserves its sample and fallback operand', () => {
+    const model = { inboundDataType: 'HL7V2' };
+    const childPrefix = prefix + "[i][0]['OBX.5']";
+    const inner = { properties: { indexVariable: 'j', prefixSubstitutions: [childPrefix] } };
+    for (const rhs of ["'unknown'", prefix + "[0]['default']", "'n/a' || defaults[1]", '-1', '0.5', '1e3', '(-0xF)']) {
+        const tail = ".toString() || " + rhs;
+        const original = prefix + "[0]['OBX.5'][0]" + tail;
+        const target = { __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping: original };
+        assert.equal(preferredIterator(original, [iterator], undefined, model), iterator);
+        relocateElementIteratorVariables(target, [], [iterator, inner], model);
+        assert.equal(target.mapping, childPrefix + '[j][0]' + tail);
+        relocateElementIteratorVariables(target, [iterator, inner], [iterator], model);
+        assert.equal(target.mapping, childPrefix + '[0]' + tail);
+        relocateElementIteratorVariables(target, [iterator], [], model);
+        assert.equal(target.mapping, original);
+    }
+    for (const expression of [prefix + '[0].value || ', "other.value || " + prefix + '[0]']) {
+        assert.equal(rewriteIteratorExpression(expression, [iterator], true, model), expression);
+    }
+    // Swing also keeps a nonzero sample after [i], even though an individual
+    // E4X node only has a value at [0]. Removing the loop restores the source.
+    const otherRow = prefix + "[1]['OBX.5'][2].toString() || 'unknown'";
+    const assigned = rewriteIteratorExpression(otherRow, [iterator], true, model);
+    assert.equal(assigned, prefix + "[i][1]['OBX.5'][2].toString() || 'unknown'");
+    assert.equal(rewriteIteratorExpression(assigned, [iterator], false, model), otherRow);
+    const json = prefix + "[0].value || 'missing'";
+    assert.equal(rewriteIteratorExpression(json, [iterator], true, { inboundDataType: 'JSON' }), json);
 });
 
 test('new indices reserve authored selectors while allowing property names and independent loop bindings', () => {
@@ -209,6 +260,52 @@ test('rename keeps sibling bindings and permits reuse in independent loops', () 
     }
     assert.equal(renameIteratorIndex(loop, 'j', [loop, independent]), true);
     assert.equal(child.mapping, mapped.replace('[i]', '[j]'));
+});
+
+test('an empty Iterator can release an earlier JavaScript variable after conversion or reload', () => {
+    const js = script => ({ __type: 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep', script });
+    const createLoop = () => ({ ...iterator, properties: { ...iterator.properties }, __children: [] });
+    const loop = createLoop();
+    const initializer = js('var i = 7;');
+    const consumer = js("channelMap.put('after', i);");
+    const scope = [initializer, loop, consumer];
+    assert.equal(renameIteratorIndex(loop, 'j', scope), true);
+    assert.equal(initializer.script, 'var i = 7;');
+    assert.equal(consumer.script, "channelMap.put('after', i);");
+    assert.equal(renameIteratorIndex(loop, 'i', scope), false);
+
+    for (const source of [
+        '// Write your JavaScript here\nvar i = 7;',
+        "var label = 'id'; var i = 7;",
+        "var label = 'id'\n/* column */ var /* binding */ i\n= 7;",
+        'if (ready) { var label = "id"; }\nvar i=7;'
+    ]) {
+        const saved = createLoop();
+        assert.equal(renameIteratorIndex(saved, 'j', [js(source), saved, consumer]), true, source);
+    }
+    for (const before of [
+        [], [js('if (ready) { var i = 7; }')], [js('function choose() { var i = 7; }')],
+        [js('if (ready) var i=7;')], [js('if (ready) pick(); else var i=7;')],
+        [js('do var i=7; while (ready);')], [js('for (var i=7; ready;) break;')],
+        [js("var label='id'; if (ready) { var i=7; }")], [js('var fn = () => { var i=7; };')],
+        [js('"var i = 7;"')], [js('// var i = 7;')], [js('var i;')],
+        [{ ...initializer, enabled: 'false' }], [{ ...createLoop(), __children: [initializer] }]
+    ]) {
+        const saved = createLoop();
+        assert.equal(renameIteratorIndex(saved, 'j', [...before, saved, consumer, initializer]), false);
+        assert.equal(saved.properties.indexVariable, 'i');
+    }
+    for (const sibling of [js('var j = 8;'), { __type: 'com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep', scriptPath: '/channel.js' }]) {
+        const saved = createLoop();
+        assert.equal(renameIteratorIndex(saved, 'j', [initializer, saved, sibling]), false);
+    }
+    const populated = { ...createLoop(), __children: [js("channelMap.put('record', msg);")] };
+    assert.equal(renameIteratorIndex(populated, 'j', [initializer, populated, consumer]), false);
+    const nested = createLoop();
+    const parent = { ...createLoop(), properties: { ...iterator.properties, indexVariable: 'k' }, __children: [initializer, nested] };
+    assert.equal(renameIteratorIndex(nested, 'j', [parent, consumer]), true);
+    const ordinary = createLoop();
+    assert.equal(renameIteratorIndex(ordinary, 'j', [ordinary]), true);
 });
 
 test('a filter Iterator index cannot shadow its generated result flag after a move', () => {
