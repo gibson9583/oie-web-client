@@ -19,7 +19,7 @@ test('only outer selectors form wizard and substitution boundaries', () => {
 test('unsupported or malformed input exposes no editable prefix', () => {
     for (const suffix of [
         ' + other', '; other', ' +', '[', '[key other]', '[]', '[field + ]', '[key()',
-        ".find('x',)", '(/x[)]/)', '(`value ${i}`)', '(<r>{i}</r>)', '.@default', '.ns::default',
+        ".find('x',)", '(/x[)]/gg)', '(`value ${i}`)', '(<r>{i}</r>)', '.@default', '.ns::default',
         ' /* [i] */ [0]', '[\\u0069]', '.(flag)', '.'
     ]) {
         const path = 'msg.rows[0]' + suffix;
@@ -70,4 +70,17 @@ test('an opaque enabled builder target makes the whole nested preview unavailabl
     assert.ok(scan.includes("channelMap.put('sibling', 2)"));
     builder.enabled = false;
     assert.ok(generateElementScript(outer).includes("channelMap.put('sibling', 2)"));
+});
+
+test('a regex argument is opaque to membership edits and preview generation', () => {
+    for (const literal of ["/-/g", String.raw`/[,()[\]\/]+/im`, String.raw`/a\\/g`]) {
+        const path = `msg.rows[0].value.toString().replace(${literal}, '')`;
+        const parts = readMemberBoundaries(path);
+        assert.ok(parts.some(part => part.end === 'msg.rows'.length));
+        assert.equal(parts.at(-1)?.end, path.length);
+        assert.equal(readMessageBuilderParts(path), null);
+    }
+    for (const literal of ['/unfinished', '/(/g', '/a/gg', '/a/q', '/[a/']) {
+        assert.deepEqual(readMemberBoundaries(`msg.rows[0].replace(${literal}, '')`), []);
+    }
 });

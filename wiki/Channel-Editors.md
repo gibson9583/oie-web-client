@@ -74,6 +74,28 @@ Select a row to show its accessor below the table.
 Message trees and engine-side validation require native support or the optional
 Web Support plugin. Format Document is performed locally in the browser.
 
+### Iterator behavior compared with Swing 4.6.0
+
+Assigning an XML Mapper such as `msg['OBX'][0]['OBX.5'].toString().replace(/-/g, '')`
+to an Iterator over `msg['OBX']` inserts the loop index before `[0]`, as Swing
+does. Each repetition is read in order. Removing the Mapper from the Iterator
+restores its original first-row expression. For a JSON array of objects, the
+web editor uses `[i]` inside the loop and `[0]` on detach so the expression
+continues to select a record.
+
+The web editor adds three safeguards.
+
+- If an Iterator index such as `mapping` would be overwritten by the generated
+  Mapper script, the editor asks for a different index before placing the step.
+- **Map to Variable** on the inbound message root proposes an available map key.
+  Swing opens that Mapper with an empty key. In a loop, the web editor also
+  checks whether the generated local (for example, `_msg`) is already in use.
+- When a tree drop uses a wildcard namespace and the Iterator names that
+  namespace explicitly, the editor warns if it cannot bind the write to the
+  current row. The existing draft stays intact. For a loop over
+  `msg.env.v::group` with index `i`, enter `msg.env.v::group[i].value` in
+  **Message Segment** to update each group's value.
+
 ## Concurrency and save conflicts
 
 Editors compare the render-time channel with action-time server state. If another

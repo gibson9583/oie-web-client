@@ -5,7 +5,7 @@
 import { isJavaBlank } from './oie.js';
 
 type ExpressionPart = { value: string; propertyName: string; numberLiteral?: boolean };
-type MemberBoundary = { end: number; key?: string; numeric?: boolean; call?: boolean };
+type MemberBoundary = { end: number; key?: string; numeric?: boolean; call?: boolean; regexArgument?: boolean };
 type Leaf = ExpressionPart & { name?: boolean };
 type Token = { value: string; start: number; end: number };
 
@@ -15,18 +15,30 @@ const keywords = new Set(('break case catch const continue debugger default dele
     + 'await class enum export extends import let super yield').split(' '));
 const integer = /^(?:0|[1-9]\d*)$/;
 const quoted = /^['"`]/;
-// An unrecognized character ends the scan. In particular, a regexp, XML
-// literal or interpolated template can contain text that looks like a selector.
+// Scan a regex only in argument position. Brackets, commas and parentheses
+// inside it belong to the pattern, even when they resemble member boundaries.
+const regexArgument = /\/((?:\\[^\r\n\u2028\u2029]|\[(?:\\[^\r\n\u2028\u2029]|[^\\\]\r\n\u2028\u2029])*\]|[^/\\[\r\n\u2028\u2029])+)\/([a-zA-Z]*)/y;
 const lexeme = /\/\/[^\r\n\u2028\u2029]*|\/\*[\s\S]*?\*\/|\s+|[$_\p{ID_Start}][$\p{ID_Continue}]*|[0-9]+|'(?:\\[^\r\n\u2028\u2029]|[^'\\\r\n\u2028\u2029])*'|"(?:\\[^\r\n\u2028\u2029]|[^"\\\r\n\u2028\u2029])*"|`(?:\\[^\r\n\u2028\u2029]|[^`\\\r\n\u2028\u2029])*`|::|\.\.\.|\.\.|[.()[\]*@,;{}=+!%|&^~:>?-]/uy;
 
-function tokensOf(text: string, skipComments = false): Token[] | null {
+function tokensOf(text: string, skipComments = false, allowRegexArguments = false): Token[] | null {
     // Rhino can ignore format controls in token spellings and in string escapes.
     if (/[\p{Cf}\u0000-\u0008\u000e-\u001b\u007f-\u009f]/u.test(text)) return null;
     const tokens: Token[] = [];
     for (let start = 0; start < text.length;) {
         lexeme.lastIndex = start;
         const match = lexeme.exec(text);
-        if (!match) return null;
+        if (!match) {
+            const previous = tokens.at(-1)?.value;
+            if (!allowRegexArguments || text[start] !== '/' || (previous !== '(' && previous !== ',')) return null;
+            regexArgument.lastIndex = start;
+            const literal = regexArgument.exec(text);
+            if (!literal || !/^[gim]*$/.test(literal[2])) return null;
+            try { new RegExp(literal[1], literal[2]); } catch { return null; }
+            const end = regexArgument.lastIndex;
+            tokens.push({ value: literal[0], start, end });
+            start = end;
+            continue;
+        }
         const value = match[0];
         const end = lexeme.lastIndex;
         if (value.startsWith('`') && value.includes('${')) return null;
@@ -43,7 +55,7 @@ function isName(value: string): boolean {
 }
 
 function readChain(text: string, preview: boolean) {
-    const scanned = tokensOf(text);
+    const scanned = tokensOf(text, false, !preview);
     if (!scanned?.length || !isName(scanned[0].value)) return null;
     const tokens = scanned;
     let at = 0;
@@ -65,7 +77,10 @@ function readChain(text: string, preview: boolean) {
 
     function argumentsList() {
         if (take(')')) return;
-        do { operand(); } while (take(','));
+        do {
+            if (peek().startsWith('/')) at++;
+            else operand();
+        } while (take(','));
         expect(')');
     }
 
@@ -107,9 +122,12 @@ function readChain(text: string, preview: boolean) {
         let receiver: Leaf | undefined = leaves[0];
         for (;;) {
             if (take('(')) {
+                const first = at;
                 argumentsList();
                 leaves.length = 0;
-                boundaries?.push({ end: end(), call: true });
+                const call: MemberBoundary = { end: end(), call: true };
+                if (boundaries && tokens.slice(first, at).some(token => token.value.startsWith('/'))) call.regexArgument = true;
+                boundaries?.push(call);
             } else if (take('[')) {
                 const first = at;
                 let keyLeaves = operand();

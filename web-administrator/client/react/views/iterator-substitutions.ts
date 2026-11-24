@@ -118,24 +118,41 @@ export function validIteratorIndex(ancestorIndices: string[], descendantIndices:
 }
 
 /** Resolve a configured prefix only at a member boundary. */
-function memberAfterPrefix(expression: string, prefix: string) {
-    if (!expression.startsWith(prefix)) return null;
+function memberAfterPrefix(expression: string, prefix: string, transformer?: Element) {
+    const exactPrefix = expression.startsWith(prefix);
+    if (!exactPrefix && (!transformer || !expression.includes('/'))) return null;
     const members = readMemberBoundaries(expression);
-    const boundary = members.findIndex(member => member.end === prefix.length);
-    return boundary < 0 || members[boundary + 1]?.call ? null : members[boundary + 1] ?? { end: prefix.length };
+    let boundary = exactPrefix ? members.findIndex(member => member.end === prefix.length) : -1;
+    // A saved Swing XML path can have [i][0] where a nested Iterator's
+    // configured prefix has [i]. Both select the same E4X child.
+    if (boundary < 0 && members.some(part => part.regexArgument) && messageChildFormat(prefix, transformer) === 'XML') {
+        const configured = readMemberBoundaries(prefix);
+        let i = 0;
+        for (const [n, member] of configured.entries()) {
+            const text = prefix.slice(configured[n - 1]?.end ?? 0, member.end);
+            const actual = () => expression.slice(members[i - 1]?.end ?? 0, members[i]?.end);
+            if (configured[n - 1]?.key && /^\[\s*0\s*\]$/.test(actual()) && actual() !== text) i++;
+            if (i >= members.length || actual() !== text) return null;
+            boundary = i++;
+        }
+    }
+    if (boundary < 0 || members[boundary + 1]?.call) return null;
+    const start = members[boundary].end;
+    const next = members[boundary + 1] ?? { end: start };
+    return { ...next, start, regexSuffix: members.slice(boundary + 1).some(part => part.regexArgument) };
 }
 
 /** The first matching iterator at the greatest matched ancestor depth wins. */
-export function preferredIterator(expression: string, iterators: Element[], selected?: Element): Element | null {
+export function preferredIterator(expression: string, iterators: Element[], selected?: Element, transformer?: Element): Element | null {
     let preferred: Element | null = null;
     let maxDepth = -1;
     const visit = (nodes: Element[], target: string, depth: number) => {
         for (const iterator of nodes) {
             if (iterator === selected || !isIteratorType(elementType(iterator))) continue;
-            const direct = iteratorPrefixes(iterator).some(prefix => memberAfterPrefix(target.trimStart(), prefix.trim()));
+            const direct = iteratorPrefixes(iterator).some(prefix => memberAfterPrefix(target.trimStart(), prefix.trim(), transformer));
             if (direct) {
                 if (depth > maxDepth) { preferred = iterator; maxDepth = depth; }
-                visit(childrenOf(iterator), rewriteIteratorExpression(target, [iterator], true), depth + 1);
+                visit(childrenOf(iterator), rewriteIteratorExpression(target, [iterator], true, transformer), depth + 1);
             }
         }
     };
@@ -143,10 +160,10 @@ export function preferredIterator(expression: string, iterators: Element[], sele
     return preferred;
 }
 
-export function rewriteIteratorExpression(expression: any, ancestors: Element[], replace: boolean): any {
+export function rewriteIteratorExpression(expression: any, ancestors: Element[], replace: boolean, transformer?: Element): any {
     if (typeof expression !== 'string' || isJavaBlank(expression)) return expression;
     const iterators = replace ? ancestors : [...ancestors].reverse();
-    for (const iterator of iterators) expression = rewriteIteratorIndex(expression, iterator, replace);
+    for (const iterator of iterators) expression = rewriteIteratorIndex(expression, iterator, replace, { transformer });
     return expression;
 }
 
@@ -158,6 +175,10 @@ function treeMemberName(member: string): string | undefined {
     const literal = /^\[\s*(['"])([^'"\\]+)\1\s*\]$/.exec(key);
     if (literal) return literal[2];
     return key !== member && /^[$_\p{ID_Start}][$\p{ID_Continue}]*$/u.test(key) ? key : undefined;
+}
+
+function plainChild(member: string): boolean {
+    return /^\s*(?:\[\s*['"]|\.\s*[$_\p{ID_Start}][$\p{ID_Continue}]*\s*$)/u.test(member);
 }
 
 // A named namespace can resolve to the wildcard's namespace at runtime. Only
@@ -176,7 +197,11 @@ function overlapsRepeatedTreeAncestor(path: string, prefix: string): boolean {
         const tree = selected[i++];
         if (!tree) return false;
         if (tree.text === member.text) continue;
-        if (!tree.text.startsWith('.*::') || treeMemberName(tree.text) !== treeMemberName(member.text)) return false;
+        const name = treeMemberName(tree.text);
+        if (name === undefined || name !== treeMemberName(member.text)) return false;
+        // The tree always quotes ordinary children. An authored prefix may use
+        // dot notation for the same child before reaching the namespace.
+        if (!tree.text.startsWith('.*::') && !(plainChild(tree.text) && plainChild(member.text))) return false;
         differentSelector = true;
     }
     // A single sample row has no numeric selector, even when production messages repeat it.
@@ -195,27 +220,52 @@ export function treeWritePath(path: string, ancestors: Element[]): string | null
     return path;
 }
 
-function rewriteIteratorIndex(expression: string, iterator: Element, insert: boolean, rename?: string, detachedIndices?: number[]): string {
+const xmlDataTypes = new Set(['XML', 'HL7V2', 'HL7V3', 'DELIMITED', 'EDI/X12', 'NCPDP', 'DICOM']);
+
+function messageChildFormat(prefix: string, transformer?: Element): string | undefined {
+    if (!transformer) return;
+    const members = readMemberBoundaries(prefix);
+    const root = prefix.slice(0, members[0]?.end);
+    if (root !== 'msg' && root !== 'tmp') return;
+    if (members.length < 2 || !members.slice(1).every((member, i) =>
+        plainChild(prefix.slice(members[i].end, member.end)) || member.key || member.numeric)) return;
+    const side = root === 'msg' ? 'inbound' : 'outbound';
+    const type = transformer[side + 'DataType'];
+    return transformer[side + 'Properties']?.serializationProperties?.serializationType ?? (xmlDataTypes.has(type) ? 'XML' : type);
+}
+
+type RewriteOptions = { rename?: string; detachedIndices?: number[]; transformer?: Element };
+
+function rewriteIteratorIndex(expression: string, iterator: Element, insert: boolean,
+    { rename, detachedIndices, transformer }: RewriteOptions = {}): string {
     const index = iterator.properties?.indexVariable ?? 'i';
     const source = expression.trimStart();
     for (const prefix of iteratorPrefixes(iterator).map(value => value.trim()).sort((a, b) => b.length - a.length)) {
-        const next = memberAfterPrefix(source, prefix);
+        const next = memberAfterPrefix(source, prefix, transformer);
         if (!next) continue;
         const usesIndex = next.key === index;
         if (insert && usesIndex) return expression;
         if (!insert && !usesIndex) continue;
-        const replacement = insert ? `[${index}]` : rename ? `[${rename}]` : '';
+        // Detaching a JSON array row still requires a record index. Preserve
+        // any following child selector, including another array subscript.
+        const selectFirst = !insert && !rename && next.regexSuffix && messageChildFormat(prefix, transformer) === 'JSON';
+        const replacement = insert ? `[${index}]` : rename ? `[${rename}]` : selectFirst ? '[0]' : '';
         const leading = expression.length - source.length;
-        const start = leading + prefix.length;
+        const start = leading + next.start;
         const detached = detachedIndices?.indexOf(start) ?? -1;
-        const end = usesIndex || (next.numeric && detached < 0) ? leading + next.end : start;
+        // Swing retains [0] after the loop index when the suffix contains a
+        // regex call. On an E4X child [0] selects that same node and restores
+        // the original sample on detach. On a JavaScript object it reads key 0.
+        const keepSample = insert && next.numeric && next.regexSuffix
+            && /^\[\s*0\s*\]$/.test(source.slice(next.start, next.end)) && messageChildFormat(prefix, transformer) === 'XML';
+        const end = usesIndex || (next.numeric && detached < 0 && !keepSample) ? leading + next.end : start;
         if (detachedIndices) {
             if (insert && detached >= 0) detachedIndices.splice(detached, 1);
             const delta = start + replacement.length - end;
             for (let offset = 0; offset < detachedIndices.length; offset++) {
                 if (detachedIndices[offset] >= end) detachedIndices[offset] += delta;
             }
-            if (!insert) detachedIndices.push(start);
+            if (!insert && !selectFirst) detachedIndices.push(start);
         }
         return expression.slice(0, start) + replacement + expression.slice(end);
     }
@@ -276,11 +326,11 @@ function rewriteSubtree(element: Element, rewrite: (value: any) => any): void {
 }
 
 /** Mutates only fields affected by entering or leaving the supplied ancestors. */
-export function rewriteElementIteratorVariables(element: Element, ancestors: Element[], replace: boolean): void {
-    if (ancestors.length) rewriteSubtree(element, value => rewriteIteratorExpression(value, ancestors, replace));
+export function rewriteElementIteratorVariables(element: Element, ancestors: Element[], replace: boolean, transformer?: Element): void {
+    if (ancestors.length) rewriteSubtree(element, value => rewriteIteratorExpression(value, ancestors, replace, transformer));
 }
 
-export function relocateElementIteratorVariables(element: Element, previous: Element[], current: Element[]): void {
+export function relocateElementIteratorVariables(element: Element, previous: Element[], current: Element[], transformer?: Element): void {
     let shared = 0;
     while (shared < previous.length && previous[shared] === current[shared]) shared++;
     const departed = previous.slice(shared).reverse();
@@ -290,20 +340,20 @@ export function relocateElementIteratorVariables(element: Element, previous: Ele
         if (typeof value !== 'string') return value;
         // An explicit index following a detached loop index belongs to its selected item.
         const detachedIndices: number[] = [];
-        for (const iterator of departed) value = rewriteIteratorIndex(value, iterator, false, undefined, detachedIndices);
-        for (const iterator of entered) value = rewriteIteratorIndex(value, iterator, true, undefined, detachedIndices);
+        for (const iterator of departed) value = rewriteIteratorIndex(value, iterator, false, { detachedIndices, transformer });
+        for (const iterator of entered) value = rewriteIteratorIndex(value, iterator, true, { detachedIndices, transformer });
         return value;
     });
 }
 
-export function renameIteratorIndex(element: Element, index: string, scope: Element[] = [element]): boolean {
+export function renameIteratorIndex(element: Element, index: string, scope: Element[] = [element], transformer?: Element): boolean {
     const previous = element.properties.indexVariable ?? 'i';
     if (previous === index) return true;
     // IteratorRuleProperties generates a result flag for each nesting depth.
     if (elementType(element) === ElementType.IteratorRule && /^_iterator_flag_\d+$/.test(index)) return false;
     const target = element.properties.target;
     const binding = { properties: { indexVariable: previous, prefixSubstitutions: [...iteratorPrefixes(element), target] } };
-    const rewrite = (value: any) => typeof value === 'string' ? rewriteIteratorIndex(value, binding, false, index) : value;
+    const rewrite = (value: any) => typeof value === 'string' ? rewriteIteratorIndex(value, binding, false, { rename: index, transformer }) : value;
     const unsafeReference = (value: unknown, name: string) => typeof value === 'string' && referencesIteratorIdentifier(value, name);
     const mentionsEitherIndex = (value: unknown) => unsafeReference(value, previous) || unsafeReference(value, index);
     const hasScriptReferences = (el: Element): boolean =>

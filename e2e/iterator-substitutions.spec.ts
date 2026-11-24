@@ -34,11 +34,12 @@ const row = (page: Page, name: string) => page.locator('tr[data-path]').filter({
 const click = (page: Page, name: string) => page.getByRole('button', { name, exact: true }).click();
 const children = (elements: any, name: string, type = ITERATOR) => elements[type].find((el: Element) => el.name === name).properties.children;
 
-async function openEditor(page: Page, elements: Element[], kind = 'transformer', template = '') {
+async function openEditor(page: Page, elements: Element[], kind = 'transformer', template = '', dataType?: string) {
     const id = 'iterator-test';
     let channel = makeChannel(id);
     const target = () => kind === 'response' ? channel.destinationConnectors.connector[0].responseTransformer : channel.sourceConnector[kind];
     target().elements = wire(elements);
+    if (dataType) target().inboundDataType = dataType;
     if (template) {
         target().inboundDataType = 'XML';
         target().inboundTemplate = template;
@@ -65,6 +66,28 @@ async function assign(page: Page, element: string, destination: string) {
     await dialog.getByLabel('Iterator', { exact: true }).selectOption({ label: destination });
     await dialog.getByRole('button', { name: 'Use Iterator' }).click();
 }
+
+test('assigning and detaching a Mapper preserves its regex cleanup and updates the repetition', async ({ page }) => {
+    const cleanup = ".replace(/-/g, '')";
+    const save = await openEditor(page, [{ ...mapper(), mapping: mapping() + cleanup }, iterator('Groups')]);
+    await assign(page, 'Observation', 'Groups');
+    expect(children(await save(), 'Groups')[MAPPER][0].mapping).toBe(PREFIX + '[i]' + mapping().slice(PREFIX.length) + cleanup);
+    await page.reload();
+    await row(page, 'Observation').locator('td.num').click();
+    await click(page, 'Remove From Iterator');
+    expect((await save())[MAPPER][0].mapping).toBe(mapping() + cleanup);
+});
+
+test('a JSON regex Mapper reads each object on assignment and the first object on detach', async ({ page }) => {
+    const cleanup = ".replace(/-/g, '')";
+    const save = await openEditor(page, [{ ...mapper(), mapping: mapping() + cleanup }, iterator('Groups')], 'transformer', '', 'JSON');
+    await assign(page, 'Observation', 'Groups');
+    expect(children(await save(), 'Groups')[MAPPER][0].mapping).toBe(mapping('i') + cleanup);
+    await page.reload();
+    await row(page, 'Observation').locator('td.num').click();
+    await click(page, 'Remove From Iterator');
+    expect((await save())[MAPPER][0].mapping).toBe(mapping() + cleanup);
+});
 
 test('a new Iterator preserves an existing column selector from a preceding script', async ({ page }) => {
     const mapping = "msg['rows'][0]['values'][i]";
@@ -895,6 +918,36 @@ test('a standalone namespaced Mapper binds to a Swing wildcard Iterator after sa
     await page.getByRole('menuitem', { name: 'Move Step Down' }).click();
     await page.getByRole('dialog', { name: 'Move Step Down' }).getByRole('button', { name: 'OK' }).click();
     expect(rootMapping(await save())).toMatchObject({ mapping: bound(''), defaultValue: authored });
+});
+
+test('a namespaced tree drop preserves the draft and accepts a manually indexed Message Segment', async ({ page }) => {
+    const prefix = 'msg.env.v::group';
+    const builder = { type: BUILDER, name: 'Write value', messageSegment: 'msg.audit', mapping: "'updated'+i" };
+    const xml = '<m xmlns:v="urn:v"><env><v:group><value>one</value></v:group><v:group><value>two</value></v:group></env></m>';
+    const save = await openEditor(page, [
+        { type: 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep', name: 'Namespace', script: "var v=new Namespace('urn:v');" },
+        iterator('Groups', 'i', [builder], [prefix])
+    ], 'transformer', xml);
+    await row(page, builder.name).locator('td.num').click();
+    await page.getByRole('tab', { name: 'Message Trees' }).click();
+    const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+    for (const name of ['env', 'v:group[0]']) {
+        await tree.getByRole('row').filter({ has: page.getByText(name, { exact: true }) }).locator('.twisty').click();
+    }
+    const segment = page.locator('[data-message-segment]');
+    await tree.getByRole('row').filter({ has: page.getByText('value', { exact: true }) }).dragTo(segment);
+    const warning = page.getByRole('dialog', { name: 'Warning' });
+    await expect(warning).toContainText('Enter its indexed Message Segment manually');
+    await warning.getByRole('button', { name: 'Close' }).last().click();
+    await expect(segment).toHaveValue(builder.messageSegment);
+    await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toBeHidden();
+    const indexed = prefix + '[i].value';
+    await segment.fill(indexed);
+    await segment.blur();
+    expect(children(await save(), 'Groups')[BUILDER][0].messageSegment).toBe(indexed);
+    await page.reload();
+    await row(page, builder.name).locator('td.num').click();
+    await expect(page.locator('[data-message-segment]')).toHaveValue(indexed);
 });
 
 test('Message Segment drops preserve the parent Iterator and reject a wildcard attribute write', async ({ page }) => {

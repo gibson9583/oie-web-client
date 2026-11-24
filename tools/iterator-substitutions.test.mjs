@@ -49,6 +49,28 @@ test('assignment replaces the direct index only and preserves the source of ever
     }
 });
 
+test('regex cleanup keeps the Swing XML sample selector through nested moves and detachment', () => {
+    const model = { inboundDataType: 'HL7V2', outboundDataType: 'JSON' };
+    const inner = { properties: { indexVariable: 'j', prefixSubstitutions: [prefix + "[i]['OBX.5']"] } };
+    const suffix = ".toString().replace(/-/g, '')";
+    const target = { __type: 'com.mirth.connect.plugins.mapper.MapperStep', mapping: prefix + "[0]['OBX.5'][0]" + suffix };
+    relocateElementIteratorVariables(target, [], [iterator, inner], model);
+    assert.equal(target.mapping, prefix + "[i][0]['OBX.5'][j][0]" + suffix);
+    relocateElementIteratorVariables(target, [iterator, inner], [], model);
+    assert.equal(target.mapping, prefix + "[0]['OBX.5'][0]" + suffix);
+    const jsonPath = "tmp['OBX']";
+    const jsonLoop = { properties: { indexVariable: 'i', prefixSubstitutions: [jsonPath] } };
+    assert.equal(rewriteIteratorExpression(jsonPath + '[0].value' + suffix, [jsonLoop], true, model), jsonPath + '[i].value' + suffix);
+    assert.equal(rewriteIteratorExpression(jsonPath + '[i].value' + suffix, [jsonLoop], false, model), jsonPath + '[0].value' + suffix);
+    const nestedArray = { ...target, mapping: jsonPath + '[i][0].value' + suffix };
+    const other = { properties: { indexVariable: 'j', prefixSubstitutions: [jsonPath] } };
+    relocateElementIteratorVariables(nestedArray, [jsonLoop], [other], model);
+    assert.equal(nestedArray.mapping, jsonPath + '[j][0].value' + suffix);
+    relocateElementIteratorVariables(nestedArray, [other], [], model);
+    assert.equal(nestedArray.mapping, jsonPath + '[0][0].value' + suffix);
+    assert.equal(rewriteIteratorExpression(prefix + '[1].value' + suffix, [iterator], true, model), prefix + '[i].value' + suffix);
+});
+
 test('a nested move rewrites the Iterator target, substitution prefixes and descendants in order', () => {
     const innerPrefix = prefix + "['OBX.5']";
     const inner = { __type: iterator.__type, properties: { target: innerPrefix, indexVariable: 'j', prefixSubstitutions: { string: innerPrefix } },
@@ -133,6 +155,14 @@ test('a tree write under a qualified parent only picks up its configured row ind
     }
     for (const prefix of ["tmp[new QName('urn:v', 'group')]", "msg['QName']", "msg['other'].v::group", "msg[key]", "msg.v::[key]"]) {
         assert.equal(treeWritePath(path, [loop(prefix)]), path);
+    }
+    const nested = "msg['env'].*::['group'][0]['value']";
+    for (const env of ['.env', '["env"]', "['env']"]) {
+        assert.equal(treeWritePath(nested, [loop('msg' + env + '.v::group')]), null);
+    }
+    for (const prefix of ['tmp.env.v::group', 'msg.other.v::group', 'msg.v::env.v::group',
+        'msg..env.v::group', 'msg.@env.v::group', 'msg.env.v::other']) {
+        assert.equal(treeWritePath(nested, [loop(prefix)]), nested);
     }
     const single = groups + "['value']";
     assert.equal(treeWritePath(single, [loop("msg.v::group")]), null);

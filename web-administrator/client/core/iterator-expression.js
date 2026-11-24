@@ -10,10 +10,11 @@ const keywords = new Set(('break case catch const continue debugger default dele
     + 'await class enum export extends import let super yield').split(' '));
 const integer = /^(?:0|[1-9]\d*)$/;
 const quoted = /^['"`]/;
-// An unrecognized character ends the scan. In particular, a regexp, XML
-// literal or interpolated template can contain text that looks like a selector.
+// Scan a regex only in argument position. Brackets, commas and parentheses
+// inside it belong to the pattern, even when they resemble member boundaries.
+const regexArgument = /\/((?:\\[^\r\n\u2028\u2029]|\[(?:\\[^\r\n\u2028\u2029]|[^\\\]\r\n\u2028\u2029])*\]|[^/\\[\r\n\u2028\u2029])+)\/([a-zA-Z]*)/y;
 const lexeme = /\/\/[^\r\n\u2028\u2029]*|\/\*[\s\S]*?\*\/|\s+|[$_\p{ID_Start}][$\p{ID_Continue}]*|[0-9]+|'(?:\\[^\r\n\u2028\u2029]|[^'\\\r\n\u2028\u2029])*'|"(?:\\[^\r\n\u2028\u2029]|[^"\\\r\n\u2028\u2029])*"|`(?:\\[^\r\n\u2028\u2029]|[^`\\\r\n\u2028\u2029])*`|::|\.\.\.|\.\.|[.()[\]*@,;{}=+!%|&^~:>?-]/uy;
-function tokensOf(text, skipComments = false) {
+function tokensOf(text, skipComments = false, allowRegexArguments = false) {
     // Rhino can ignore format controls in token spellings and in string escapes.
     if (/[\p{Cf}\u0000-\u0008\u000e-\u001b\u007f-\u009f]/u.test(text))
         return null;
@@ -21,8 +22,25 @@ function tokensOf(text, skipComments = false) {
     for (let start = 0; start < text.length;) {
         lexeme.lastIndex = start;
         const match = lexeme.exec(text);
-        if (!match)
-            return null;
+        if (!match) {
+            const previous = tokens.at(-1)?.value;
+            if (!allowRegexArguments || text[start] !== '/' || (previous !== '(' && previous !== ','))
+                return null;
+            regexArgument.lastIndex = start;
+            const literal = regexArgument.exec(text);
+            if (!literal || !/^[gim]*$/.test(literal[2]))
+                return null;
+            try {
+                new RegExp(literal[1], literal[2]);
+            }
+            catch {
+                return null;
+            }
+            const end = regexArgument.lastIndex;
+            tokens.push({ value: literal[0], start, end });
+            start = end;
+            continue;
+        }
         const value = match[0];
         const end = lexeme.lastIndex;
         if (value.startsWith('`') && value.includes('${'))
@@ -41,7 +59,7 @@ function isName(value) {
     return identifier.test(value) && !keywords.has(value) && !/[\uD800-\uDFFF]/.test(value);
 }
 function readChain(text, preview) {
-    const scanned = tokensOf(text);
+    const scanned = tokensOf(text, false, !preview);
     if (!scanned?.length || !isName(scanned[0].value))
         return null;
     const tokens = scanned;
@@ -69,7 +87,10 @@ function readChain(text, preview) {
         if (take(')'))
             return;
         do {
-            operand();
+            if (peek().startsWith('/'))
+                at++;
+            else
+                operand();
         } while (take(','));
         expect(')');
     }
@@ -117,9 +138,13 @@ function readChain(text, preview) {
         let receiver = leaves[0];
         for (;;) {
             if (take('(')) {
+                const first = at;
                 argumentsList();
                 leaves.length = 0;
-                boundaries?.push({ end: end(), call: true });
+                const call = { end: end(), call: true };
+                if (boundaries && tokens.slice(first, at).some(token => token.value.startsWith('/')))
+                    call.regexArgument = true;
+                boundaries?.push(call);
             }
             else if (take('[')) {
                 const first = at;

@@ -1468,6 +1468,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         setupRef.current = { channel, version, connector, target, elements };
     }
     const { channel, version, connector, target } = setupRef.current;
+    const transformer = isFilter ? connector?.transformer : target;
     // The channel's destinations (metaDataId + name) — threaded to step editors
     // that need them (e.g. Destination Set Filter's selectable destination list).
     const stepDestinations = useMemo(() => oie.destinationsOf(channel)
@@ -2053,7 +2054,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             || allIteratorPaths(childrenOf(iterator)).some(childPath =>
                 elementAtPath(childrenOf(iterator), childPath).properties?.indexVariable === index)) return 'Enter an unused JavaScript variable name.';
         // Transformer steps share doTransform's function scope. Filter rules run in separate functions.
-        if (!renameIteratorIndex(iterator, index, isFilter ? [iterator] : elementsRef.current)) {
+        if (!renameIteratorIndex(iterator, index, isFilter ? [iterator] : elementsRef.current, transformer)) {
             return 'Review generated variables, child expressions, and scripts in the same scope. Update references the editor cannot rename or choose a different index name.';
         }
         commitRef.current();
@@ -2066,7 +2067,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const previous = iteratorAncestors(path);
         const parentPath = parent ? pathOf(parent, elements) : null;
         const current = parentPath ? [...iteratorAncestors(parentPath), parent] : [];
-        relocateElementIteratorVariables(el, previous, current);
+        relocateElementIteratorVariables(el, previous, current, transformer);
         listAtPath(elements, path).splice(path[path.length - 1], 1);
         const destination = parent ? childrenOf(parent) : elements;
         destination.splice(index ?? destination.length, 0, el);
@@ -2128,7 +2129,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 const indent = depth ? '\u00a0'.repeat(4 + (depth - 1) * 8) + '— ' : '';
                 return h('option', { value: String(i) }, indent + (it.name || `Iterator ${i + 1}`));
             })) as HTMLSelectElement;
-        const preferred = parent || preferredIterator(wizardTarget, elements, sourcePath ? el : undefined);
+        const preferred = parent || preferredIterator(wizardTarget, elements, sourcePath ? el : undefined, transformer);
         const preferredIndex = targets.indexOf(preferred);
         if (preferredIndex >= 0) choice.value = String(preferredIndex);
         else if (!targetPrefixes.choices.length && targets.length) choice.value = '0';
@@ -2142,7 +2143,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         function updateSubstitutions() {
             const preview = (source: string, prefix: string) => {
                 const previewIterator = { properties: { indexVariable: index, prefixSubstitutions: [prefix] } };
-                return h('div', source, ' → ', rewriteIteratorExpression(source, [previewIterator], true));
+                return h('div', source, ' → ', rewriteIteratorExpression(source, [previewIterator], true, transformer));
             };
             substitutions.replaceChildren(preview(wizardTarget, target.value));
             if (outbound.value) substitutions.appendChild(preview(originalInfo.outbound || '', outbound.value));
@@ -2218,7 +2219,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             if (!canPlaceElement(el, [...scope, iterator])) return;
             if (created) {
                 listAtPath(elementsRef.current, sourcePath).splice(sourcePath.at(-1), 0, iterator);
-                rewriteElementIteratorVariables(iterator, iteratorAncestors(pathOf(iterator, elementsRef.current)), true);
+                rewriteElementIteratorVariables(iterator, iteratorAncestors(pathOf(iterator, elementsRef.current)), true, transformer);
                 iterator.name = iteratorName(iterator);
             }
             relocateElement(created ? pathOf(el, elementsRef.current) : sourcePath, iterator);
@@ -2263,7 +2264,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 && iteratorContext(currentAncestors) === ancestorState;
         };
         const preview = structuredClone(el);
-        if (parent) rewriteElementIteratorVariables(preview, ancestors, true);
+        if (parent) rewriteElementIteratorVariables(preview, ancestors, true, transformer);
         const insert = (iterator: any, created = false) => {
             if (!contextCurrent()) return;
             if (iterator && !created && (!pathOf(iterator, elementsRef.current) || !isIteratorType(iterator.__type))) return;
@@ -2279,11 +2280,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 list.push(iterator);
                 const path = pathOf(iterator, elementsRef.current);
                 iterator.name = iteratorName(iterator);
-                rewriteElementIteratorVariables(iterator, iteratorAncestors(path), true);
+                rewriteElementIteratorVariables(iterator, iteratorAncestors(path), true, transformer);
             }
             (iterator ? childrenOf(iterator) : list).push(el);
             const path = pathOf(el, elementsRef.current);
-            if (path.length > 1) rewriteElementIteratorVariables(el, iteratorAncestors(path), true);
+            if (path.length > 1) rewriteElementIteratorVariables(el, iteratorAncestors(path), true, transformer);
             setSelected(path);
             commitRef.current();
             toast(`Added ${label} "${el.name}"`);
