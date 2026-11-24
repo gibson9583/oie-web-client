@@ -48,7 +48,7 @@ import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
-import { generateElementScript } from '../../core/step-script.js';
+import { generateElementScript, usesGeneratedIteratorIdentifier } from '../../core/step-script.js';
 import { availableMapperKey } from './mapper-key.js';
 import { isIteratorType, iteratorName } from '../../core/oie.js';
 import { childrenOf, serializeEditorElements, rewriteElementIteratorVariables, getIteratorInfo, iteratorExpressionParts,
@@ -1692,6 +1692,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const row = elementAtPath(elements, selected);
         const parentPath = row && isIteratorType(row.__type) ? selected : selected.slice(0, -1);
         const parent = elementAtPath(elements, parentPath);
+        if (!canPlaceElement(element, parent ? [...iteratorAncestors(parentPath), parent] : [])) return;
         const siblings = parent ? childrenOf(parent) : elements;
         siblings.push(element);
         setSelected([...parentPath, siblings.length - 1]);
@@ -1722,6 +1723,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             const created = nextType.create?.() ?? { name: '', enabled: true };
             created.__type = newType;
             if (toIterator) created.__children = [];
+            if (!canPlaceElement(created, iteratorAncestors(current))) return;
             listAtPath(elementsRef.current, current)[current.at(-1)] = created;
             setSelected(current);
             commitRef.current();
@@ -1891,16 +1893,17 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // (checkProperties) plus duplicate Iterator index-variable detection across
     // the ancestor stack. Recurses into Iterator children. Collects EVERY
     // offending element (Swing lists them all in one dialog), pre-wrapped.
-    function collectFieldErrors() {
-        const out: any[] = [];
-        const idxStack: any[] = [];
+    function collectFieldErrors(elements = elementsRef.current, idxStack: string[] = []) {
+        const out: string[] = [];
         (function walk(list: any) {
             for (const el of list) {
                 const def = typeDef(el.__type);
                 const msg = def && typeof def.validate === 'function' ? String(def.validate(el) || '').trim() : '';
                 if (msg) out.push(elementError(el, msg));
+                const conflict = generatedIndexError(el, idxStack);
+                if (conflict) out.push(elementError(el, conflict));
                 if (isIteratorType(el.__type)) {
-                    const iv = (el.properties && el.properties.indexVariable) || '';
+                    const iv = el.properties?.indexVariable ?? 'i';
                     if (iv && idxStack.includes(iv)) {
                         out.push(elementError(el, `Duplicate Iterator index variable ${iv} found.`));
                     }
@@ -1909,7 +1912,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                     idxStack.pop();
                 }
             }
-        })(elementsRef.current);
+        })(elements);
         return out;
     }
 
@@ -1970,10 +1973,9 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     async function validateElement() {
         const el = elementAtPath(elementsRef.current, selectedPathRef.current);
         if (!el) { toast(`Select a ${kind.noun.toLowerCase()} first`, 'warn'); return; }
-        // (a) Field check for this element (Swing plugin.checkProperties).
-        const def = typeDef(el.__type);
-        const fieldMsg = def && typeof def.validate === 'function' ? String(def.validate(el) || '').trim() : '';
-        if (fieldMsg) { showValidationErrors([elementError(el, fieldMsg)]); return; }
+        const indices = iteratorAncestors(selectedPathRef.current!).map(it => it.properties?.indexVariable ?? 'i');
+        const errors = collectFieldErrors([el], indices);
+        if (errors.length) { showValidationErrors(errors); return; }
         // (b) Rhino syntax check of its generated script.
         const { script, incomplete } = scriptForValidation(el);
         const active = editorSessionActive();
@@ -1997,6 +1999,22 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
 
     function iteratorAncestors(path: number[]) {
         return path.slice(0, -1).map((_, i) => elementAtPath(elementsRef.current, path.slice(0, i + 1)));
+    }
+
+    function generatedIndexError(element: any, indices: string[]) {
+        const conflict = indices.find(index => usesGeneratedIteratorIdentifier(element, index));
+        return conflict ? `The ${oie.elementTypeLabel(element.__type)} step uses the Iterator index name "${conflict}". Choose a different Iterator or index name.` : '';
+    }
+
+    function canPlaceElement(element: any, ancestors: any[]) {
+        if (!ancestors.length) return true;
+        const indices = ancestors.map(it => it.properties?.indexVariable ?? 'i');
+        // Moving an Iterator also brings its children's generated scripts into this scope.
+        for (const { el } of flattenRows([element])) {
+            const error = generatedIndexError(el, indices);
+            if (error) { toast(error, 'warn'); return false; }
+        }
+        return true;
     }
 
     function iteratorContext(ancestors: any[]) {
@@ -2196,6 +2214,8 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             if (!canEditElements()) return;
             const sourcePath = pathOf(el, elementsRef.current);
             if (!sourcePath) return;
+            const scope = created ? iteratorAncestors(sourcePath) : iteratorAncestors(pathOf(iterator, elementsRef.current));
+            if (!canPlaceElement(el, [...scope, iterator])) return;
             if (created) {
                 listAtPath(elementsRef.current, sourcePath).splice(sourcePath.at(-1), 0, iterator);
                 rewriteElementIteratorVariables(iterator, iteratorAncestors(pathOf(iterator, elementsRef.current)), true);
@@ -2247,20 +2267,19 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const insert = (iterator: any, created = false) => {
             if (!contextCurrent()) return;
             if (iterator && !created && (!pathOf(iterator, elementsRef.current) || !isIteratorType(iterator.__type))) return;
-            if (writeSource && iterator) {
-                const scope = created ? [...ancestors, iterator] : [...iteratorAncestors(pathOf(iterator, elementsRef.current)), iterator];
-                if (!treeMessageSegment(writeSource, scope)) return;
+            const scope = !iterator ? [] : created ? [...ancestors, iterator]
+                : [...iteratorAncestors(pathOf(iterator, elementsRef.current)), iterator];
+            if (writeSource && iterator && !treeMessageSegment(writeSource, scope)) return;
+            if (typeId === ElementType.Mapper) {
+                el.name = el.variable = availableMapperKey(channel, el.variable, elementsRef.current, scope[0]);
             }
+            if (!canPlaceElement(el, scope)) return;
             const list = parent ? childrenOf(parent) : elementsRef.current;
             if (created) {
                 list.push(iterator);
                 const path = pathOf(iterator, elementsRef.current);
                 iterator.name = iteratorName(iterator);
                 rewriteElementIteratorVariables(iterator, iteratorAncestors(path), true);
-            }
-            if (typeId === ElementType.Mapper) {
-                const outer = iterator && elementsRef.current[pathOf(iterator, elementsRef.current)[0]];
-                el.name = el.variable = availableMapperKey(channel, el.variable, outer);
             }
             (iterator ? childrenOf(iterator) : list).push(el);
             const path = pathOf(el, elementsRef.current);

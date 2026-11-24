@@ -84,7 +84,7 @@ export function iteratorWizardPrefixes(expression: string, ancestorIndices: stri
 
 // Rhino transformer steps share one function. An independent loop can reuse
 // an index, but a free reference in a sibling must keep its original binding.
-function freeIteratorScopeNames(scope: Element[], excluded?: Element): Set<string> {
+export function freeIteratorScopeNames(scope: Element[], excluded?: Element): Set<string> {
     const used = new Set<string>();
     function reserve(source: string, bound: Set<string>) {
         for (const name of iteratorIdentifierNames(source)) {

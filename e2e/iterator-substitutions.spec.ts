@@ -406,6 +406,89 @@ test('mapping the whole message creates a valid Mapper with a unique key', async
     expect((await save())[MAPPER][1]).toMatchObject({ name: 'msg_3', variable: 'msg_3', mapping: 'msg.toString()' });
 });
 
+test('assigning a subtree checks the destination index before moving any steps', async ({ page }) => {
+    const save = await openEditor(page, [iterator('Source', 'j', [mapper()]), iterator('Conflict', 'mapping'), iterator('Safe')]);
+    await assign(page, 'Source', 'Conflict');
+    const warning = page.getByRole('dialog', { name: 'Warning' });
+    await expect(warning).toContainText('Mapper step uses the Iterator index name "mapping"');
+    await warning.getByRole('button', { name: 'Close' }).last().click();
+    await expect(row(page, 'Source')).toHaveAttribute('data-path', '0');
+    await expect(row(page, 'Observation')).toHaveAttribute('data-path', '0.0');
+    await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toHaveCount(0);
+
+    await assign(page, 'Observation', 'Safe');
+    const stored = await save();
+    expect(children(stored, 'Safe')[MAPPER][0].mapping).toBe(mapping('i'));
+    expect(children(stored, 'Conflict')).toBe('');
+});
+
+test('adding a tree Mapper checks the current index and permits retry after a rename', async ({ page }) => {
+    const save = await openEditor(page, [iterator('Loop', 'mapping')], 'transformer', '<m><OBX>one</OBX><OBX>two</OBX></m>');
+    await page.getByRole('tab', { name: 'Message Trees' }).click();
+    const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+    async function mapRoot() {
+        await tree.locator('.mt-root-label').click({ button: 'right' });
+        await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
+        await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
+    }
+    await mapRoot();
+    const warning = page.getByRole('dialog', { name: 'Warning' });
+    await expect(warning).toContainText('Mapper step uses the Iterator index name "mapping"');
+    await warning.getByRole('button', { name: 'Close' }).last().click();
+    await expect(page.locator('tr[data-path]')).toHaveCount(1);
+    await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toHaveCount(0);
+
+    const index = page.locator('.step-editor-fill .field:has(label:text-is("Index Variable")) input');
+    await index.fill('i');
+    await index.press('Enter');
+    await mapRoot();
+    expect(children(await save(), 'Loop')[MAPPER][0].variable).toBe('msg');
+});
+
+test('response transformer Add and type conversion preserve a conflicting Iterator draft', async ({ page }) => {
+    const js = 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep';
+    await openEditor(page, [iterator('Loop', 'mapping', [{ type: js, name: 'Existing', script: '' }])], 'response');
+    await click(page, 'Add New Step');
+    const warning = page.getByRole('dialog', { name: 'Warning' });
+    await expect(warning).toContainText('Mapper step uses the Iterator index name "mapping"');
+    await warning.getByRole('button', { name: 'Close' }).last().click();
+    const type = row(page, 'Existing').getByRole('combobox');
+    await type.selectOption(MAPPER);
+    await expect(warning).toContainText('Mapper step uses the Iterator index name "mapping"');
+    await warning.getByRole('button', { name: 'Close' }).last().click();
+    await expect(type).toHaveValue(js);
+    await expect(page.locator('tr[data-path]')).toHaveCount(2);
+    await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toHaveCount(0);
+});
+
+test('validation identifies the affected Mapper in a previously saved conflicting loop', async ({ page }) => {
+    await openEditor(page, [iterator('Loop', 'mapping', [{ ...mapper(), mapping: mapping('mapping') }])]);
+    await row(page, 'Observation').locator('td.num').click();
+    for (const task of ['Validate Step', 'Validate Transformer']) {
+        await click(page, task);
+        const error = page.getByRole('dialog', { name: /Error validating transformer steps/i });
+        await expect(error).toContainText('step 0-0');
+        await expect(error).toContainText('Mapper step uses the Iterator index name "mapping"');
+        await error.getByRole('button', { name: 'Close' }).last().click();
+    }
+});
+
+test('a tree Mapper preserves authored locals in the same transformer function', async ({ page }) => {
+    const js = 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep';
+    const save = await openEditor(page, [
+        { type: js, name: 'Remember', script: "var _msg = 'prior';" },
+        iterator('Loop'),
+        { type: js, name: 'Publish', script: "channelMap.put('after', _msg); // _msg_2" }
+    ], 'transformer', '<m><OBX>one</OBX><OBX>two</OBX></m>');
+    await row(page, 'Loop').locator('td.num').click();
+    await page.getByRole('tab', { name: 'Message Trees' }).click();
+    const tree = page.getByRole('region', { name: 'Inbound message tree (msg)' });
+    await tree.locator('.mt-root-label').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
+    await page.getByRole('dialog', { name: 'Select An Option' }).getByRole('button', { name: 'No', exact: true }).click();
+    expect(children(await save(), 'Loop')[MAPPER][0]).toMatchObject({ name: 'msg_2', variable: 'msg_2' });
+});
+
 test('a tree Mapper reserves the normalized accumulators in its outer Iterator across map scopes', async ({ page }) => {
     const existing = { ...mapper(), variable: 'msg', scope: 'CONNECTOR' };
     const nested = iterator('Inner', 'j', [{ ...mapper(), variable: 'm-sg_2', scope: 'RESPONSE' }]);

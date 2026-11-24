@@ -1,4 +1,5 @@
 import jsTokens from 'js-tokens';
+import { freeIteratorScopeNames } from './iterator-substitutions.js';
 import { ElementType } from '../../core/element-types.js';
 import { destinationsOf, elementsToArray, isIteratorType } from '../../core/oie.js';
 import { convertIdentifier } from '../../core/step-script.js';
@@ -37,7 +38,7 @@ function collectChannelWrites(script: string, keys: Set<string>): void {
     }
 }
 
-export function availableMapperKey(channel: OieObject, base: string, outerIterator?: OieObject): string {
+export function availableMapperKey(channel: OieObject, base: string, steps: OieObject[], outerIterator?: OieObject): string {
     if (!base) return base;
     const keys = new Set<string>();
     function collect(elements: Parameters<typeof elementsToArray>[0]): void {
@@ -56,7 +57,8 @@ export function availableMapperKey(channel: OieObject, base: string, outerIterat
 
     // The engine initializes every nested Mapper/XSLT list before the outer loop,
     // and publishes them all afterward. The output map's scope does not distinguish lists.
-    const locals = new Set<string>();
+    // A generated list is also a function-scoped variable visible to authored sibling steps.
+    const locals = outerIterator ? freeIteratorScopeNames(steps) : new Set<string>();
     function collectLocals(iterator: OieObject): void {
         locals.add(iterator.properties?.indexVariable ?? 'i');
         for (const el of iterator.__children) {
