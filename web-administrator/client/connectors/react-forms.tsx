@@ -996,6 +996,9 @@ export function TransmissionModePanel({ properties, onChange }: { properties: an
                             <div className="flex gap-1.5 items-center">
                                 <select value={tm.pluginPointName} className="w-[162px]"
                                     onChange={(e) => selectMode(e.target.value)}>
+                                    {!mode && tm.pluginPointName && (
+                                        <option value={tm.pluginPointName} disabled>{tm.pluginPointName} (unavailable)</option>
+                                    )}
                                     {modes.map((m) => <option key={m.name} value={m.name}>{m.label}</option>)}
                                 </select>
                                 {mode && mode.openSettings && (

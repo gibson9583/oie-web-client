@@ -27,7 +27,7 @@ async function registerTestModes(page: Page) {
     }, custom);
 }
 
-async function openPanel(page: Page, name: string, initialMode: Record<string, unknown>) {
+async function openPanel(page: Page, name: string, initialMode: Record<string, unknown>, registerModes?: (page: Page) => Promise<void>) {
     const connector = CASES.find(c => c.name === name)!;
     const source = connector.mode === 'SOURCE';
     const id = 'transmission-mode';
@@ -50,7 +50,7 @@ async function openPanel(page: Page, name: string, initialMode: Record<string, u
     await page.goto(`/channels/${id}/edit`);
     async function mount() {
         await expect(page.getByRole('tab', { name: 'Summary', exact: true })).toBeVisible();
-        await registerTestModes(page);
+        await registerModes?.(page);
         await page.getByRole('tab', { name: source ? 'Source' : 'Destinations', exact: true }).click();
     }
     await mount();
@@ -75,7 +75,7 @@ async function openPanel(page: Page, name: string, initialMode: Record<string, u
 for (const [name, target] of [['TCP Listener', basic], ['TCP Sender', mllp]] as const) {
     test(`${name} switches from a custom transmission mode to ${target.pluginPointName} and back`, async ({ page }) => {
         const version = name === 'TCP Listener' ? { '@version': '4.7.0' } : {};
-        const { selector, save, section, mount } = await openPanel(page, name, { ...custom, ...version, ackPolicy: 'MANUAL' });
+        const { selector, save, section, mount } = await openPanel(page, name, { ...custom, ...version, ackPolicy: 'MANUAL' }, registerTestModes);
         await selector.selectOption('Custom');
         await expect(section.getByText('MANUAL', { exact: true })).toBeVisible();
         await selector.selectOption(target.pluginPointName);
@@ -91,7 +91,7 @@ for (const [name, target] of [['TCP Listener', basic], ['TCP Sender', mllp]] as 
 }
 
 test('incomplete and throwing mode initializers leave the previous settings intact', async ({ page }) => {
-    const { selector, save } = await openPanel(page, 'TCP Sender', basic);
+    const { selector, save } = await openPanel(page, 'TCP Sender', basic, registerTestModes);
     await selector.selectOption('Frame'); // The old SDK example only supplied the frame bytes.
     for (const mode of ['Incomplete', 'Throwing']) {
         await selector.selectOption(mode);
@@ -101,6 +101,21 @@ test('incomplete and throwing mode initializers leave the previous settings inta
         await expect(selector).toHaveValue('Frame');
     }
     expect(await save()).toEqual({ ...basic, pluginPointName: 'Frame', startOfMessageBytes: '01', endOfMessageBytes: '04' });
+});
+
+test('Basic remains selectable when the saved MLLP web plugin fails to load', async ({ page }) => {
+    await page.route('**/plugins/mllpmode/web/plugin.js*', route => route.abort('failed'));
+    const initial = { ...basic, pluginPointName: 'MLLP', startOfMessageBytes: '02', endOfMessageBytes: '03' };
+    const { selector, save } = await openPanel(page, 'TCP Listener', initial);
+    await expect(selector.getByRole('option')).toHaveCount(2);
+    await expect(selector.getByRole('option', { name: 'MLLP (unavailable)', exact: true })).toBeDisabled();
+    await page.locator('[data-fkey="listenerConnectorProperties.port"]').fill('8880');
+    expect(await save()).toEqual(initial);
+    await selector.press('b'); // Native select typeahead chooses Basic TCP.
+    await expect(selector).toBeFocused();
+    await expect(selector).toHaveValue('Basic');
+    await expect(selector.getByRole('option')).toHaveCount(1);
+    expect(await save()).toEqual(basic);
 });
 
 test('confirming MLLP settings upgrades a legacy frame without losing its custom bytes', async ({ page }) => {
