@@ -1338,7 +1338,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     const selectedPathRef = useRef(selectedPath);
     const setSelected = (path: any) => { selectedPathRef.current = path; setSelectedPathState(path); };
     const [rev, bump] = useReducer((x: any) => x + 1, 0);
-    const validationRevision = useRef(0);
+    const validation = useRef<{ returning: boolean } | null>(null);
     const [bottomTab, setBottomTab] = useState(0);
     // True only while a step plugin's flushSync mount runs (see StepEditorPanel).
     const settlingRef = useRef(false);
@@ -1376,7 +1376,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // channel editor reads, so unsaved step edits prompt on exit. The rev bump
     // repaints the grid and regenerates the script preview.
     function commit() {
-        ++validationRevision.current;
+        validation.current = null;
         persist();
         if (settlingRef.current) return;            // plugin initialization, not a user edit
         store.setState('editingChannelDirty', true);
@@ -1695,10 +1695,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
 
     // Edits and newer validation actions supersede an in-flight check, including
     // a Back request. The editor stays interactive while Rhino compiles a script.
-    function beginValidation() {
-        const revision = ++validationRevision.current;
+    function beginValidation(returning = false) {
+        const request = { returning };
+        validation.current = request;
         const navigation = router.navigationToken();
-        return () => mountedRef.current && validationRevision.current === revision && router.navigationToken() === navigation;
+        return () => mountedRef.current && validation.current === request && router.navigationToken() === navigation;
     }
 
     // The Swing per-element error wrapper (BaseEditorPane.validateElementRecursive):
@@ -1871,7 +1872,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         // Validate task and stays put on a blocking error — BaseEditorPane.accept()
         // aborts navigation when validateAll() reports errors. A non-blocking
         // 'unavailable' (engine validate endpoint down) must not trap the user.
-        const isCurrent = beginValidation();
+        const isCurrent = beginValidation(true);
         if (!await runValidation(false, isCurrent) || !isCurrent()) return;
         persist();    // navigating back is not an edit — don't mark dirty
         // Bookmarks and Dashboard actions have a connector but no originating tab.
@@ -1939,6 +1940,9 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     const onAccessorDrop = useMemo(() => makeAccessorDrop(dragRef), []);
 
     apiRef.current = {
+        cancelPendingBack() {
+            if (validation.current?.returning) validation.current = null;
+        },
         taskState,
         handlers: {
             addElement, deleteElement, assignToIterator, removeFromIterator,
@@ -2163,8 +2167,17 @@ function FilterTransformerView({ params, kindName }: any) {
     const ts = (ctx && ctx.taskState()) || { onStep: false, assign: false, remove: false, dirty: false };
     const t = ctx && ctx.handlers;
 
+    // Capture also reaches the task rail portal. Opening another editor control
+    // supersedes Back before a chooser or file picker can commit its edit.
+    function onEditorAction(event: React.MouseEvent) {
+        if (event.type === 'contextmenu' || (event.target instanceof Element && event.target.closest('button'))) {
+            apiRef.current?.cancelPendingBack();
+        }
+    }
+
     return (
-        <div className="view flex flex-col flex-1 min-h-0">
+        <div className="view flex flex-col flex-1 min-h-0"
+            onClickCapture={onEditorAction} onContextMenuCapture={onEditorAction}>
             <ViewTasks>
                 {/* Mutation tasks ride channelEdit/doSaveChannel: there are no Swing
                     constants for the individual step actions, and editing steps is

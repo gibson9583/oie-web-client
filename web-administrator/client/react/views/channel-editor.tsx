@@ -1,6 +1,6 @@
 import { describeTargets } from '../action-targets.js';
 import { loadErrorMessage } from '../load-error.js';
-import { channelEditState, loadChannelForEdit } from '../../core/channel-save.js';
+import { assignedTags, channelEditState, loadChannelForEdit, loadTagChoices, sameTag, setTagMembership } from '../../core/channel-save.js';
 import { useConnectorTypeSwitch } from '../connector-type-switch.js';
 import { channelEditorScreens } from '../channel-editor-return.js';
 import { persistChannelEdits, confirmLibraryOverwrite, channelSessionActive } from '../channel-persistence.js';
@@ -1156,142 +1156,53 @@ function openDebugDeployModal(channel: any, save: any) {
     });
 }
 
-/* ---- channel tags (state shared with save() via tagStateRef) ------------------ */
+/* ---- channel tags ------------------------------------------------------------ */
 
-// Keep only local membership edits across the handoff. Each mounted editor reads
-// its own server choices, so an older request cannot overwrite the returned view.
-function tagChanges(baseline: string | null, initialIds: Set<string>, assigned: any[]) {
-    const removed = new Set(initialIds);
-    for (const tag of assigned) removed.delete(tag.id);
-    return { baseline, added: assigned.filter(tag => !initialIds.has(tag.id)), removed };
-}
-
-function savedTagIds(baseline: string | null) {
-    const tags = baseline && JSON.parse(baseline).exportData?.channelTags;
-    return new Set<string>(api.asList(tags, 'channelTag').map(t => t.id));
-}
-
-function draftTagChanges(channel: any) {
-    const baseline = channelEditState(channel).workingBaseline;
-    return tagChanges(baseline, savedTagIds(baseline),
-        api.asList(channel.exportData?.channelTags, 'channelTag'));
-}
-
-function ensureTags(tagState: any, channel: any) {
-    return tagState.loading ??= loadTags(tagState, channel).catch(error => {
-        tagState.loading = null;
-        throw error;
-    });
-}
-
-async function loadTags(tagState: any, channel: any) {
-    const exported = api.asList(channel.exportData?.channelTags, 'channelTag');
-    const changes = tagState.changes;
-    const tags = await api.server.channelTags().catch(() =>
-        changes && !channelEditState(channel).isNew ? api.channels.tags(channel.id) : exported);
-    tagState.all = tags.map(t => ({
-        id: t.id, name: t.name, backgroundColor: t.backgroundColor,
-        channelIds: api.asList(t.channelIds, 'string').map(String)
-    }));
-    for (const tag of tagState.all) {
-        if (tag.channelIds.includes(channel.id)) {
-            tagState.initial.add(tag.id);
-            if (!changes?.removed.has(tag.id)) tagState.assigned.add(tag.name);
-        }
-    }
-    // Fresh drafts and imports can already carry tags in their export. On
-    // return, only reapply additions the user made to the draft.
-    for (const ct of changes?.added ?? exported) {
-        if (!ct) continue;
-        const known = (ct.id && tagState.all.find((t: any) => t.id === ct.id))
-            || (ct.name != null && tagState.all.find((t: any) => t.name === String(ct.name)));
-        if (known) { tagState.assigned.add(known.name); continue; }
-        if (ct.name == null || String(ct.name) === '') continue;
-        const name = String(ct.name);
-        tagState.all.push({
-            id: ct.id || oie.uuid(), name,
-            channelIds: api.asList(ct.channelIds, 'string').map(String),
-            backgroundColor: ct.backgroundColor
-        });
-        tagState.assigned.add(name);
-    }
-    tagState.loaded = true;
-}
-
-/* Write the assigned tags into the channel's exportData.channelTags. The
-   engine's updateChannel() treats this list as the authoritative membership
-   (DefaultChannelController.updateChannelTags): tags present get this channel
-   added/created, tags absent get it removed. Doing it here — rather than a
-   separate setChannelTags call — keeps every save idempotent, so a second
-   save (e.g. Save then Deploy) can't detach the tag. */
-function applyTagsToChannel(tagState: any, channel: any, version: any) {
-    const channelTags = tagState.all
-        .filter((t: any) => tagState.assigned.has(t.name))
-        .map((t: any) => {
-            const ids = new Set(t.channelIds);
-            ids.add(channel.id);
-            // '@version' first (array-nested; the engine's JSON→XML reorder
-            // fallback doesn't descend into arrays).
-            return { '@version': version, id: t.id, name: t.name, channelIds: { string: [...ids] }, backgroundColor: t.backgroundColor };
-        });
-    channel.exportData = channel.exportData || {};
-    // List<ChannelTag>: {channelTag:[...]}; empty string = empty list (detach all).
-    channel.exportData.channelTags = channelTags.length ? { channelTag: channelTags } : '';
-}
-
-function TagsField({ tagState, channel, version, markDirty }: any) {
+function TagsField({ channel, version, markDirty }: any) {
+    const [choices, setChoices] = useState<any[] | null>(null);
     const [loadError, setLoadError] = useState(false);
-    const [, bump] = useReducer((x: any) => x + 1, 0);
     useEffect(() => {
-        let stale = false;
-        // Only render the chips once tags have loaded, so a tag added during
-        // the load window can't be lost when ensureTags() populates tagState.
-        ensureTags(tagState, channel).then(() => { if (!stale) bump(); })
-            .catch(() => { if (!stale) setLoadError(true); });
-        return () => { stale = true; };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-    if (!tagState.loaded) return <span className="text-text-faint text-[10.5px]">
+        let active = true;
+        loadTagChoices(channel, () => active).then(tags => { if (active) setChoices(tags); })
+            .catch(() => { if (active) setLoadError(true); });
+        return () => { active = false; };
+    }, [channel]);
+    if (!choices) return <span className="text-text-faint text-[10.5px]">
         {loadError ? 'Tags unavailable. Reopen Summary to retry.' : 'Loading tags…'}
     </span>;
 
-    const dlId = 'channel-tags-list';
-    // Commit on the NATIVE 'change' event only (Enter / blur / datalist pick) —
-    // React's onChange is the per-keystroke input event, which would mint a
-    // junk tag for every character typed.
-    const addRef = (el: any) => {
-        if (!el || el.__tagCommit) return;
-        el.__tagCommit = true;
-        el.addEventListener('change', () => {
-            const name = fixTagName(el.value);
-            el.value = '';
-            if (!name || tagState.assigned.has(name)) return;
-            if (!tagState.all.some((t: any) => t.name === name)) {
-                tagState.all.push({ id: oie.uuid(), name, channelIds: [], backgroundColor: randomTagColor() });
-            }
-            tagState.assigned.add(name);
-            applyTagsToChannel(tagState, channel, version);
-            markDirty();
-            bump();
-        });
+    const assigned = assignedTags(channel);
+    const update = (tag: any, add: boolean) => {
+        setTagMembership(channel, tag, add, version);
+        if (!choices.some(choice => sameTag(choice, tag))) setChoices([...choices, tag]);
+        markDirty();
     };
     return (
         <div className="flex flex-wrap gap-[4px] items-center">
-            {[...tagState.assigned].sort((a: any, b: any) => a.localeCompare(b)).map(name => {
-                const tag = tagState.all.find((t: any) => t.name === name);
-                return (
-                    <span key={name}
-                        className="inline-flex items-center gap-1 py-px px-1.5 rounded-[9px] border border-line text-[10.5px]"
-                        style={{ background: tagChipBg(tag && tag.backgroundColor) }}>
-                        {name}
-                        <span className="cursor-pointer text-text-dim" title="Remove tag"
-                            onClick={() => { tagState.assigned.delete(name); applyTagsToChannel(tagState, channel, version); markDirty(); bump(); }}>✕</span>
-                    </span>
-                );
-            })}
-            <input ref={addRef} list={dlId} placeholder="Add tag…" className="w-[117px]" />
-            <datalist id={dlId}>
-                {tagState.all.filter((t: any) => !tagState.assigned.has(t.name)).map((t: any) => <option key={t.name} value={t.name} />)}
+            {[...assigned].sort((a, b) => a.name.localeCompare(b.name)).map(tag => (
+                <span key={tag.id}
+                    className="inline-flex items-center gap-1 py-px px-1.5 rounded-[9px] border border-line text-[10.5px]"
+                    style={{ background: tagChipBg(tag.backgroundColor) }}>
+                    {tag.name}
+                    <span className="cursor-pointer text-text-dim" title="Remove tag"
+                        onClick={() => update(tag, false)}>✕</span>
+                </span>
+            ))}
+            <input list="channel-tags-list" placeholder="Add tag…" className="w-[117px]"
+                ref={input => {
+                    if (!input) return;
+                    const commit = () => {
+                        const name = fixTagName(input.value);
+                        input.value = '';
+                        if (!name || assigned.some(tag => sameTag(tag, { name }))) return;
+                        update(choices.find(tag => sameTag(tag, { name })) ?? { id: oie.uuid(), name, backgroundColor: randomTagColor() }, true);
+                    };
+                    // Native change commits on Enter, blur or a datalist selection.
+                    input.addEventListener('change', commit);
+                    return () => input.removeEventListener('change', commit);
+                }} />
+            <datalist id="channel-tags-list">
+                {choices.filter(tag => !assigned.some(item => sameTag(item, tag))).map(tag => <option key={tag.id} value={tag.name} />)}
             </datalist>
         </div>
     );
@@ -1302,7 +1213,7 @@ const fixTagName = (n: any) => String(n).replace(/[^a-zA-Z_0-9\-\s]/g, '').slice
 
 /* ---- Summary tab -------------------------------------------------------------- */
 
-function ChannelPropertiesPanel({ channel, version, isNewRef, tagState, markDirty }: any) {
+function ChannelPropertiesPanel({ channel, version, isNewRef, markDirty }: any) {
     const [, bump] = useReducer((x: any) => x + 1, 0);
     const props = channel.properties = channel.properties || {};
     channel.exportData = channel.exportData || {};
@@ -1375,7 +1286,7 @@ function ChannelPropertiesPanel({ channel, version, isNewRef, tagState, markDirt
                         </div>
                         <div className="field">
                             <label>Tags</label>
-                            <TagsField tagState={tagState} channel={channel} version={version} markDirty={markDirty} />
+                            <TagsField channel={channel} version={version} markDirty={markDirty} />
                         </div>
                         <div className="flex flex-wrap gap-y-1.5 gap-x-[16px] mt-0 mx-0 mb-1">
                             <label className="check">
@@ -1655,10 +1566,10 @@ function FragmentRow({ col, commit, onDelete }: any) {
     );
 }
 
-function SummaryTab({ channel, version, isNewRef, tagState, markDirty }: any) {
+function SummaryTab({ channel, version, isNewRef, markDirty }: any) {
     return (
         <div className="flex flex-col gap-3.5">
-            <ChannelPropertiesPanel channel={channel} version={version} isNewRef={isNewRef} tagState={tagState} markDirty={markDirty} />
+            <ChannelPropertiesPanel channel={channel} version={version} isNewRef={isNewRef} markDirty={markDirty} />
             {/* Storage and pruning side by side; wraps to one column when narrow. */}
             <div className="grid grid-cols-[repeat(auto-fit,minmax(min(380px,100%),1fr))] gap-3.5 items-stretch">
                 <MessageStoragePanel channel={channel} markDirty={markDirty} />
@@ -2607,13 +2518,7 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
             channel,
             screen,
             version: channel['@version'] || store.getState('serverVersion') || '4.5.2',
-            get isNew() { return channelEditState(channel).isNew; },
-            // Tags cache shared by the Summary field and save().
-            tagState: {
-                loaded: false, all: [], assigned: new Set(), initial: new Set(),
-                changes: screen?.tagChanges?.baseline === channelEditState(channel).workingBaseline
-                    ? screen.tagChanges : screen && draftTagChanges(channel)
-            }
+            get isNew() { return channelEditState(channel).isNew; }
         };
         store.setState('editingChannelNew', setupRef.current.isNew);
         // Unsaved state is tracked in the shared 'editingChannelDirty' store flag
@@ -2623,7 +2528,7 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
         if (!returning) store.setState('editingChannelDirty', false);
     }
     const setup = setupRef.current;
-    const { channel, version, tagState } = setup;
+    const { channel, version } = setup;
     const isNewRef = { get current() { return setup.isNew; } };
     usePaletteContext({
         kind: 'channel', surface: 'editor',
@@ -2816,13 +2721,7 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
             modal({ title: 'Cannot Save Channel', body: h('div', nameError), buttons: [{ label: 'OK' }] });
             return false;
         }
-        const previousBaseline = channelEditState(channel).workingBaseline;
         try {
-            // Reconcile tag membership into the channel itself so the PUT attaches
-            // them (idempotent — survives a follow-up Deploy that re-saves).
-            await ensureTags(tagState, channel);
-            if (!isCurrent()) return false;
-            applyTagsToChannel(tagState, channel, version);
             const saved = await persistChannelEdits(channel);
             if (!isCurrent() || !saved) return false;
             store.setState('editingChannelDirty', false);
@@ -2832,9 +2731,6 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
             if (isCurrent()) toast(e.message, 'error');
             return false;
         } finally {
-            // The channel write may succeed before a later dependency write fails.
-            const baseline = channelEditState(channel).workingBaseline;
-            if (baseline !== previousBaseline) tagState.initial = savedTagIds(baseline);
             if (isCurrent() && mountedRef.current) { onTasksChange(); bumpRev(); }
         }
     }
@@ -2931,11 +2827,7 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
             if (nextParams.metaDataId != null) {
                 channelEditorScreens.set(channel, {
                     tab: activeTabRef.current, destinationId: destTasksRef.current?.selected()?.metaDataId,
-                    scriptKey: scriptKeyRef.current,
-                    tagChanges: tagState.loaded
-                        ? tagChanges(channelEditState(channel).workingBaseline, tagState.initial,
-                            tagState.all.filter((tag: any) => tagState.assigned.has(tag.name)))
-                        : tagState.changes
+                    scriptKey: scriptKeyRef.current
                 });
             }
             return;
@@ -3014,7 +2906,7 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
     let body: any = null;
     if (activeTab === 'Summary') {
         body = <SummaryTab key="Summary" channel={channel} version={version} isNewRef={isNewRef}
-            tagState={tagState} markDirty={markDirty} />;
+            markDirty={markDirty} />;
     } else if (activeTab === 'Source') {
         body = <SourceTab key={`Source-${sourceImportRevision}`} channel={channel} version={version} engineTypes={engineTypes} markDirty={markDirty} />;
     } else if (activeTab === 'Destinations') {

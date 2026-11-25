@@ -63,6 +63,64 @@ export async function restoreChannelTagNames(channel, originalTagIds) {
         tag.name = name;
     }
 }
+export function assignedTags(channel) {
+    return api.asList(channel?.exportData?.channelTags, 'channelTag');
+}
+export function sameTag(a, b) {
+    if (a.id != null && b.id != null && String(a.id) === String(b.id))
+        return true;
+    return typeof a.name === 'string' && typeof b.name === 'string'
+        && a.name.toLowerCase() === b.name.toLowerCase();
+}
+function contains(tags, tag) {
+    return tags.some(item => sameTag(item, tag));
+}
+function rememberChannelTags(state, tags) {
+    state.tagBaseline = tags.map(({ id, name }) => ({ id, name }));
+}
+// Apply only local membership changes to the latest settings.
+function mergedChannelTags(before, draft, latest) {
+    const kept = draft.filter(tag => contains(latest, tag) || !contains(before, tag));
+    return [
+        ...kept.map(tag => latest.find(item => sameTag(item, tag)) ?? tag),
+        ...latest.filter(tag => !contains(before, tag) && !contains(kept, tag))
+    ];
+}
+function writeChannelTags(channel, tags) {
+    if (!tags.length && channel.exportData?.channelTags == null)
+        return;
+    (channel.exportData ??= {}).channelTags = tags.length ? { channelTag: tags } : '';
+}
+export function setTagMembership(channel, tag, add, version) {
+    const tags = assignedTags(channel).filter(item => !sameTag(item, tag));
+    if (add) {
+        const ids = new Set(api.asList(tag.channelIds, 'string'));
+        ids.add(channel.id);
+        tags.push({ '@version': version, ...tag, channelIds: { string: [...ids] } });
+    }
+    writeChannelTags(channel, tags);
+}
+export async function loadTagChoices(channel, isCurrent) {
+    const state = channelEditState(channel);
+    const before = state.tagBaseline;
+    const assertSession = captureEngineSession();
+    const choices = await api.server.channelTags().catch(() => null);
+    assertSession();
+    let latest = choices?.filter(tag => api.asList(tag.channelIds, 'string').includes(channel.id)) ?? [];
+    // Channel View also supplies exact tag names when the global list is denied
+    // or does not contain a tag from the channel export.
+    if (before && (!choices || before.some(tag => !contains(choices, tag)))) {
+        latest = await api.channels.tags(channel.id);
+        assertSession();
+    }
+    if (isCurrent() && !state.saving && state.tagBaseline === before) {
+        const merged = mergedChannelTags(before ?? [], assignedTags(channel), latest);
+        writeChannelTags(channel, merged);
+        if (before)
+            rememberChannelTags(state, latest);
+    }
+    return choices ?? latest;
+}
 // External library/graph exports are not written by a channel save. Keep them
 // out of its baseline; resources, tags and all channel metadata remain included.
 function fingerprint(channel) {
@@ -82,7 +140,9 @@ export async function loadChannelForEdit(id) {
         throw new Error(`Channel ${id} was not found.`);
     const baseline = fingerprint(channel);
     await restoreChannelTagNames(channel);
-    sessions.set(channel, { isNew: false, baseline, workingBaseline: fingerprint(channel), saving: false });
+    const state = { isNew: false, baseline, workingBaseline: fingerprint(channel), saving: false };
+    rememberChannelTags(state, assignedTags(channel));
+    sessions.set(channel, state);
     return channel;
 }
 /** Identity follows the working model through classic, wizard and subeditors.
@@ -224,6 +284,7 @@ export async function saveChannelModel(channel, options) {
                 const acknowledged = clone(attempt);
                 acknowledged.revision = current.revision;
                 state.workingBaseline = fingerprint(acknowledged);
+                rememberChannelTags(state, assignedTags(acknowledged));
                 channel.revision = current.revision;
                 const metadata = (channel.exportData = channel.exportData || {}).metadata || {};
                 channel.exportData.metadata = { ...attempt.exportData.metadata, ...metadata,
@@ -257,6 +318,18 @@ export async function saveChannelModel(channel, options) {
             return true;
         }
         normalizeChannelDataTypeArrays(submitted);
+        if (current?.exportData && 'channelTags' in current.exportData) {
+            const before = state.tagBaseline ?? [];
+            const draft = assignedTags(submitted);
+            const latest = assignedTags(current);
+            // An unfamiliar ID can be the engine's canonical form of a local tag.
+            if (latest.some(tag => typeof tag.name !== 'string' && !contains(before, tag))) {
+                await restoreChannelTagNames(current);
+            }
+            // Preserve exact draft text when JSON has coerced a known tag name.
+            const tags = latest.map(tag => draft.find(item => item.id === tag.id) ?? tag);
+            writeChannelTags(submitted, mergedChannelTags(before, draft, tags));
+        }
         const original = state.baseline ? JSON.parse(state.baseline) : null;
         const originalTagIds = new Set(api.asList(original?.exportData?.channelTags, 'channelTag')
             .map(tag => String(tag?.id)));
@@ -291,6 +364,9 @@ export async function saveChannelModel(channel, options) {
         // Creation is accepted independently of later dependency/deploy stages.
         state.isNew = false;
         state.creationAttempts = undefined;
+        if (unchangedDuringWrite)
+            writeChannelTags(channel, assignedTags(submitted));
+        rememberChannelTags(state, assignedTags(submitted));
         channel.revision = submitted.revision || 1;
         (channel.exportData = channel.exportData || {}).metadata = metadata;
         if (credentialRepair && unchangedDuringWrite)

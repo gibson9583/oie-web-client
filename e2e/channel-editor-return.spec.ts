@@ -241,3 +241,25 @@ test('a late Validate Step error cannot cover the returned channel editor', asyn
         editor.release();
     }
 });
+
+test('opening Add New Step supersedes Back validation before the step is chosen', async ({ page }) => {
+    const editor = await openDelayedTransformer(page, 'var x = 1;');
+    try {
+        const validation = page.waitForRequest(`**/api${validator}`);
+        await editor.back.click();
+        const request = await validation;
+        await page.getByRole('button', { name: 'Add New Step', exact: true }).click();
+        const chooser = page.getByRole('dialog', { name: 'Add Step', exact: true });
+        await expect(chooser).toBeVisible();
+        await editor.finish(request);
+        await expect(page).toHaveURL(/\/transformer\/0$/);
+
+        await chooser.getByText('Mapper', { exact: true }).click();
+        await expect(page.locator('tr[data-path]')).toHaveCount(2);
+        await expect(page.getByRole('button', { name: 'Save Channel', exact: true })).toBeVisible();
+        await editor.back.click();
+        await expect(editor.error).toContainText('The variable name cannot be blank.');
+    } finally {
+        editor.release();
+    }
+});

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import api from './api.js';
-import { channelEditState, loadChannelForEdit, saveChannelModel } from './channel-save.js';
+import { assignedTags, channelEditState, loadChannelForEdit, loadTagChoices, saveChannelModel } from './channel-save.js';
 import { discardEngineResponses } from './engine-fetch.js';
 
 const exact = [{ id: 'negative-zero', name: '-0' }, { id: 'null', name: 'null' }];
@@ -24,7 +24,7 @@ api.channels.update = async (_id, channel) => {
     if (writeFailure) throw new Error('Write failed');
     server = structuredClone(channel);
     // Reproduce the engine's lossy JSON readback after an exact-text write.
-    for (const tag of server.exportData.channelTags.channelTag) {
+    for (const tag of assignedTags(server)) {
         try { tag.name = JSON.parse(tag.name); } catch { /* ordinary text */ }
     }
     return true;
@@ -121,4 +121,51 @@ for (const initial of ['new', 'untagged', 'tagged']) {
     await saveChannelModel(channel, options);
     assert.equal(writes.length, 2, 'accepted local-tag saves remain idempotent');
 }
-console.log('channel-save tags: shared exact names, permissions, raw baselines, failed prerequisites, retries, renames, idempotence and session fencing passed');
+
+// Settings changes membership independently of the channel's last saver.
+{
+    const alpha = { id: 'alpha', name: 'Alpha', channelIds: { string: 'one' } };
+    const beta = { id: 'beta', name: 'Beta', channelIds: { string: 'one' } };
+    const existing = () => ({ id: 'one', name: 'Original', revision: 1,
+        exportData: { metadata: { userId: 7 }, channelTags: { channelTag: alpha } } });
+    const sameUser = { ...options, userId: 7 };
+    lookupFailure = fallbackFailure = writeFailure = expired = false;
+    known = [alpha];
+    server = existing();
+    const connectorDraft = await loadChannelForEdit('one');
+    server.exportData.channelTags = null; // OIE serializes <channelTags/> as JSON null.
+    connectorDraft.name = 'Unrelated connector edit';
+    await saveChannelModel(connectorDraft, sameUser);
+    assert.deepEqual(assignedTags(writes.at(-1)), [], 'saving must preserve removal of the last server tag');
+
+    server = existing();
+    const draft = await loadChannelForEdit('one');
+    const tagRead = Promise.withResolvers();
+    const listTags = api.server.channelTags;
+    api.server.channelTags = () => tagRead.promise;
+    const refresh = loadTagChoices(draft, () => true);
+    api.server.channelTags = listTags;
+    server.exportData.channelTags = { channelTag: [alpha, beta] };
+    known = [alpha, beta];
+    draft.name = 'First edit';
+    const update = api.channels.update;
+    api.channels.update = async (...args) => {
+        // The earlier XML response arrives while the channel PUT is pending.
+        // The XML reader represents even singleton channel IDs as an array.
+        tagRead.resolve([{ ...alpha, channelIds: { string: ['one'] } }]);
+        await refresh;
+        return update(...args);
+    };
+    try { await saveChannelModel(draft, sameUser); }
+    finally { api.channels.update = update; }
+    assert.deepEqual(assignedTags(writes.at(-1)), [alpha, beta]);
+    assert.deepEqual(assignedTags(draft), [alpha, beta], 'a late tag read must not revert the acknowledged draft');
+    draft.name = 'Another edit';
+    await saveChannelModel(draft, sameUser);
+    assert.deepEqual(assignedTags(writes.at(-1)), [alpha, beta], 'a follow-up save must retain the remote assignment');
+
+    expired = 'all'; lookupFailure = true; reads.length = 0;
+    await assert.rejects(loadTagChoices(draft, () => true), /previous session/);
+    assert.deepEqual(reads, ['all'], 'a stale tag refresh cannot start a fallback read in a new session');
+}
+console.log('channel-save tags: exact names, permissions, retries, remote membership changes and session fencing passed');
