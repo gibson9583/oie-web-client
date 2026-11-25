@@ -1,5 +1,6 @@
 // plugins/mllpmode/web/plugin.tsx
 import { frameModeSampleFrame, frameModeSettingsDialog } from "@oie/web-ui";
+var mllpPropertiesClass = "com.mirth.connect.plugins.mllpmode.MLLPModeProperties";
 function register(platform) {
   platform.registerTransmissionMode("MLLP", {
     label: "MLLP",
@@ -8,7 +9,7 @@ function register(platform) {
     // serializes as MLLPModeProperties (a FrameModeProperties subclass) and
     // carries the extra MLLPv2 fields — see MLLPModeProperties defaults.
     apply(tm) {
-      tm["@class"] = "com.mirth.connect.plugins.mllpmode.MLLPModeProperties";
+      tm["@class"] = mllpPropertiesClass;
       tm.pluginPointName = "MLLP";
       tm.startOfMessageBytes = "0B";
       tm.endOfMessageBytes = "1C0D";
@@ -18,7 +19,12 @@ function register(platform) {
       tm.maxRetries = "2";
     },
     sampleFrame: frameModeSampleFrame,
-    openSettings: (tm, onChange) => frameModeSettingsDialog(tm, onChange, { mllp: true })
+    openSettings: (tm, onChange) => frameModeSettingsDialog(tm, () => {
+      if (tm["@class"] === "com.mirth.connect.model.transmission.framemode.FrameModeProperties") {
+        tm["@class"] = mllpPropertiesClass;
+      }
+      onChange();
+    }, { mllp: true })
   });
 }
 export {

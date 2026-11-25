@@ -620,13 +620,20 @@ platform.registerConnectorPropertiesPanel({
 });
 
 // Transmission mode for framed connectors like TCP (TransmissionModePlugin).
-// A transmission mode has NO React component — its whole surface is the three
-// callbacks: apply()/sampleFrame() are pure (the connector reads them), and the
-// ⚙ settings dialog stays an imperative modal (open it via platform.ui.modal).
-// Each mode edits connector.properties.transmissionModeProperties.
+// On selection, apply(tm) receives a fresh object containing pluginPointName
+// and the previous @version, if present. Set the engine properties @class and
+// all mode defaults. The connector uses this object for previews and settings.
 platform.registerTransmissionMode('MLLP', {
     label: 'MLLP', order: 10,
-    apply(tm) { tm.pluginPointName = 'MLLP'; tm.startOfMessageBytes = '0B'; tm.endOfMessageBytes = '1C0D'; },
+    apply(tm) {
+        tm['@class'] = 'com.mirth.connect.plugins.mllpmode.MLLPModeProperties';
+        tm.startOfMessageBytes = '0B';
+        tm.endOfMessageBytes = '1C0D';
+        tm.useMLLPv2 = false;
+        tm.ackBytes = '06';
+        tm.nackBytes = '15';
+        tm.maxRetries = '2';
+    },
     sampleFrame(tm) { return '<VT> Message Data <FS><CR>'; },   // preview text
     openSettings(tm, onChange) { /* platform.ui.modal editing the mode's properties */ }
 });
