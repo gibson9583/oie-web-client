@@ -263,3 +263,26 @@ test('opening Add New Step supersedes Back validation before the step is chosen'
         editor.release();
     }
 });
+
+for (const interaction of ['pointer', 'keyboard']) {
+    test(`opening the step Type picker with the ${interaction} supersedes Back validation`, async ({ page }) => {
+        const editor = await openDelayedTransformer(page, 'var x = 1;');
+        try {
+            const validation = page.waitForRequest(`**/api${validator}`);
+            await editor.back.click();
+            const request = await validation;
+            const type = page.locator('tr[data-path]').getByRole('combobox');
+            if (interaction === 'pointer') await type.click();
+            else await type.press('Space');
+
+            await editor.finish(request);
+            await expect(page).toHaveURL(/\/transformer\/0$/);
+            await page.keyboard.press('Escape');
+            await type.selectOption({ label: 'Mapper' });
+            await editor.back.click();
+            await expect(editor.error).toContainText('The variable name cannot be blank.');
+        } finally {
+            editor.release();
+        }
+    });
+}

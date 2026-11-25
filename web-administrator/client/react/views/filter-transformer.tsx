@@ -2170,13 +2170,20 @@ function FilterTransformerView({ params, kindName }: any) {
     // Capture also reaches the task rail portal. Opening another editor control
     // supersedes Back before a chooser or file picker can commit its edit.
     function onEditorAction(event: React.MouseEvent) {
-        if (event.type === 'contextmenu' || (event.target instanceof Element && event.target.closest('button'))) {
+        if (event.type === 'contextmenu' || (event.target instanceof Element && event.target.closest('button, select'))) {
             apiRef.current?.cancelPendingBack();
         }
     }
 
+    // Native select pickers can open on pointerdown or keydown, before a click
+    // or change reaches the editor. Leave the browser's picker behavior intact.
+    function onSelectInteraction(event: React.SyntheticEvent) {
+        if (event.target instanceof HTMLSelectElement) apiRef.current?.cancelPendingBack();
+    }
+
     return (
         <div className="view flex flex-col flex-1 min-h-0"
+            onPointerDownCapture={onSelectInteraction} onKeyDownCapture={onSelectInteraction}
             onClickCapture={onEditorAction} onContextMenuCapture={onEditorAction}>
             <ViewTasks>
                 {/* Mutation tasks ride channelEdit/doSaveChannel: there are no Swing
