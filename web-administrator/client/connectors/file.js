@@ -412,7 +412,14 @@ function schemeSettingsFields() {
             append: (p) => asBool(p.anonymous)
                 ? h('span', { class: 'text-[#c0392b] ml-3 font-[500]' }, 'Anonymous credentials are currently in use')
                 : null,
-            tooltip: 'When No, the Username/Password above are used as the AWS access key ID / secret access key'
+            tooltip: [
+                'If enabled and no explicit credentials are provided, the default provider chain looks for credentials in this order:',
+                '• Java system properties: aws.accessKeyId and aws.secretAccessKey.',
+                '• Environment variables: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.',
+                '• Default credentials profile file: Typically located at ~/.aws/credentials (location can vary per platform).',
+                '• ECS container credentials: Loaded from an Amazon ECS environment variable.',
+                '• Instance profile credentials: Loaded from the EC2 metadata service.'
+            ].join('\n')
         },
         { key: 'schemeProperties.useTemporaryCredentials', label: 'Use Temporary Credentials', type: 'radio', options: YES_NO, refresh: true, visible: s3, disabled: (p) => asBool(p.anonymous) },
         { key: 'schemeProperties.duration', label: 'Duration (seconds)', type: 'number', numeric: true, width: '110px', visible: (p) => s3(p) && asBool(p.schemeProperties && p.schemeProperties.useTemporaryCredentials), disabled: (p) => asBool(p.anonymous) },
