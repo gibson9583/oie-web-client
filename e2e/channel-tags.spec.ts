@@ -88,6 +88,67 @@ for (const [saveIn, button] of [['channel editor', 'Save Changes'], ['source fil
     });
 }
 
+test('Back to Channel keeps explicit tag changes when Settings temporarily makes the same changes', async ({ page }) => {
+    const channel = makeChannel('tag-membership-intent');
+    let settingsMatchDraft = false;
+    const ids = { string: channel.id };
+    const tags = () => [
+        { id: 'old', name: 'Old', channelIds: settingsMatchDraft ? '' : ids },
+        { id: 'new', name: 'New', channelIds: settingsMatchDraft ? ids : '' }
+    ];
+    await mockEngine(page, {
+        'GET /server/channelTags': () => ({ set: { channelTag: tags() } }),
+        [`GET /channels/${channel.id}`]: () => ({ channel: { ...channel, exportData: {
+            channelTags: { channelTag: tags().find(tag => tag.channelIds) }
+        } } })
+    });
+
+    await page.goto(`/channels/${channel.id}/edit`);
+    const chips = page.getByTitle('Remove tag').locator('..');
+    await chips.filter({ hasText: 'Old' }).getByTitle('Remove tag').click();
+    const input = page.getByPlaceholder('Add tag…');
+    await input.fill('New');
+    await input.blur();
+    await openSourceFilter(page);
+    settingsMatchDraft = true;
+    await backToSummary(page);
+    await expect(chips).toHaveText([/New/]);
+
+    settingsMatchDraft = false;
+    const saved = await saveChannelTags(page, channel.id);
+    expect(saved.channelTag.map((tag: { id: string }) => tag.id)).toEqual(['new']);
+});
+
+test('a failed global lookup on return retains distinct tag IDs until their names can be refreshed', async ({ page }) => {
+    const channel = makeChannel('tag-rename-fallback');
+    let renamed = false;
+    let globalAvailable = true;
+    const assigned = () => ({ id: 'assigned', name: renamed ? 'OnCall' : 'Night', channelIds: { string: channel.id } });
+    const selected = () => ({ id: 'selected', name: renamed ? 'Day' : 'OnCall', channelIds: { string: 'other' } });
+    await mockEngine(page, {
+        'GET /server/channelTags': () => globalAvailable
+            ? { set: { channelTag: [assigned(), selected()] } } : { __status: 503 },
+        [`GET /channels/${channel.id}`]: () => ({ channel: { ...channel, exportData: {
+            metadata: { enabled: true, userId: 1 }, channelTags: { channelTag: assigned() }
+        } } })
+    });
+
+    await page.goto(`/channels/${channel.id}/edit`);
+    const input = page.getByPlaceholder('Add tag…');
+    await input.fill('OnCall');
+    await input.blur();
+    await openSourceFilter(page);
+    renamed = true;
+    globalAvailable = false;
+    await backToSummary(page);
+    await expect(page.getByTitle('Remove tag')).toHaveCount(2);
+
+    globalAvailable = true;
+    const saved = await saveChannelTags(page, channel.id);
+    expect(saved.channelTag.map((tag: { id: string; name: string }) => [tag.id, tag.name]).sort())
+        .toEqual([['assigned', 'OnCall'], ['selected', 'Day']]);
+});
+
 test('an assignment that reuses a renamed tag’s old name survives Back to Channel and save', async ({ page }) => {
     const channel = makeChannel('reused-tag-name');
     const original = { id: 'original', name: 'Production', channelIds: { string: channel.id } };

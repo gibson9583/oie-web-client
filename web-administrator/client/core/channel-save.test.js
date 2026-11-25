@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import api from './api.js';
 import { channelEditState, loadChannelForEdit, saveChannelModel, updateChannelWithConflict } from './channel-save.js';
 import { captureEngineSession, discardEngineResponses } from './engine-fetch.js';
 
@@ -325,6 +326,51 @@ for (const failure of ['unavailable', 'session ended']) {
     readbackFailure = null;
 }
 console.log('channel-save: readback availability and session cancellation preserve the accepted create checkpoint');
+
+{
+    const tag = { id: '68d8a2c7-1146-44f3-a246-c50b982a1873', name: 'Production', channelIds: { string: 'one' } };
+    server = original();
+    server.exportData.channelTags = { channelTag: structuredClone(tag) };
+    const listTags = api.server.channelTags;
+    api.server.channelTags = async () => [{ ...tag, channelIds: { string: ['one'] } }];
+    try {
+        const draft = await loadChannelForEdit('one');
+        draft.description = 'Updated before saving dependencies';
+        const options = { ...cancel, skipUnchanged: true };
+        const before = writes.length;
+        readbackFailure = 'unavailable';
+        assert.equal(await saveChannelModel(draft, options), true);
+        readbackFailure = null;
+        assert.equal(writes.length, before + 1);
+
+        // OIE's JSON serializer returns one <channelTag> as a bare object.
+        // This preflight is the first successful read of the accepted channel.
+        server.exportData.channelTags = { channelTag: structuredClone(tag) };
+        assert.equal(await saveChannelModel(draft, options), true);
+        assert.equal(writes.length, before + 1, 'a dependency retry must not PUT the accepted channel again');
+
+        draft.description = 'An actual edit after the retry';
+        assert.equal(await saveChannelModel(draft, options), true);
+        assert.equal(writes.length, before + 2);
+        assert.equal(server.description, draft.description);
+
+        // Removing the last tag is a metadata-only update. OIE keeps the
+        // revision and reads the empty <channelTags/> element back as null.
+        draft.exportData.channelTags = '';
+        retainRevision = true;
+        readbackFailure = 'unavailable';
+        assert.equal(await saveChannelModel(draft, options), true);
+        readbackFailure = null;
+        assert.equal(draft.revision, server.revision);
+        server.exportData.channelTags = null;
+        assert.equal(await saveChannelModel(draft, options), true);
+        assert.equal(writes.length, before + 3, 'retry after removing the last tag must skip the accepted PUT');
+    } finally {
+        api.server.channelTags = listTags;
+        retainRevision = false;
+        readbackFailure = null;
+    }
+}
 
 // Exercise the shared import/editor conflict flow independently of an editor's
 // preflight. Only an explicit false receipt permits the overriding retry.

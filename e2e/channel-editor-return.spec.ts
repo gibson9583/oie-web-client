@@ -146,12 +146,13 @@ const invalidScript = 'var x = ;';
 const syntaxError = 'Error on line 1: syntax error.';
 const validator = '/extensions/websupport/javascript/_validate';
 
-async function openDelayedTransformer(page: Page, script: string) {
+async function openDelayedTransformer(page: Page, ...scripts: string[]) {
     const channel = makeChannel('delayed-back');
+    const steps = scripts.map((script, index) => ({
+        '@version': channel['@version'], name: `Step ${index + 1}`, sequenceNumber: String(index), enabled: true, script
+    }));
     channel.sourceConnector.transformer.elements = {
-        'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': {
-            '@version': channel['@version'], name: 'Validate me', sequenceNumber: '0', enabled: true, script
-        }
+        'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': steps.length === 1 ? steps[0] : steps
     };
     await page.route('**/vendor/monaco/**', route => route.abort());
     let release!: () => void;
@@ -162,7 +163,7 @@ async function openDelayedTransformer(page: Page, script: string) {
         'GET /webplugins': { __status: 404 },
         'GET /extensions/websupport/webplugins': [],
         [`POST ${validator}`]: async (request: Request) => {
-            if (first) {
+            if (first && request.postData() === scripts[scripts.length - 1]) {
                 first = false;
                 await pending;
             }
@@ -222,6 +223,79 @@ test('edits during Back validation keep the current draft open for validation an
     } finally {
         editor.release();
     }
+});
+
+test('selecting another step during Back validation keeps its editor open', async ({ page }) => {
+    const nextScript = 'var second = 2;';
+    const editor = await openDelayedTransformer(page, 'var first = 1;', nextScript);
+    try {
+        const validation = page.waitForRequest(request =>
+            request.url().endsWith(validator) && request.postData() === nextScript);
+        await editor.back.click();
+        const last = await validation;
+        const secondRow = page.locator('tr[data-path="1"]');
+        await secondRow.getByRole('cell', { name: '2', exact: true }).click();
+        await expect(editor.script).toHaveValue(nextScript);
+        await editor.finish(last);
+        await expect(page).toHaveURL(/\/transformer\/0$/);
+        await expect(secondRow).toHaveClass(/selected/);
+        await editor.back.click();
+        await expect(page.getByRole('tab', { name: 'Source', selected: true })).toBeVisible();
+    } finally {
+        editor.release();
+    }
+});
+
+test('typing in the raw step editor supersedes Back before blur commits the draft', async ({ page }) => {
+    await page.route('**/plugins/transformer-steps/web/plugin.js*', route => route.abort('failed'));
+    const editor = await openDelayedTransformer(page, 'var x = 1;');
+    try {
+        const validation = page.waitForRequest(`**/api${validator}`);
+        await editor.back.click();
+        const first = await validation;
+        const raw = page.locator('.step-editor-fill textarea');
+        const updatedScript = 'var x = 2;';
+        const updatedJson = JSON.stringify({ ...JSON.parse(await raw.inputValue()), script: updatedScript });
+        await raw.fill(updatedJson);
+        await editor.finish(first);
+        await expect(raw).toHaveValue(updatedJson);
+        const retry = page.waitForRequest(request =>
+            request.url().endsWith(validator) && request.postData() === updatedScript);
+        await editor.back.click();
+        await retry;
+        await expect(page.getByRole('tab', { name: 'Source', selected: true })).toBeVisible();
+        await page.getByRole('button', { name: /^Edit Transformer/ }).click();
+        expect(JSON.parse(await raw.inputValue()).script).toBe(updatedScript);
+    } finally {
+        editor.release();
+    }
+});
+
+test('malformed raw JSON blocks Save and Back and can be explicitly discarded', async ({ page }) => {
+    await page.route('**/plugins/transformer-steps/web/plugin.js*', route => route.abort('failed'));
+    const editor = await openDelayedTransformer(page, 'var x = 1;');
+    editor.release();
+    const writes: Request[] = [];
+    page.on('request', request => {
+        if (request.method() === 'PUT' && new URL(request.url()).pathname === '/api/channels/delayed-back') writes.push(request);
+    });
+    const raw = page.locator('.step-editor-fill textarea');
+    const error = page.getByRole('dialog', { name: 'Error', exact: true });
+    await raw.fill('{');
+    await raw.press('Tab');
+    await expect(error).toContainText('Invalid JSON');
+    await error.getByRole('button', { name: 'Close', exact: true }).last().click();
+    for (const action of [page.getByRole('button', { name: 'Save Channel', exact: true }), editor.back]) {
+        await action.click();
+        await expect(error).toContainText('Invalid JSON');
+        await error.getByRole('button', { name: 'Close', exact: true }).last().click();
+        await expect(raw).toHaveValue('{');
+    }
+    await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Unsaved Changes' }).getByRole('button', { name: "Don't Save" }).click();
+    await expect(editor.back).toHaveCount(0);
+    await expect(page).toHaveURL('/dashboard');
+    expect(writes).toHaveLength(0);
 });
 
 test('a late Validate Step error cannot cover the returned channel editor', async ({ page }) => {

@@ -32,8 +32,8 @@ import { parseFilterTransformerImport, normalizeImportTypes, alignDestinationTyp
  *
  * The channel travels through the store ('editingChannel') so unsaved edits
  * survive navigation between the channel editor and this view. Dirty is the
- * explicit editingChannelDirty store flag; persist() (teardown) never sets it,
- * only commit() does.
+ * explicit editingChannelDirty store flag; user edits set it and teardown only
+ * persists the model.
  *
  * createEmbeddedEditor keeps the imperative embedding contract the channel
  * wizard captures once: a synchronous { el, teardown, handlers, taskState,
@@ -495,7 +495,7 @@ function ElementsGrid({ kind, isFilter, elements, selectedPath, typeOptions, can
    onChange() defaults during mount don't mark the channel dirty. The island
    remounts only when the selected ELEMENT (identity or type) changes — never
    on rev bumps, so plugin editor state (Monaco etc.) survives grid edits. */
-function StepEditorPanel({ kind, isFilter, element, headerIndex, settlingRef, onChange, onReplaceElement, destinations }: any) {
+function StepEditorPanel({ kind, isFilter, element, headerIndex, settlingRef, onChange, onRawEdit, applyRawRef, onReplaceElement, destinations }: any) {
     const hostRef = useRef<any>(null);
     const def = element ? typeDefFor(isFilter, element.__type) : null;
     const hasComponent = !!(def && typeof def.component === 'function');
@@ -547,7 +547,7 @@ function StepEditorPanel({ kind, isFilter, element, headerIndex, settlingRef, on
             {hasComponent
                 ? <div className="panel-body" ref={hostRef} />
                 : <div className="panel-body">
-                    <RawElementFallback element={element} onReplace={onReplaceElement} />
+                    <RawElementFallback element={element} onEdit={onRawEdit} applyRawRef={applyRawRef} onReplace={onReplaceElement} />
                 </div>}
         </div>
     );
@@ -563,25 +563,37 @@ function SettleGuard({ settlingRef, children }: any) {
 }
 
 /* Unknown plugin type: raw JSON fallback so nothing is lost. */
-function RawElementFallback({ element, onReplace }: any) {
+function RawElementFallback({ element, onEdit, applyRawRef, onReplace }: any) {
     const [text, setText] = useState(() => JSON.stringify(element, null, 2));
+    const edited = useRef(false);
     // Re-seed when the selection moves to a different element (the panel is not
     // remounted between same-shape selections).
-    useEffect(() => { setText(JSON.stringify(element, null, 2)); }, [element]);
+    useEffect(() => { edited.current = false; setText(JSON.stringify(element, null, 2)); }, [element]);
+    function apply() {
+        if (!edited.current) return true;
+        try {
+            const parsed = JSON.parse(text);
+            parsed.__type = element.__type;
+            onReplace(parsed);
+            edited.current = false;
+            return true;
+        } catch (e: any) {
+            toast(`Invalid JSON: ${e.message}`, 'error');
+            return false;
+        }
+    }
+    // Save and Back need the same parsing result as blur, including a previous
+    // blur that reported an error and kept the uncommitted text in this field.
+    useLayoutEffect(() => {
+        applyRawRef.current = apply;
+        return () => { applyRawRef.current = null; };
+    });
     return (
         <div className="field">
             <label>Raw element (JSON)</label>
             <textarea rows={14} spellCheck={false} value={text}
-                onChange={(e: any) => setText(e.target.value)}
-                onBlur={() => {
-                    try {
-                        const parsed = JSON.parse(text);
-                        parsed.__type = element.__type;
-                        onReplace(parsed);
-                    } catch (e: any) {
-                        toast(`Invalid JSON: ${e.message}`, 'error');
-                    }
-                }} />
+                onChange={(e: any) => { edited.current = true; setText(e.target.value); onEdit(); }}
+                onBlur={apply} />
             <div className="hint">{`No editor registered for ${element.__type}`}</div>
         </div>
     );
@@ -1339,6 +1351,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     const setSelected = (path: any) => { selectedPathRef.current = path; setSelectedPathState(path); };
     const [rev, bump] = useReducer((x: any) => x + 1, 0);
     const validation = useRef<{ returning: boolean } | null>(null);
+    const applyRawRef = useRef<(() => boolean) | null>(null);
     const [bottomTab, setBottomTab] = useState(0);
     // True only while a step plugin's flushSync mount runs (see StepEditorPanel).
     const settlingRef = useRef(false);
@@ -1372,6 +1385,18 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     const persistRef = useRef(persist);
     persistRef.current = persist;
 
+    function markDirty() {
+        store.setState('editingChannelDirty', true);
+        onTasksChange();
+    }
+
+    // Raw JSON may be incomplete while typing. Its text is already a draft
+    // edit; waiting for blur would let Back act on the previous script.
+    function onRawEdit() {
+        validation.current = null;
+        if (!embedded && !channelDirty()) markDirty();
+    }
+
     // Called by the edit handlers: persist AND mark the shared dirty flag the
     // channel editor reads, so unsaved step edits prompt on exit. The rev bump
     // repaints the grid and regenerates the script preview.
@@ -1379,8 +1404,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         validation.current = null;
         persist();
         if (settlingRef.current) return;            // plugin initialization, not a user edit
-        store.setState('editingChannelDirty', true);
-        onTasksChange();
+        markDirty();
         bump();
     }
     const commitRef = useRef(commit);
@@ -1390,7 +1414,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
 
     async function saveChannelUnlocked() {
         const isCurrent = channelSessionActive();
-        if (!isCurrent()) return false;
+        if (!isCurrent() || applyRawRef.current?.() === false) return false;
         persist();
         const problems = oie.validateChannel(channel);
         if (problems.length) {
@@ -1779,9 +1803,13 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         return true;
     }
 
-    async function validateElements() { await runValidation(true, beginValidation()); }
+    async function validateElements() {
+        if (applyRawRef.current?.() === false) return;
+        await runValidation(true, beginValidation());
+    }
 
     async function validateElement() {
+        if (applyRawRef.current?.() === false) return;
         const isCurrent = beginValidation();
         const el = elementAtPath(elementsRef.current, selectedPathRef.current);
         if (!el) { toast(`Select a ${kind.noun.toLowerCase()} first`, 'warn'); return; }
@@ -1872,6 +1900,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         // Validate task and stays put on a blocking error — BaseEditorPane.accept()
         // aborts navigation when validateAll() reports errors. A non-blocking
         // 'unavailable' (engine validate endpoint down) must not trap the user.
+        if (applyRawRef.current?.() === false) return;
         const isCurrent = beginValidation(true);
         if (!await runValidation(false, isCurrent) || !isCurrent()) return;
         persist();    // navigating back is not an edit — don't mark dirty
@@ -2080,6 +2109,8 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                                     headerIndex={selectedPath ? selectedPath[selectedPath.length - 1] + 1 : 0}
                                     settlingRef={settlingRef}
                                     onChange={() => commitRef.current()}
+                                    onRawEdit={onRawEdit}
+                                    applyRawRef={applyRawRef}
                                     onReplaceElement={(parsed: any) => {
                                         const selPath = selectedPathRef.current;
                                         const list = listAtPath(elementsRef.current, selPath);
@@ -2167,10 +2198,10 @@ function FilterTransformerView({ params, kindName }: any) {
     const ts = (ctx && ctx.taskState()) || { onStep: false, assign: false, remove: false, dirty: false };
     const t = ctx && ctx.handlers;
 
-    // Capture also reaches the task rail portal. Opening another editor control
-    // supersedes Back before a chooser or file picker can commit its edit.
+    // Capture also reaches the task rail portal. Selecting a step or opening a
+    // chooser supersedes Back before the next edit has been committed.
     function onEditorAction(event: React.MouseEvent) {
-        if (event.type === 'contextmenu' || (event.target instanceof Element && event.target.closest('button, select'))) {
+        if (event.type === 'contextmenu' || (event.target instanceof Element && event.target.closest('button, select, tr[data-path]'))) {
             apiRef.current?.cancelPendingBack();
         }
     }

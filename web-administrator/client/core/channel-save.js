@@ -34,12 +34,12 @@ function repairFileCredentials(channel) {
     return changed;
 }
 /** Send the engine's exact name for every tag it already knows by id. */
-export function restoreChannelTagNames(channel, originalTagIds) {
-    return restoreTagNames(channel?.id, assignedTags(channel), originalTagIds);
+export async function restoreChannelTagNames(channel, originalTagIds) {
+    await restoreTagNames(channel?.id, assignedTags(channel), originalTagIds);
 }
 async function restoreTagNames(channelId, tags, originalTagIds) {
     if (!tags.length)
-        return;
+        return [];
     const assertSession = captureEngineSession();
     let known;
     try {
@@ -64,6 +64,7 @@ async function restoreTagNames(channelId, tags, originalTagIds) {
             throw new Error('Cannot verify channel tag names. Retry before saving.');
         tag.name = name;
     }
+    return known;
 }
 export function assignedTags(channel) {
     return api.asList(channel?.exportData?.channelTags, 'channelTag');
@@ -79,6 +80,11 @@ export function sameTag(a, b) {
 }
 function contains(tags, tag) {
     return tags.some(item => sameTag(item, tag));
+}
+function rememberKnownTags(state, tags) {
+    const ids = state.knownTagIds ??= new Set();
+    for (const tag of tags)
+        ids.add(String(tag.id));
 }
 function submittedTagIdentities(previous, submitted, latest) {
     return submitted.map(({ id, name }) => {
@@ -103,30 +109,63 @@ function resolveTagIds(tags, aliases) {
     return tags.map(tag => aliases.get(String(tag.id)) ?? tag);
 }
 // Apply only local membership changes to the latest settings.
-function mergedChannelTags(before, draft, latest) {
+function mergedChannelTags(state, draft, latest) {
+    let before = state.tagBaseline ?? [];
     const aliases = canonicalTagIds(before, latest);
     before = resolveTagIds(before, aliases);
     draft = resolveTagIds(draft, aliases);
+    const edits = resolveTagIds(state.editedTags ?? [], aliases);
     const merged = [];
     for (const tag of draft) {
         const match = latest.find(item => sameTag(item, tag));
-        if (match || !contains(before, tag))
+        if (match || contains(edits, tag) || !contains(before, tag))
             merged.push(match ?? tag);
     }
-    return [...merged, ...latest.filter(tag => !contains(before, tag) && !contains(merged, tag))];
+    const additions = latest.filter(tag => !contains(before, tag) && !contains(edits, tag) && !contains(merged, tag));
+    return { tags: [...merged, ...additions], edits };
 }
-// Only compare names after resolving each tag's current name by ID. A tag
-// selected from earlier Settings choices may itself have been renamed.
-function uniqueTagNames(tags, latest) {
+// A typed name can resolve to an existing tag. A previously observed engine ID,
+// however, can have been renamed while the global list was unavailable.
+function reconcileTagNames(tags, verified, state, forSave) {
     const unique = [];
+    const aliases = new Map();
+    const unverified = (tag) => !!state.knownTagIds?.has(String(tag.id)) && !contains(verified, tag);
+    const ambiguous = (tag) => new Error(`Cannot verify which tag is named "${tag.name}". Retry when the server tag list is available, or remove the unverified selection.`);
     for (const tag of tags) {
+        // The engine matches by ID OR name, even when the conflicting assigned
+        // tag was explicitly removed from this submission.
+        if (forSave && state.knownTagIds?.has(String(tag.id))) {
+            const conflicting = verified.filter(other => !sameTag(other, tag) && sameTagName(other, tag));
+            if (conflicting.length && unverified(tag))
+                throw ambiguous(tag);
+            if (conflicting.some(other => !contains(tags, other))) {
+                throw new Error(`The server has multiple tags named "${tag.name}". Rename one in Tags settings before changing that assignment.`);
+            }
+        }
         const index = unique.findIndex(item => sameTagName(item, tag));
-        if (index < 0)
+        if (index < 0) {
             unique.push(tag);
-        else if (contains(latest, tag))
-            unique[index] = tag;
+            continue;
+        }
+        const other = unique[index];
+        if (sameTag(other, tag))
+            continue;
+        const knownOther = contains(verified, other), knownTag = contains(verified, tag);
+        if (unverified(other) || unverified(tag)) {
+            if (forSave)
+                throw ambiguous(tag);
+            unique.push(tag);
+            continue;
+        }
+        if (knownOther && knownTag) {
+            unique.push(tag);
+            continue;
+        }
+        const selected = knownTag ? tag : other;
+        aliases.set(String(knownTag ? other.id : tag.id), selected);
+        unique[index] = selected;
     }
-    return unique;
+    return { tags: unique, aliases };
 }
 function writeChannelTags(channel, tags) {
     if (!tags.length && channel.exportData?.channelTags == null)
@@ -135,10 +174,11 @@ function writeChannelTags(channel, tags) {
 }
 async function prepareChannelTags(submitted, draftTags, state, current) {
     let tags = draftTags;
+    let latest = assignedTags(current);
     if (current?.exportData && 'channelTags' in current.exportData) {
         const before = state.tagBaseline ?? [];
-        let latest = assignedTags(current);
-        if (latest.some(tag => typeof tag.name !== 'string' && !contains(before, tag))) {
+        const selectedExisting = draftTags.some(tag => state.knownTagIds?.has(String(tag.id)) && !contains(latest, tag));
+        if (latest.some(tag => typeof tag.name !== 'string' && (selectedExisting || !contains(before, tag)))) {
             latest = clone(latest);
             await restoreTagNames(current.id, latest);
         }
@@ -152,14 +192,16 @@ async function prepareChannelTags(submitted, draftTags, state, current) {
             }
             return tag;
         });
-        tags = mergedChannelTags(before, tags, exact);
+        tags = mergedChannelTags(state, tags, exact).tags;
     }
     const original = state.baseline ? JSON.parse(state.baseline) : null;
     const originalTagIds = new Set(assignedTags(original).map(tag => String(tag.id)));
     // Keep the original draft delta and the engine snapshot intact for a conflict retry.
     const exactTags = clone(tags);
-    await restoreTagNames(submitted.id, exactTags, originalTagIds);
-    writeChannelTags(submitted, uniqueTagNames(exactTags, assignedTags(current)));
+    const known = await restoreTagNames(submitted.id, exactTags, originalTagIds);
+    const verified = [...known, ...latest.filter(tag => !contains(known, tag))];
+    rememberKnownTags(state, verified);
+    writeChannelTags(submitted, reconcileTagNames(exactTags, verified, state, true).tags);
 }
 function sameTagAppearance(a, b) {
     return sameTag(a, b) && a.name === b.name
@@ -167,9 +209,10 @@ function sameTagAppearance(a, b) {
 }
 async function acknowledgeTagIds(state, persisted, ...drafts) {
     const before = state.tagBaseline ?? [];
+    let canonical = assignedTags(persisted);
+    rememberKnownTags(state, canonical);
     if (!before.some(tag => tag.unconfirmed))
         return;
-    let canonical = assignedTags(persisted);
     if (canonical.some(tag => typeof tag.name !== 'string' && !contains(before, tag))) {
         // Preserve the raw JSON receipt used for the channel conflict baseline.
         canonical = clone(canonical);
@@ -184,6 +227,11 @@ async function acknowledgeTagIds(state, persisted, ...drafts) {
         ? { id: tag.id, name: tag.name } : tag);
 }
 export function setTagMembership(channel, tag, add, version) {
+    const state = channelEditState(channel);
+    const edits = (state.editedTags ?? []).filter(item => !sameTag(item, tag));
+    if (add !== contains(state.tagBaseline ?? [], tag))
+        edits.push({ id: tag.id, name: tag.name });
+    state.editedTags = edits;
     const tags = assignedTags(channel).filter(item => !sameTag(item, tag));
     if (add) {
         const ids = new Set(api.asList(tag.channelIds, 'string'));
@@ -211,7 +259,11 @@ export async function loadTagChoices(channel, isCurrent) {
             const known = choices?.find(item => sameTag(item, tag));
             return known && known.name !== tag.name ? { ...tag, name: known.name } : tag;
         });
-        const merged = uniqueTagNames(mergedChannelTags(before ?? [], exact, latest), latest);
+        const result = mergedChannelTags(state, exact, latest);
+        const verified = [...(choices ?? []), ...latest];
+        const { tags: merged, aliases } = reconcileTagNames(result.tags, verified, state, false);
+        state.editedTags = resolveTagIds(result.edits, aliases);
+        rememberKnownTags(state, verified);
         // XML choices and JSON exports encode the same memberships differently
         // (singleton collections, @version and channelIds). A lookup alone
         // must leave the clean working model unchanged.
@@ -232,6 +284,19 @@ function fingerprint(channel) {
         delete value.exportData.channelDependencies;
         delete value.exportData.dependencyIds;
         delete value.exportData.dependentIds;
+        // OIE reads a single XML child as an object (or a scalar channel ID).
+        // Compare both collection shapes equally when the save receipt is unavailable.
+        const tagList = value.exportData.channelTags;
+        if (tagList === '') {
+            value.exportData.channelTags = null;
+        }
+        else if (tagList?.channelTag != null) {
+            tagList.channelTag = assignedTags(value);
+            for (const tag of tagList.channelTag) {
+                if (tag.channelIds?.string != null)
+                    tag.channelIds.string = api.asList(tag.channelIds, 'string');
+            }
+        }
     }
     return JSON.stringify(value, (_key, node) => node && typeof node === 'object' && !Array.isArray(node)
         ? Object.fromEntries(Object.keys(node).sort().map(key => [key, node[key]])) : node);
@@ -243,7 +308,8 @@ export async function loadChannelForEdit(id) {
     const baseline = fingerprint(channel);
     await restoreChannelTagNames(channel);
     const state = { isNew: false, baseline, workingBaseline: fingerprint(channel), saving: false };
-    sessions.set(channel, { ...state, tagBaseline: assignedTags(channel).map(({ id, name }) => ({ id, name })) });
+    const tagBaseline = assignedTags(channel).map(({ id, name }) => ({ id, name }));
+    sessions.set(channel, { ...state, tagBaseline, knownTagIds: new Set(tagBaseline.map(tag => String(tag.id))) });
     return channel;
 }
 /** Identity follows the working model through classic, wizard and subeditors.
@@ -388,6 +454,7 @@ export async function saveChannelModel(channel, options) {
                 state.baseline = fingerprint(current);
                 const acknowledged = clone(attempt);
                 acknowledged.revision = current.revision;
+                state.editedTags = undefined;
                 state.tagBaseline = submittedTagIdentities([], assignedTags(acknowledged), assignedTags(current));
                 try {
                     await acknowledgeTagIds(state, current, channel, acknowledged);
@@ -429,6 +496,10 @@ export async function saveChannelModel(channel, options) {
             // A recovered create may already have persisted this repair.
             if (credentialRepair)
                 repairFileCredentials(channel);
+            if (state.editedTags?.length) {
+                state.tagBaseline = submittedTagIdentities(state.tagBaseline ?? [], assignedTags(channel), assignedTags(current));
+                state.editedTags = undefined;
+            }
             return true;
         }
         normalizeChannelDataTypeArrays(submitted);
@@ -475,6 +546,7 @@ export async function saveChannelModel(channel, options) {
         state.creationAttempts = undefined;
         if (unchangedDuringWrite)
             writeChannelTags(channel, assignedTags(submitted));
+        state.editedTags = undefined;
         state.tagBaseline = submittedTagIdentities(state.tagBaseline ?? [], assignedTags(submitted), assignedTags(current));
         channel.revision = submitted.revision || 1;
         (channel.exportData = channel.exportData || {}).metadata = metadata;
@@ -484,21 +556,24 @@ export async function saveChannelModel(channel, options) {
         // The engine can retain the old revision for a metadata-only save and
         // normalize model fields. Rebase only a receipt carrying our save stamp;
         // a newer writer's model must never become this draft's clean baseline.
-        try {
-            const persisted = await api.channels.get(channel.id);
-            assertSession();
-            if (persisted?.id === channel.id && modifiedTime(persisted) === metadata.lastModified.time
-                && (persisted.revision === channel.revision || persisted.revision === current?.revision)) {
-                channel.revision = persisted.revision;
-                state.baseline = fingerprint(persisted);
+        const persisted = await api.channels.get(channel.id).catch(() => null);
+        assertSession();
+        if (persisted && persisted.id === channel.id && modifiedTime(persisted) === metadata.lastModified.time
+            && (persisted.revision === channel.revision || persisted.revision === current?.revision)) {
+            channel.revision = persisted.revision;
+            state.baseline = fingerprint(persisted);
+            try {
                 await acknowledgeTagIds(state, persisted, channel);
             }
+            catch {
+                assertSession();
+            } // Retry an unavailable exact-name lookup on the next save.
         }
-        catch {
-            // An ordinary readback failure does not undo the accepted write.
-            // Session invalidation must still stop callers from starting later
-            // library/dependency/deployment stages as a departed user.
-            assertSession();
+        else if (!persisted && current && channelContent(current) === channelContent(submitted)) {
+            // An accepted metadata-only update retains the engine revision even
+            // when its receipt cannot be read. The next preflight checks this baseline.
+            channel.revision = current.revision;
+            state.baseline = fingerprint({ ...submitted, revision: current.revision });
         }
         // A credential edit made during the request must remain unsaved. Force
         // the next Save to send it instead of treating the live draft as sent.

@@ -230,6 +230,125 @@ for (const initial of ['new', 'untagged', 'tagged']) {
         assert.deepEqual(assignedTags(writes.at(-1)).map(t => [t.id, t.name]), [['first', 'Legacy'], ['choice', 'Archive']]);
     }
 
+    // An acknowledged channel save ends the local membership edit. An intervening
+    // Summary/Options refresh, even when Settings happens to agree, does not.
+    for (const add of [false, true]) {
+        const tag = { id: 'on-call', name: 'OnCall' };
+        const setRemote = member => {
+            const choice = { ...tag, channelIds: member ? { string: ['one'] } : '' };
+            known = [choice];
+            server.exportData.channelTags = member ? { channelTag: choice } : null;
+        };
+        server = channel(null);
+        setRemote(!add);
+        const draft = await loadChannelForEdit('one');
+        await loadTagChoices(draft, () => true);
+        setTagMembership(draft, known[0], add, '4.6.0');
+        setRemote(add);
+        await loadTagChoices(draft, () => true);
+        setRemote(!add);
+        await loadTagChoices(draft, () => true);
+        assert.equal(assignedTags(draft).length, add ? 1 : 0, 'another refresh retains the explicit choice');
+        writeFailure = true;
+        await assert.rejects(saveChannelModel(draft, sameUser), /Write failed/);
+        writeFailure = false;
+        await loadTagChoices(draft, () => true);
+        await saveChannelModel(draft, sameUser);
+        assert.equal(assignedTags(writes.at(-1)).length, add ? 1 : 0, 'failed writes retain the choice for retry');
+        setRemote(!add);
+        await loadTagChoices(draft, () => true);
+        assert.equal(assignedTags(draft).length, add ? 0 : 1, 'Settings changes apply after the write succeeds');
+
+        // Undoing a local edit before Save restores ordinary Settings updates.
+        setTagMembership(draft, known[0], add, '4.6.0');
+        setTagMembership(draft, known[0], !add, '4.6.0');
+        setRemote(add);
+        await loadTagChoices(draft, () => true);
+        assert.equal(assignedTags(draft).length, add ? 1 : 0);
+    }
+
+    // A no-op Save can acknowledge a removal that Settings already fulfilled.
+    server = channel(null);
+    known = [];
+    const noop = await loadChannelForEdit('one');
+    known = [production];
+    server.exportData.channelTags = { channelTag: production };
+    await loadTagChoices(noop, () => true);
+    setTagMembership(noop, production, false, '4.6.0');
+    server.exportData.channelTags = null;
+    const beforeNoop = writes.length;
+    await saveChannelModel(noop, sameUser);
+    assert.equal(writes.length, beforeNoop);
+    server.exportData.channelTags = { channelTag: production };
+    await loadTagChoices(noop, () => true);
+    assert.deepEqual(assignedTags(noop), [production], 'the accepted no-op released the saved removal');
+
+    for (const refresh of [false, true]) {
+        const choice = { ...tag('choice', 'Legacy'), channelIds: { string: ['two'] } };
+        server = channel({ channelTag: production });
+        lookupFailure = false;
+        known = [production, choice];
+        const draft = await loadChannelForEdit('one');
+        const choices = await loadTagChoices(draft, () => true);
+        setTagMembership(draft, choices.find(item => item.id === 'choice'), true, '4.6.0');
+        known = [legacy, { ...choice, name: 'Archive' }];
+        assigned = [legacy];
+        server.exportData.channelTags = { channelTag: legacy };
+        lookupFailure = true;
+        if (refresh) await loadTagChoices(draft, () => true);
+        assert.deepEqual(assignedTags(draft).map(t => t.id), ['first', 'choice']);
+        const count = writes.length;
+        await assert.rejects(saveChannelModel(draft, sameUser), /Cannot verify which tag is named/);
+        assert.equal(writes.length, count);
+        if (refresh) {
+            setTagMembership(draft, legacy, false, '4.6.0');
+            await assert.rejects(saveChannelModel(draft, sameUser), /Cannot verify which tag is named/,
+                'the engine could match the stale name to the removed tag');
+            assert.equal(writes.length, count);
+            setTagMembership(draft, legacy, true, '4.6.0');
+        }
+        lookupFailure = false;
+        await saveChannelModel(draft, sameUser);
+        assert.deepEqual(assignedTags(writes.at(-1)).map(t => [t.id, t.name]).sort(),
+            [['choice', 'Archive'], ['first', 'Legacy']]);
+    }
+
+    // In the JSON preflight, the removed tag's exact name "-0" becomes 0.
+    // Channel XML still identifies the collision, even with no other tags to submit.
+    {
+        const choice = { ...tag('choice', '-0'), channelIds: { string: ['two'] } };
+        server = channel({ channelTag: production });
+        known = [production, choice];
+        const draft = await loadChannelForEdit('one');
+        const choices = await loadTagChoices(draft, () => true);
+        setTagMembership(draft, choices.find(item => item.id === 'choice'), true, '4.6.0');
+        setTagMembership(draft, production, false, '4.6.0');
+        server.exportData.channelTags = { channelTag: { ...production, name: 0 } };
+        assigned = [{ ...production, name: '-0' }];
+        lookupFailure = true;
+        const count = writes.length;
+        await assert.rejects(saveChannelModel(draft, sameUser), /Cannot verify which tag is named "-0"/);
+        assert.equal(writes.length, count);
+        lookupFailure = false;
+    }
+
+    // Keep both identities when the engine supplies two already-assigned tags
+    // with case-equivalent names. Its ID-or-name match cannot remove just one.
+    {
+        const first = tag('one-id', 'I'), second = tag('two-id', 'i');
+        known = [first, second];
+        server = channel({ channelTag: known });
+        const draft = await loadChannelForEdit('one');
+        await loadTagChoices(draft, () => true);
+        draft.name = 'Content-only edit';
+        await saveChannelModel(draft, sameUser);
+        assert.deepEqual(assignedTags(writes.at(-1)).map(t => t.id), ['one-id', 'two-id']);
+        setTagMembership(draft, first, false, '4.6.0');
+        const count = writes.length;
+        await assert.rejects(saveChannelModel(draft, sameUser), /multiple tags named/);
+        assert.equal(writes.length, count);
+    }
+
     // With Channel View alone, a typed tag may be accepted under a different
     // server ID. Its exact name may also be coerced by a JSON readback.
     for (const receipt of ['available', 'failed', 'recovered-create']) {
