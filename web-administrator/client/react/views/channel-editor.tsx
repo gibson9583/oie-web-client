@@ -2,6 +2,7 @@ import { describeTargets } from '../action-targets.js';
 import { loadErrorMessage } from '../load-error.js';
 import { channelEditState, loadChannelForEdit } from '../../core/channel-save.js';
 import { useConnectorTypeSwitch } from '../connector-type-switch.js';
+import { channelEditorScreens } from '../channel-editor-return.js';
 import { persistChannelEdits, confirmLibraryOverwrite, channelSessionActive } from '../channel-persistence.js';
 import { channelDependencyState, copyLibrarySelection, copyDependencySelection, dependencySelection, librarySelection, refreshLibraryChoices, refreshDependencyChoices, hasDependencyChanges, hasLibraryChanges, persistChannelDependencies, persistLibraryAssociations } from '../../core/channel-dependencies.js';
 /*
@@ -2148,14 +2149,14 @@ function MappingsRail({ onInsert, dragRef, mappings }: any) {
     );
 }
 
-function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef, destTasksRef, onTasksChange, gotoElements }: any) {
+function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef, destTasksRef, onTasksChange, gotoElements, initialDestinationId }: any) {
     const mountedRef = useRef(true);
     const importingRef = useRef(false);
     useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
     // Selection lives in the ref (execution-time reads); the state twin only
     // drives re-renders.
-    const [, setSelectedIdState] = useState<any>(null);
-    const selectedIdRef = useRef<any>(null);
+    const [, setSelectedIdState] = useState<any>(initialDestinationId ?? null);
+    const selectedIdRef = useRef<any>(initialDestinationId ?? null);
     const setSelectedId = (id: any) => { selectedIdRef.current = id; setSelectedIdState(id); };
     const tableHostRef = useRef<any>(null);
     const tableRef = useRef<any>(null);
@@ -2386,7 +2387,12 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
         tableRef.current = table;
         host.appendChild(table.el);
         refresh();
+        // The router attaches this view to the document after the mount completes.
+        const scrollFrame = initialDestinationId == null ? null : requestAnimationFrame(() => {
+            table.el.querySelector('tr.selected')?.scrollIntoView({ block: 'nearest' });
+        });
         return () => {
+            if (scrollFrame != null) cancelAnimationFrame(scrollFrame);
             tableRef.current = null;
             host.replaceChildren();
             destTasksRef.current = null;
@@ -2502,8 +2508,8 @@ const CHANNEL_SCRIPTS = [
     { key: 'postprocessingScript', label: 'Postprocessor', hint: 'Runs after every message is processed', context: 'CHANNEL_POSTPROCESSOR' }
 ];
 
-function ScriptsTab({ channel, markDirty }: any) {
-    const [current, setCurrent] = useState(CHANNEL_SCRIPTS[0]);
+function ScriptsTab({ channel, markDirty, scriptKeyRef }: any) {
+    const [current, setCurrent] = useState(() => CHANNEL_SCRIPTS.find(script => script.key === scriptKeyRef.current) ?? CHANNEL_SCRIPTS[0]);
     const currentRef = useRef(current);
     const hostRef = useRef<any>(null);
     const editorRef = useRef<any>(null);
@@ -2551,6 +2557,7 @@ function ScriptsTab({ channel, markDirty }: any) {
                         if (editor) channel[currentRef.current.key] = editor.getValue();
                         const next = CHANNEL_SCRIPTS.find(s => s.key === e.target.value) || currentRef.current;
                         currentRef.current = next;
+                        scriptKeyRef.current = next.key;
                         setCurrent(next);
                         if (editor) {
                             switchingRef.current = true;
@@ -2574,12 +2581,15 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
     const setupRef = useRef<any>(null);
     if (!setupRef.current) {
         const channel = store.getState('editingChannel');
+        const screen = channelEditorScreens.get(channel);
+        channelEditorScreens.delete(channel);
         setupRef.current = {
             channel,
+            screen,
             version: channel['@version'] || store.getState('serverVersion') || '4.5.2',
             get isNew() { return channelEditState(channel).isNew; },
             // Tags cache shared by the Summary field and save().
-            tagState: { loaded: false, available: false, all: [], assigned: new Set(), initial: new Set() }
+            tagState: screen?.tagState ?? { loaded: false, available: false, all: [], assigned: new Set(), initial: new Set() }
         };
         store.setState('editingChannelNew', setupRef.current.isNew);
         // Unsaved state is tracked in the shared 'editingChannelDirty' store flag
@@ -2599,13 +2609,21 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
     });
 
     const [, bumpRev] = useReducer((x: any) => x + 1, 0);
-    const [activeTab, setActiveTabState] = useState('Summary');
-    const activeTabRef = useRef('Summary');
+    const [activeTab, setActiveTabState] = useState<string>(setup.screen?.tab ?? 'Summary');
+    const activeTabRef = useRef(activeTab);
+    const initialDestinationRef = useRef(setup.screen?.destinationId);
+    const scriptKeyRef = useRef(setup.screen?.scriptKey);
     const mountedRef = useRef(true);
     const sourceImportingRef = useRef(false);
     useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
     const [sourceImportRevision, bumpSourceImportRevision] = useReducer((revision: number) => revision + 1, 0);
-    const setActiveTab = (label: any) => { activeTabRef.current = label; setActiveTabState(label); onTasksChange(); };
+    const setActiveTab = (label: string) => {
+        initialDestinationRef.current = undefined;
+        scriptKeyRef.current = undefined;
+        activeTabRef.current = label;
+        setActiveTabState(label);
+        onTasksChange();
+    };
     const destTasksRef = useRef<any>(null);
     const actionsRef = useRef<any>(null);
     const guardImplRef = useRef<any>(null);
@@ -2878,10 +2896,19 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
     /* Leaving the editor with unsaved changes prompts; a FAILED save blocks
        navigation and must not drop the working copy — state clears only on
        allow (Don't Save, or a successful Save). */
-    guardImplRef.current = async ({ path }: any) => {
+    guardImplRef.current = async ({ path, params: nextParams }: any) => {
         const isCurrent = channelSessionActive();
         if (!isCurrent()) return false;
-        if (path.startsWith(`/channels/${params.channelId}/`)) return; // same editing flow
+        if (path.startsWith(`/channels/${params.channelId}/`)) {
+            // The router also sees entries from plugin tabs and the command palette.
+            if (nextParams.metaDataId != null) {
+                channelEditorScreens.set(channel, {
+                    tab: activeTabRef.current, destinationId: destTasksRef.current?.selected()?.metaDataId,
+                    scriptKey: scriptKeyRef.current, tagState
+                });
+            }
+            return;
+        }
         if (isDirty()) {
             const choice = await promptSaveChanges(channel);
             if (!isCurrent() || choice === 'cancel') return false;
@@ -2962,9 +2989,9 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
     } else if (activeTab === 'Destinations') {
         body = <DestinationsTab key="Destinations" channel={channel} version={version} engineTypes={engineTypes}
             markDirty={markDirty} actionsRef={actionsRef} destTasksRef={destTasksRef}
-            onTasksChange={onTasksChange} gotoElements={gotoElements} />;
+            onTasksChange={onTasksChange} gotoElements={gotoElements} initialDestinationId={initialDestinationRef.current} />;
     } else if (activeTab === 'Scripts') {
-        body = <ScriptsTab key="Scripts" channel={channel} markDirty={markDirty} />;
+        body = <ScriptsTab key="Scripts" channel={channel} markDirty={markDirty} scriptKeyRef={scriptKeyRef} />;
     } else {
         const def = pluginTabs.find(d => d.label === activeTab);
         // Plugin channel tabs are React components — rendered in-tree, keyed by

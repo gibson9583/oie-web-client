@@ -3,6 +3,7 @@ import { loadErrorMessage } from '../load-error.js';
 import { channelDependencyState } from '../../core/channel-dependencies.js';
 import { persistChannelEdits, channelSessionActive } from '../channel-persistence.js';
 import { withEditorSave } from '../save-lock.js';
+import { channelEditorScreens } from '../channel-editor-return.js';
 import { parseFilterTransformerImport, normalizeImportTypes, alignDestinationTypes, updateImportedAttachmentHandler, normalizeImportedElementTypes } from './editor-import.js';
 /*
  * Filter / Transformer / Response Transformer editor — parity with the Swing
@@ -1441,10 +1442,15 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         });
     }
 
-    guardImplRef.current = async ({ path }: any) => {
+    guardImplRef.current = async ({ path, params: nextParams }: any) => {
         const isCurrent = channelSessionActive();
         if (!isCurrent()) return false;
-        if (path.startsWith(`/channels/${params.channelId}/`)) return; // same editing flow
+        if (path.startsWith(`/channels/${params.channelId}/`)) {
+            if (nextParams.metaDataId == null && path !== `/channels/${params.channelId}/edit`) {
+                channelEditorScreens.delete(channel);
+            }
+            return;
+        }
         if (channelDirty()) {
             const choice = await promptSaveChanges();
             if (!isCurrent() || choice === 'cancel') return false;
@@ -1454,6 +1460,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         }
         // Left the editor entirely: drop the working copy AND this guard so it can
         // never prompt again for navigation outside the editing flow.
+        channelEditorScreens.delete(channel);
         store.setState('editingChannel', null);
         store.setState('editingChannelNew', false);
         store.setState('editingChannelDirty', false);
@@ -1736,10 +1743,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // Full validation for "Validate <Kind>" and "Back to Channel". Mirrors Swing
     // BaseEditorPane.validateAll: (a) per-element field checks, then (b) a Rhino
     // syntax check of every element's generated script (engine bridge), covering
-    // non-JavaScript steps/rules too. Returns 'ok' | 'fail' | 'unavailable'.
+    // non-JavaScript steps/rules too. Ignore results after a route change.
     // `announce` controls the success/empty toasts (the manual Validate task
     // announces; Back to Channel runs it silently and only surfaces the error).
     async function runValidation(announce: any) {
+        const navigation = router.navigationToken();
         if (!elementsRef.current.length) {
             if (announce) toast(`${kind.title} is empty — nothing to validate`, 'warn');
             return 'ok';
@@ -1753,6 +1761,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             const src = generateElementScript(el, childrenOf);
             if (src == null) continue;
             const result = await validateScript(src);
+            if (router.navigationToken() !== navigation) return 'superseded';
             if (result.ok === null) { toast(result.message, 'warn'); return 'unavailable'; }
             if (result.ok === false) { showValidationErrors([elementError(el, result.message)]); return 'fail'; }
         }
@@ -1851,8 +1860,15 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         // Validate task and stays put on a blocking error — BaseEditorPane.accept()
         // aborts navigation when validateAll() reports errors. A non-blocking
         // 'unavailable' (engine validate endpoint down) must not trap the user.
-        if (await runValidation(false) === 'fail') return;
+        const navigation = router.navigationToken();
+        const result = await runValidation(false);
+        if (result === 'fail' || router.navigationToken() !== navigation) return;
         persist();    // navigating back is not an edit — don't mark dirty
+        // Bookmarks and Dashboard actions have a connector but no originating tab.
+        if (!channelEditorScreens.has(channel)) {
+            channelEditorScreens.set(channel, String(params.metaDataId) === '0'
+                ? { tab: 'Source' } : { tab: 'Destinations', destinationId: connector.metaDataId });
+        }
         router.navigate(`/channels/${channel.id}/edit`);
     }
 

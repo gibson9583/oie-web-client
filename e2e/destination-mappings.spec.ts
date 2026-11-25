@@ -164,7 +164,10 @@ for (const surface of ['classic', 'wizard']) {
             } else {
                 await page.locator('.step-editor-fill .field').filter({ has: page.locator('label').filter({ hasText: /^Variable$/ }) }).locator('input').fill('updatedStep');
             }
-            if (surface === 'classic') await page.getByRole('button', { name: 'Back to Channel', exact: true }).click();
+            if (surface === 'classic') {
+                await page.getByRole('button', { name: 'Back to Channel', exact: true }).click();
+                await expect(page.getByRole('tab', { name: 'Source', selected: true })).toBeVisible();
+            }
             await destinations(page, surface);
             await selectDestination(page, surface, 1);
             const refs = rail(page, surface);
@@ -188,8 +191,8 @@ for (const surface of ['classic', 'wizard']) {
             if (surface === 'wizard') await page.getByRole('tab', { name: 'Settings', exact: true }).click();
             else {
                 await page.getByRole('button', { name: 'Back to Channel', exact: true }).click();
-                await destinations(page, surface);
-                await selectDestination(page, surface, 1);
+                await expect(page.getByRole('tab', { name: 'Destinations', selected: true })).toBeVisible();
+                await expect(page.locator('.dest-grid tr.selected td.num')).toHaveText('9');
             }
             const refs = rail(page, surface);
             await expect(mapping(refs, key)).toHaveAttribute('title', `$('${key}')`);
@@ -203,3 +206,33 @@ for (const surface of ['classic', 'wizard']) {
         expect(writes).toHaveLength(0);
     });
 }
+
+test('Back to Channel after correcting a response transformer restores its destination and unsaved edits', async ({ page }) => {
+    const writes = await open(page, 'classic');
+    await page.route('**/api/javascript/_validate', route => route.fulfill({
+        json: { error: route.request().postData()?.includes('var broken = ;') ? 'Syntax error.' : null },
+    }));
+    await selectDestination(page, 'classic', 2);
+    const selectedRow = page.locator('.dest-grid tr.selected');
+    await selectedRow.locator('input.grid-name').fill('Renamed sink');
+    await page.getByRole('button', { name: /^Edit Response/ }).click();
+    const script = page.locator('.step-editor-fill textarea.ce-area');
+    await script.fill('var broken = ;');
+    const back = page.getByRole('button', { name: 'Back to Channel', exact: true });
+    await back.click();
+    const error = page.getByRole('dialog', { name: 'Error validating response transformer steps' });
+    await expect(error).toContainText('Syntax error.');
+    await expect(page).toHaveURL(/\/response\/12$/);
+    await error.getByRole('button', { name: 'Close', exact: true }).last().click();
+
+    const corrected = "logger.info('corrected');";
+    await script.fill(corrected);
+    await back.click();
+    await expect(page.getByRole('tab', { name: 'Destinations', selected: true })).toBeVisible();
+    await expect(selectedRow.locator('td.num')).toHaveText('12');
+    await expect(selectedRow.locator('input.grid-name')).toHaveValue('Renamed sink');
+    expect(writes).toHaveLength(0);
+    await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+    await expect.poll(() => writes.length).toBe(1);
+    expect(writes[0].destinationConnectors.connector[2].responseTransformer.elements[JS][0].script).toBe(corrected);
+});
