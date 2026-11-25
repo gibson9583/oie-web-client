@@ -1158,23 +1158,50 @@ function openDebugDeployModal(channel: any, save: any) {
 
 /* ---- channel tags (state shared with save() via tagStateRef) ------------------ */
 
-/* Channel tags: global ChannelTags that include this channel. Loaded lazily by
-   the Summary "Tags" field and persisted on save if membership changed. */
-async function ensureTags(tagState: any, channel: any) {
-    if (tagState.loaded) return tagState;
-    try {
-        const tags = await api.server.channelTags().catch(() => api.asList(channel.exportData?.channelTags, 'channelTag'));
-        tagState.all = tags.map(t => ({
-            id: t.id, name: t.name, backgroundColor: t.backgroundColor,
-            channelIds: api.asList(t.channelIds, 'string').map(String)
-        }));
-        for (const t of tagState.all) if (t.channelIds.includes(channel.id)) tagState.assigned.add(t.name);
-        tagState.available = true;
-    } catch { /* tags unavailable; can still create tags locally */ }
-    // Restore any unsaved tag selection already written onto the channel, so
-    // it survives an editor re-render (e.g. after editing a connector) before
-    // the first save — the channel object itself lives on in the store.
-    for (const ct of api.asList(channel.exportData && channel.exportData.channelTags, 'channelTag')) {
+// Keep only local membership edits across the handoff. Each mounted editor reads
+// its own server choices, so an older request cannot overwrite the returned view.
+function tagChanges(baseline: string | null, initialIds: Set<string>, assigned: any[]) {
+    const removed = new Set(initialIds);
+    for (const tag of assigned) removed.delete(tag.id);
+    return { baseline, added: assigned.filter(tag => !initialIds.has(tag.id)), removed };
+}
+
+function savedTagIds(baseline: string | null) {
+    const tags = baseline && JSON.parse(baseline).exportData?.channelTags;
+    return new Set<string>(api.asList(tags, 'channelTag').map(t => t.id));
+}
+
+function draftTagChanges(channel: any) {
+    const baseline = channelEditState(channel).workingBaseline;
+    return tagChanges(baseline, savedTagIds(baseline),
+        api.asList(channel.exportData?.channelTags, 'channelTag'));
+}
+
+function ensureTags(tagState: any, channel: any) {
+    return tagState.loading ??= loadTags(tagState, channel).catch(error => {
+        tagState.loading = null;
+        throw error;
+    });
+}
+
+async function loadTags(tagState: any, channel: any) {
+    const exported = api.asList(channel.exportData?.channelTags, 'channelTag');
+    const changes = tagState.changes;
+    const tags = await api.server.channelTags().catch(() =>
+        changes && !channelEditState(channel).isNew ? api.channels.tags(channel.id) : exported);
+    tagState.all = tags.map(t => ({
+        id: t.id, name: t.name, backgroundColor: t.backgroundColor,
+        channelIds: api.asList(t.channelIds, 'string').map(String)
+    }));
+    for (const tag of tagState.all) {
+        if (tag.channelIds.includes(channel.id)) {
+            tagState.initial.add(tag.id);
+            if (!changes?.removed.has(tag.id)) tagState.assigned.add(tag.name);
+        }
+    }
+    // Fresh drafts and imports can already carry tags in their export. On
+    // return, only reapply additions the user made to the draft.
+    for (const ct of changes?.added ?? exported) {
         if (!ct) continue;
         const known = (ct.id && tagState.all.find((t: any) => t.id === ct.id))
             || (ct.name != null && tagState.all.find((t: any) => t.name === String(ct.name)));
@@ -1188,9 +1215,7 @@ async function ensureTags(tagState: any, channel: any) {
         });
         tagState.assigned.add(name);
     }
-    tagState.initial = new Set(tagState.assigned);
     tagState.loaded = true;
-    return tagState;
 }
 
 /* Write the assigned tags into the channel's exportData.channelTags. The
@@ -1200,7 +1225,6 @@ async function ensureTags(tagState: any, channel: any) {
    separate setChannelTags call — keeps every save idempotent, so a second
    save (e.g. Save then Deploy) can't detach the tag. */
 function applyTagsToChannel(tagState: any, channel: any, version: any) {
-    if (!tagState.available) return;   // membership unknown — don't disturb
     const channelTags = tagState.all
         .filter((t: any) => tagState.assigned.has(t.name))
         .map((t: any) => {
@@ -1213,27 +1237,23 @@ function applyTagsToChannel(tagState: any, channel: any, version: any) {
     channel.exportData = channel.exportData || {};
     // List<ChannelTag>: {channelTag:[...]}; empty string = empty list (detach all).
     channel.exportData.channelTags = channelTags.length ? { channelTag: channelTags } : '';
-    // Keep the local cache in sync so re-saves stay consistent.
-    for (const t of tagState.all) {
-        const ids = new Set(t.channelIds);
-        if (tagState.assigned.has(t.name)) ids.add(channel.id); else ids.delete(channel.id);
-        t.channelIds = [...ids];
-    }
-    tagState.initial = new Set(tagState.assigned);
 }
 
 function TagsField({ tagState, channel, version, markDirty }: any) {
-    const [loaded, setLoaded] = useState(tagState.loaded);
+    const [loadError, setLoadError] = useState(false);
     const [, bump] = useReducer((x: any) => x + 1, 0);
     useEffect(() => {
         let stale = false;
         // Only render the chips once tags have loaded, so a tag added during
         // the load window can't be lost when ensureTags() populates tagState.
-        ensureTags(tagState, channel).then(() => { if (!stale) setLoaded(true); });
+        ensureTags(tagState, channel).then(() => { if (!stale) bump(); })
+            .catch(() => { if (!stale) setLoadError(true); });
         return () => { stale = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-    if (!loaded) return <span className="text-text-faint text-[10.5px]">Loading tags…</span>;
+    if (!tagState.loaded) return <span className="text-text-faint text-[10.5px]">
+        {loadError ? 'Tags unavailable. Reopen Summary to retry.' : 'Loading tags…'}
+    </span>;
 
     const dlId = 'channel-tags-list';
     // Commit on the NATIVE 'change' event only (Enter / blur / datalist pick) —
@@ -2589,7 +2609,11 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
             version: channel['@version'] || store.getState('serverVersion') || '4.5.2',
             get isNew() { return channelEditState(channel).isNew; },
             // Tags cache shared by the Summary field and save().
-            tagState: screen?.tagState ?? { loaded: false, available: false, all: [], assigned: new Set(), initial: new Set() }
+            tagState: {
+                loaded: false, all: [], assigned: new Set(), initial: new Set(),
+                changes: screen?.tagChanges?.baseline === channelEditState(channel).workingBaseline
+                    ? screen.tagChanges : screen && draftTagChanges(channel)
+            }
         };
         store.setState('editingChannelNew', setupRef.current.isNew);
         // Unsaved state is tracked in the shared 'editingChannelDirty' store flag
@@ -2792,6 +2816,7 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
             modal({ title: 'Cannot Save Channel', body: h('div', nameError), buttons: [{ label: 'OK' }] });
             return false;
         }
+        const previousBaseline = channelEditState(channel).workingBaseline;
         try {
             // Reconcile tag membership into the channel itself so the PUT attaches
             // them (idempotent — survives a follow-up Deploy that re-saves).
@@ -2807,7 +2832,9 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
             if (isCurrent()) toast(e.message, 'error');
             return false;
         } finally {
-            // Creation may succeed before a related dependency write fails.
+            // The channel write may succeed before a later dependency write fails.
+            const baseline = channelEditState(channel).workingBaseline;
+            if (baseline !== previousBaseline) tagState.initial = savedTagIds(baseline);
             if (isCurrent() && mountedRef.current) { onTasksChange(); bumpRev(); }
         }
     }
@@ -2904,7 +2931,11 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
             if (nextParams.metaDataId != null) {
                 channelEditorScreens.set(channel, {
                     tab: activeTabRef.current, destinationId: destTasksRef.current?.selected()?.metaDataId,
-                    scriptKey: scriptKeyRef.current, tagState
+                    scriptKey: scriptKeyRef.current,
+                    tagChanges: tagState.loaded
+                        ? tagChanges(channelEditState(channel).workingBaseline, tagState.initial,
+                            tagState.all.filter((tag: any) => tagState.assigned.has(tag.name)))
+                        : tagState.changes
                 });
             }
             return;

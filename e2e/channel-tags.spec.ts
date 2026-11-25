@@ -1,6 +1,85 @@
 import { test, expect } from './base.js';
 import { mockEngine } from './mock.js';
 import { makeChannel } from './connector-fixtures.js';
+import type { Page, Request } from '@playwright/test';
+
+async function openSourceFilter(page: Page) {
+    await page.getByRole('tab', { name: 'Source', exact: true }).click();
+    await page.getByRole('button', { name: 'Edit Filter', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Back to Channel', exact: true })).toBeVisible();
+}
+
+async function saveChannelTags(page: Page, channelId: string) {
+    const write = page.waitForRequest(request =>
+        request.method() === 'PUT' && new URL(request.url()).pathname === `/api/channels/${channelId}`);
+    await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+    return (await write).postDataJSON().channel.exportData.channelTags;
+}
+
+test('a tag read from before Back to Channel cannot undo a later tag removal', async ({ page }) => {
+    const channel = makeChannel('tag-read-order');
+    const tag = { id: 'production', name: 'Production', channelIds: { string: [channel.id] } };
+    channel.exportData = { channelTags: { channelTag: [tag] } };
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    let originalRead: Request | undefined;
+    const summary = page.getByRole('tab', { name: 'Summary', exact: true });
+    await mockEngine(page, {
+        [`GET /channels/${channel.id}`]: { channel },
+        'GET /server/channelTags': async (request: Request) => {
+            // The channel load also reads tag names before mounting Summary.
+            if (!originalRead && await summary.count()) {
+                originalRead = request;
+                await pending;
+            }
+            return { set: { channelTag: [tag] } };
+        }
+    });
+    try {
+        await page.goto(`/channels/${channel.id}/edit`);
+        await expect.poll(() => !!originalRead).toBe(true);
+        await openSourceFilter(page);
+        await page.getByRole('button', { name: 'Back to Channel', exact: true }).click();
+        await summary.click();
+        const chip = page.getByTitle('Remove tag');
+        await chip.click();
+        release();
+        await (await originalRead!.response())?.finished();
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        await page.getByRole('tabpanel').locator('textarea').fill('Removed Production');
+        await expect(chip).toHaveCount(0);
+        expect(await saveChannelTags(page, channel.id)).toBe('');
+    } finally {
+        release();
+    }
+});
+
+test('Back to Channel retains a local tag removal alongside updated Settings assignments', async ({ page }) => {
+    const channel = makeChannel('tag-membership-changes');
+    const tag = (name: string, assigned = true) => ({
+        id: name.toLowerCase(), name, channelIds: assigned ? { string: [channel.id] } : ''
+    });
+    let tags = [tag('Local'), tag('Retired'), tag('Production', false)];
+    await mockEngine(page, {
+        'GET /server/channelTags': () => ({ set: { channelTag: tags } }),
+        [`GET /channels/${channel.id}`]: () => ({ channel: { ...channel, exportData: {
+            metadata: { enabled: true, userId: 1, lastModified: { time: 1700000000000, timezone: 'UTC' } },
+            channelTags: { channelTag: tags.filter(t => t.channelIds) }
+        } } })
+    });
+    await page.goto(`/channels/${channel.id}/edit`);
+    const chips = page.getByTitle('Remove tag').locator('..');
+    await chips.filter({ hasText: 'Local' }).getByTitle('Remove tag').click();
+    await openSourceFilter(page);
+    // Settings writes the global tag set independently of the channel's last saver.
+    tags = [tag('Local'), tag('Retired', false), tag('Production')];
+    await page.getByRole('button', { name: 'Back to Channel', exact: true }).click();
+    await page.getByRole('tab', { name: 'Summary', exact: true }).click();
+    await expect(chips).toHaveCount(1);
+    await expect(chips).toContainText('Production');
+    const saved = await saveChannelTags(page, channel.id);
+    expect(saved.channelTag).toEqual([expect.objectContaining(tag('Production'))]);
+});
 
 for (const surface of ['edit', 'guided']) {
     for (const origin of ['server-and-export', 'export-only']) {

@@ -1338,6 +1338,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     const selectedPathRef = useRef(selectedPath);
     const setSelected = (path: any) => { selectedPathRef.current = path; setSelectedPathState(path); };
     const [rev, bump] = useReducer((x: any) => x + 1, 0);
+    const validationRevision = useRef(0);
     const [bottomTab, setBottomTab] = useState(0);
     // True only while a step plugin's flushSync mount runs (see StepEditorPanel).
     const settlingRef = useRef(false);
@@ -1375,6 +1376,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // channel editor reads, so unsaved step edits prompt on exit. The rev bump
     // repaints the grid and regenerates the script preview.
     function commit() {
+        ++validationRevision.current;
         persist();
         if (settlingRef.current) return;            // plugin initialization, not a user edit
         store.setState('editingChannelDirty', true);
@@ -1691,6 +1693,14 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
 
     /* ---- validation ---- */
 
+    // Edits and newer validation actions supersede an in-flight check, including
+    // a Back request. The editor stays interactive while Rhino compiles a script.
+    function beginValidation() {
+        const revision = ++validationRevision.current;
+        const navigation = router.navigationToken();
+        return () => mountedRef.current && validationRevision.current === revision && router.navigationToken() === navigation;
+    }
+
     // The Swing per-element error wrapper (BaseEditorPane.validateElementRecursive):
     //   Error in connector "<conn>" at [response ]<container> <element> <seq> ("<name>"):
     //   <message>
@@ -1746,32 +1756,32 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // non-JavaScript steps/rules too. Ignore results after a route change.
     // `announce` controls the success/empty toasts (the manual Validate task
     // announces; Back to Channel runs it silently and only surfaces the error).
-    async function runValidation(announce: any) {
-        const navigation = router.navigationToken();
+    async function runValidation(announce: boolean, isCurrent: () => boolean) {
         if (!elementsRef.current.length) {
             if (announce) toast(`${kind.title} is empty — nothing to validate`, 'warn');
-            return 'ok';
+            return true;
         }
         // (a) Field checks (blank required fields, duplicate iterator index).
         const fieldErrors = collectFieldErrors();
-        if (fieldErrors.length) { showValidationErrors(fieldErrors); return 'fail'; }
+        if (fieldErrors.length) { showValidationErrors(fieldErrors); return false; }
         // (b) Rhino syntax check of each element's generated script. Iterator
         // children roll into the parent's generated script.
         for (const el of elementsRef.current) {
             const src = generateElementScript(el, childrenOf);
             if (src == null) continue;
             const result = await validateScript(src);
-            if (router.navigationToken() !== navigation) return 'superseded';
-            if (result.ok === null) { toast(result.message, 'warn'); return 'unavailable'; }
-            if (result.ok === false) { showValidationErrors([elementError(el, result.message)]); return 'fail'; }
+            if (!isCurrent()) return false;
+            if (result.ok === null) { toast(result.message, 'warn'); return true; }
+            if (result.ok === false) { showValidationErrors([elementError(el, result.message)]); return false; }
         }
         if (announce) toast(`All ${kind.noun.toLowerCase()}s validated successfully`);
-        return 'ok';
+        return true;
     }
 
-    async function validateElements() { await runValidation(true); }
+    async function validateElements() { await runValidation(true, beginValidation()); }
 
     async function validateElement() {
+        const isCurrent = beginValidation();
         const el = elementAtPath(elementsRef.current, selectedPathRef.current);
         if (!el) { toast(`Select a ${kind.noun.toLowerCase()} first`, 'warn'); return; }
         // (a) Field check for this element (Swing plugin.checkProperties).
@@ -1782,6 +1792,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const src = generateElementScript(el, childrenOf);
         if (src != null) {
             const result = await validateScript(src);
+            if (!isCurrent() || elementAtPath(elementsRef.current, selectedPathRef.current) !== el) return;
             if (result.ok === false) { showValidationErrors([elementError(el, result.message)]); return; }
             if (result.ok === null) { toast(result.message, 'warn'); return; }
         }
@@ -1860,9 +1871,8 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         // Validate task and stays put on a blocking error — BaseEditorPane.accept()
         // aborts navigation when validateAll() reports errors. A non-blocking
         // 'unavailable' (engine validate endpoint down) must not trap the user.
-        const navigation = router.navigationToken();
-        const result = await runValidation(false);
-        if (result === 'fail' || router.navigationToken() !== navigation) return;
+        const isCurrent = beginValidation();
+        if (!await runValidation(false, isCurrent) || !isCurrent()) return;
         persist();    // navigating back is not an edit — don't mark dirty
         // Bookmarks and Dashboard actions have a connector but no originating tab.
         if (!channelEditorScreens.has(channel)) {

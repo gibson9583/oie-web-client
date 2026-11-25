@@ -3,7 +3,7 @@ interface ChannelEditorScreen {
     tab: string;
     destinationId?: number | string;
     scriptKey?: string;
-    tagState?: { loaded: boolean; available: boolean; all: any[]; assigned: Set<string>; initial: Set<string> };
+    tagChanges?: { baseline: string | null; added: any[]; removed: Set<string> };
 }
 
 // Keep the origin across connector route changes until the classic editor remounts.

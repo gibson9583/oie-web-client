@@ -1,3 +1,4 @@
+import type { Page, Request } from '@playwright/test';
 import { test, expect } from './base.js';
 import { makeChannel } from './connector-fixtures.js';
 import { mockEngine } from './mock.js';
@@ -141,38 +142,102 @@ test('a direct destination link returns to its connector when script validation 
     await expect(page.getByRole('button', { name: 'Save Changes', exact: true })).toHaveCount(0);
 });
 
-for (const error of [null, 'Error on line 1: syntax error.']) {
-    test(`leaving the transformer during Back validation ignores a late ${error ? 'error' : 'success'}`, async ({ page }) => {
-        const channel = makeChannel('delayed-back');
-        channel.sourceConnector.transformer.elements = {
-            'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': {
-                '@version': channel['@version'], name: 'Validate me', sequenceNumber: '0', enabled: true,
-                script: error ? 'var x = ;' : 'var x = 1;'
-            }
-        };
-        let release!: () => void;
-        const pending = new Promise<void>(resolve => { release = resolve; });
-        await mockEngine(page, {
-            [`GET /channels/${channel.id}`]: { channel },
-            'POST /javascript/_validate': async () => { await pending; return { error }; }
-        });
-        try {
-            await page.goto(`/channels/${channel.id}/transformer/0`);
-            const back = page.getByRole('button', { name: 'Back to Channel', exact: true });
-            const validation = page.waitForRequest('**/api/javascript/_validate');
-            await back.click();
-            const request = await validation;
-            await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
-            await expect(back).toHaveCount(0);
+const invalidScript = 'var x = ;';
+const syntaxError = 'Error on line 1: syntax error.';
+const validator = '/extensions/websupport/javascript/_validate';
 
+async function openDelayedTransformer(page: Page, script: string) {
+    const channel = makeChannel('delayed-back');
+    channel.sourceConnector.transformer.elements = {
+        'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': {
+            '@version': channel['@version'], name: 'Validate me', sequenceNumber: '0', enabled: true, script
+        }
+    };
+    await page.route('**/vendor/monaco/**', route => route.abort());
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    let first = true;
+    await mockEngine(page, {
+        [`GET /channels/${channel.id}`]: { channel },
+        'GET /webplugins': { __status: 404 },
+        'GET /extensions/websupport/webplugins': [],
+        [`POST ${validator}`]: async (request: Request) => {
+            if (first) {
+                first = false;
+                await pending;
+            }
+            return { error: request.postData()?.includes(invalidScript) ? syntaxError : null };
+        }
+    });
+    await page.goto(`/channels/${channel.id}/transformer/0`);
+    return {
+        back: page.getByRole('button', { name: 'Back to Channel', exact: true }),
+        script: page.locator('.step-editor-fill textarea.ce-area'),
+        error: page.getByRole('dialog', { name: 'Error validating transformer steps' }),
+        release,
+        async finish(request: Request) {
             const response = page.waitForResponse(result => result.request() === request);
             release();
             await (await response).finished();
             await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        }
+    };
+}
+
+for (const script of ['var x = 1;', invalidScript]) {
+    test(`leaving the transformer during Back validation ignores a late ${script === invalidScript ? 'error' : 'success'}`, async ({ page }) => {
+        const editor = await openDelayedTransformer(page, script);
+        try {
+            const validation = page.waitForRequest(`**/api${validator}`);
+            await editor.back.click();
+            const request = await validation;
+            await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+            await expect(editor.back).toHaveCount(0);
+            await editor.finish(request);
             await expect(page).toHaveURL('/dashboard');
-            await expect(page.getByText('Error validating transformer steps', { exact: true })).toHaveCount(0);
+            await expect(editor.error).toHaveCount(0);
         } finally {
-            release();
+            editor.release();
         }
     });
 }
+
+test('edits during Back validation keep the current draft open for validation and retry', async ({ page }) => {
+    const editor = await openDelayedTransformer(page, 'var x = 1;');
+    try {
+        const validation = page.waitForRequest(`**/api${validator}`);
+        await editor.back.click();
+        const first = await validation;
+        await editor.script.fill(invalidScript);
+        await editor.finish(first);
+        await expect(editor.back).toBeVisible();
+        await expect(editor.script).toHaveValue(invalidScript);
+
+        await editor.back.click();
+        await expect(editor.error).toContainText(syntaxError);
+        await editor.error.getByRole('button', { name: 'Close', exact: true }).last().click();
+        await editor.script.fill('var x = 2;');
+        await editor.back.click();
+        await expect(page.getByRole('tab', { name: 'Source', selected: true })).toBeVisible();
+    } finally {
+        editor.release();
+    }
+});
+
+test('a late Validate Step error cannot cover the returned channel editor', async ({ page }) => {
+    const editor = await openDelayedTransformer(page, invalidScript);
+    try {
+        const validation = page.waitForRequest(`**/api${validator}`);
+        await page.getByRole('button', { name: 'Validate Step', exact: true }).click();
+        const first = await validation;
+        await editor.script.fill('var x = 2;');
+        await editor.back.click();
+        const source = page.getByRole('tab', { name: 'Source', selected: true });
+        await expect(source).toBeVisible();
+        await editor.finish(first);
+        await expect(editor.error).toHaveCount(0);
+        await expect(source).toBeVisible();
+    } finally {
+        editor.release();
+    }
+});
