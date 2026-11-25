@@ -268,7 +268,13 @@ export async function loadTagChoices(channel, isCurrent) {
         // (singleton collections, @version and channelIds). A lookup alone
         // must leave the clean working model unchanged.
         if (draft.length !== merged.length || merged.some(tag => !draft.some(item => sameTagAppearance(item, tag)))) {
+            const wasCheckpointed = state.channelStageComplete && !state.editedTags?.length
+                && fingerprint(channel) === state.workingBaseline;
             writeChannelTags(channel, merged);
+            // A catalog refresh can resolve a temporary ID or show a Settings
+            // change while a separate library/dependency write awaits retry.
+            if (wasCheckpointed)
+                state.workingBaseline = fingerprint(channel);
         }
         if (before)
             state.tagBaseline = latest.map(({ id, name }) => ({ id, name }));
@@ -478,6 +484,12 @@ export async function saveChannelModel(channel, options) {
                 throw new Error('Cannot verify the original channel. Reopen it before saving.');
             current = current || await readCurrentChannel(channel.id, assertSession);
             previousTime = modifiedTime(current);
+            // A previous channel stage succeeded. A retry with no further local
+            // channel edits only has library/dependency work left, even when
+            // another administrator has edited the saved channel meanwhile.
+            if (options.skipUnchanged && state.channelStageComplete && !state.editedTags?.length
+                && fingerprint(channel) === state.workingBaseline)
+                return true;
             conflict = fingerprint(current) !== state.baseline;
             if (conflict && !savedByUser(current, options.userId)) {
                 if (!await confirm(options.confirmConflict()))
@@ -541,15 +553,37 @@ export async function saveChannelModel(channel, options) {
         if (String(accepted) !== 'true')
             throw new Error('The engine did not confirm the channel save. Your changes are still unsaved.');
         const unchangedDuringWrite = fingerprint(channel) === workingAtSubmit;
+        const acknowledged = JSON.parse(workingAtSubmit);
+        const submittedTags = assignedTags(submitted);
+        writeChannelTags(acknowledged, submittedTags);
+        (acknowledged.exportData ??= {}).metadata = metadata;
+        if (credentialRepair)
+            repairFileCredentials(acknowledged);
         // Creation is accepted independently of later dependency/deploy stages.
         state.isNew = false;
         state.creationAttempts = undefined;
-        if (unchangedDuringWrite)
-            writeChannelTags(channel, assignedTags(submitted));
-        state.editedTags = undefined;
-        state.tagBaseline = submittedTagIdentities(state.tagBaseline ?? [], assignedTags(submitted), assignedTags(current));
+        if (unchangedDuringWrite) {
+            writeChannelTags(channel, clone(submittedTags));
+            state.editedTags = undefined;
+        }
+        else {
+            const liveTags = assignedTags(channel);
+            const added = liveTags.filter(tag => !contains(draftTags, tag));
+            const removed = draftTags.filter(tag => !contains(liveTags, tag));
+            const acceptedTags = submittedTags.filter(tag => !contains(removed, tag));
+            writeChannelTags(channel, [...clone(acceptedTags), ...added.filter(tag => !contains(acceptedTags, tag))]);
+            state.editedTags = [...added, ...removed].map(({ id, name }) => ({ id, name }));
+        }
+        state.tagBaseline = submittedTagIdentities(state.tagBaseline ?? [], submittedTags, assignedTags(current));
         channel.revision = submitted.revision || 1;
-        (channel.exportData = channel.exportData || {}).metadata = metadata;
+        if (!unchangedDuringWrite && channel.exportData?.metadata) {
+            channel.exportData.metadata.lastModified = clone(metadata.lastModified);
+            if (metadata.userId != null)
+                channel.exportData.metadata.userId = metadata.userId;
+        }
+        else {
+            (channel.exportData ??= {}).metadata = clone(metadata);
+        }
         if (credentialRepair && unchangedDuringWrite)
             repairFileCredentials(channel);
         state.baseline = fingerprint({ ...submitted, revision: channel.revision });
@@ -563,7 +597,7 @@ export async function saveChannelModel(channel, options) {
             channel.revision = persisted.revision;
             state.baseline = fingerprint(persisted);
             try {
-                await acknowledgeTagIds(state, persisted, channel);
+                await acknowledgeTagIds(state, persisted, channel, acknowledged);
             }
             catch {
                 assertSession();
@@ -575,10 +609,10 @@ export async function saveChannelModel(channel, options) {
             channel.revision = current.revision;
             state.baseline = fingerprint({ ...submitted, revision: current.revision });
         }
-        // A credential edit made during the request must remain unsaved. Force
-        // the next Save to send it instead of treating the live draft as sent.
-        state.workingBaseline = credentialRepair && !unchangedDuringWrite
-            ? workingAtSubmit : fingerprint(channel);
+        // Only the submitted snapshot was accepted. The user can have changed
+        // the draft during the PUT or the subsequent receipt/identity reads.
+        acknowledged.revision = channel.revision;
+        state.workingBaseline = fingerprint(acknowledged);
         return true;
     }
     finally {

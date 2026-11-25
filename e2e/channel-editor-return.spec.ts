@@ -360,3 +360,145 @@ for (const interaction of ['pointer', 'keyboard']) {
         }
     });
 }
+
+async function openRawSteps(page: Page, wizard = false) {
+    const channel = makeChannel('raw-history');
+    const stepType = 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep';
+    const scripts = ['var first = 1;', 'var second = 2;'];
+    channel.sourceConnector.transformer.elements = {
+        [stepType]: scripts.map((script, index) => ({
+            '@version': channel['@version'], name: `Step ${index + 1}`, sequenceNumber: index, enabled: true, script
+        }))
+    };
+    await page.route('**/plugins/transformer-steps/web/plugin.js*', route => route.abort('failed'));
+    await mockEngine(page, { [`GET /channels/${channel.id}`]: { channel } });
+    await page.goto(`/channels/${channel.id}/edit`);
+    if (wizard) {
+        await page.getByRole('button', { name: 'Open in Wizard', exact: true }).click();
+        await page.locator('.wiz-step', { hasText: 'Source' }).click();
+        await page.getByRole('tab', { name: /^Transformer/ }).click();
+    } else {
+        await page.getByRole('tab', { name: 'Source', exact: true }).click();
+        await page.getByRole('button', { name: /^Edit Transformer/ }).click();
+    }
+    const raw = page.locator('.step-editor-fill textarea');
+    const original = JSON.parse(await raw.inputValue());
+    const updated = 'var updated = 3;';
+    return { raw, original, updated, stepType, channel };
+}
+
+test('browser Back commits the focused raw step before the channel can be saved', async ({ page }) => {
+    const { raw, original, updated, stepType, channel } = await openRawSteps(page);
+    await raw.fill(JSON.stringify({ ...original, script: updated }));
+    await page.goBack();
+    await expect(page.getByRole('tab', { name: 'Source', selected: true })).toBeVisible();
+    const write = page.waitForRequest(req =>
+        req.method() === 'PUT' && new URL(req.url()).pathname === `/api/channels/${channel.id}`);
+    await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+    expect((await write).postDataJSON().channel.sourceConnector.transformer.elements[stepType][0].script).toBe(updated);
+});
+
+test('malformed raw JSON keeps the original step selected through history and row changes', async ({ page }) => {
+    const { raw, original, updated } = await openRawSteps(page);
+    const error = page.getByRole('dialog', { name: 'Error', exact: true });
+    await raw.fill('{');
+    await page.goBack();
+    await expect(error).toContainText('Invalid JSON');
+    await error.getByRole('button', { name: 'Close', exact: true }).last().click();
+    await expect(page).toHaveURL(/\/transformer\/0$/);
+    const second = page.locator('tr[data-path="1"]').getByRole('cell', { name: '2', exact: true });
+    await second.click();
+    await expect(error).toContainText('Invalid JSON');
+    await error.getByRole('button', { name: 'Close', exact: true }).last().click();
+    await expect(page.locator('tr[data-path="0"]')).toHaveClass(/selected/);
+    await expect(raw).toHaveValue('{');
+    await raw.fill(JSON.stringify({ ...original, script: updated }));
+    await second.click();
+    await expect(page.locator('tr[data-path="1"]')).toHaveClass(/selected/);
+    await page.locator('tr[data-path="0"]').getByRole('cell', { name: '1', exact: true }).click();
+    await expect.poll(async () => JSON.parse(await raw.inputValue()).script).toBe(updated);
+});
+
+test('wizard keeps a malformed raw step through section, step and classic-editor switches', async ({ page }) => {
+    const { raw, original, updated } = await openRawSteps(page, true);
+    const error = page.getByRole('dialog', { name: 'Error', exact: true });
+    await raw.fill('{');
+    await raw.press('Tab');
+    await error.getByRole('button', { name: 'Close', exact: true }).last().click();
+    for (const action of [
+        page.getByRole('tab', { name: 'Generated Script', exact: true }),
+        page.getByRole('tab', { name: 'Settings', exact: true }),
+        page.locator('.wiz-step', { hasText: 'Destinations' }),
+        page.getByRole('button', { name: 'Classic editor', exact: true }),
+        page.getByRole('button', { name: 'Save Changes', exact: true })
+    ]) {
+        await action.click();
+        await expect(error).toContainText('Invalid JSON');
+        await error.getByRole('button', { name: 'Close', exact: true }).last().click();
+        await expect(raw).toHaveValue('{');
+    }
+    await raw.fill(JSON.stringify({ ...original, script: updated }));
+    await page.getByRole('tab', { name: 'Settings', exact: true }).click();
+    await page.getByRole('tab', { name: /^Transformer/ }).click();
+    await expect.poll(async () => JSON.parse(await raw.inputValue()).script).toBe(updated);
+});
+
+test('wizard browser Back retries the raw edit before saving and returning to classic', async ({ page }) => {
+    const { raw, original, updated, channel, stepType } = await openRawSteps(page, true);
+    const prompt = page.getByRole('dialog', { name: 'Unsaved channel', exact: true });
+    const error = page.getByRole('dialog', { name: 'Error', exact: true });
+    await raw.fill('{');
+    await page.goBack();
+    await prompt.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(error).toContainText('Invalid JSON');
+    await error.getByRole('button', { name: 'Close', exact: true }).last().click();
+    await expect(page).toHaveURL(`/channels/${channel.id}/guided`);
+    await expect(raw).toHaveValue('{');
+    await raw.fill(JSON.stringify({ ...original, script: updated }));
+    await page.goBack();
+    const write = page.waitForRequest(req =>
+        req.method() === 'PUT' && new URL(req.url()).pathname === `/api/channels/${channel.id}`);
+    await prompt.getByRole('button', { name: 'Save', exact: true }).click();
+    expect((await write).postDataJSON().channel.sourceConnector.transformer.elements[stepType][0].script).toBe(updated);
+    await expect(page).toHaveURL(`/channels/${channel.id}/edit`);
+});
+
+test('deleting the focused malformed raw step preserves edits to the surviving step', async ({ page }) => {
+    const { raw, updated, stepType, channel } = await openRawSteps(page);
+    const rows = page.locator('tr[data-path]');
+    await rows.nth(1).getByRole('cell', { name: '2', exact: true }).click();
+    await expect.poll(async () => JSON.parse(await raw.inputValue()).name).toBe('Step 2');
+    const survivor = JSON.parse(await raw.inputValue());
+    await raw.fill(JSON.stringify({ ...survivor, script: updated }));
+    await rows.first().getByRole('cell', { name: '1', exact: true }).click();
+    await raw.fill('{');
+    await page.getByRole('button', { name: 'Delete Step', exact: true }).click();
+    await expect(rows).toHaveCount(1);
+    await expect(page.getByRole('dialog', { name: 'Error', exact: true })).toHaveCount(0);
+    const write = page.waitForRequest(req =>
+        req.method() === 'PUT' && new URL(req.url()).pathname === `/api/channels/${channel.id}`);
+    await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+    const saved = (await write).postDataJSON().channel.sourceConnector.transformer.elements[stepType];
+    expect([saved].flat()).toEqual([expect.objectContaining({ name: 'Step 2', script: updated })]);
+});
+
+test('appending an import preserves malformed raw text and replacing discards it', async ({ page }) => {
+    const { raw } = await openRawSteps(page);
+    await raw.fill('{');
+    async function importEmptyTransformer(choice: string) {
+        const chooser = page.waitForEvent('filechooser');
+        await page.getByRole('button', { name: 'Import Transformer', exact: true }).click();
+        await (await chooser).setFiles({ name: 'empty.xml', mimeType: 'text/xml',
+            buffer: Buffer.from('<transformer version="4.6.0"><elements/></transformer>') });
+        await page.getByRole('dialog', { name: 'Import Transformer', exact: true }).getByRole('button', { name: choice }).click();
+    }
+    await importEmptyTransformer('Append');
+    const error = page.getByRole('dialog', { name: 'Error', exact: true });
+    await expect(error).toContainText('Invalid JSON');
+    await error.getByRole('button', { name: 'Close', exact: true }).last().click();
+    await expect(raw).toHaveValue('{');
+    await expect(page.locator('tr[data-path]')).toHaveCount(2);
+    await importEmptyTransformer('Replace');
+    await expect(page.locator('tr[data-path]')).toHaveCount(0);
+    await expect(error).toHaveCount(0);
+});

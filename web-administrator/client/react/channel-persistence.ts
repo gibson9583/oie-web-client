@@ -1,7 +1,7 @@
 import { describeTargets } from './action-targets.js';
 import { confirmDialog } from '@oie/web-ui';
 import * as store from '../core/store.js';
-import { saveChannelModel } from '../core/channel-save.js';
+import { channelEditState, saveChannelModel } from '../core/channel-save.js';
 import { captureEngineSession } from '../core/engine-fetch.js';
 import { channelDependencyState, persistLibraryAssociations, persistChannelDependencies } from '../core/channel-dependencies.js';
 
@@ -36,7 +36,10 @@ export async function persistChannelModel(channel: any): Promise<boolean> {
         confirmConflict: () => confirmChannelOverwrite(channel)
     });
     assertSession();
-    if (saved) store.setState('editingChannelNew', false);
+    if (saved) {
+        channelEditState(channel).channelStageComplete = true;
+        store.setState('editingChannelNew', false);
+    }
     return saved;
 }
 
@@ -54,5 +57,6 @@ export async function persistChannelEdits(channel: any): Promise<boolean> {
     if (!librariesSaved) return false;
     await persistChannelDependencies(pending.dependencies);
     assertSession();
+    channelEditState(channel).channelStageComplete = false;
     return true;
 }

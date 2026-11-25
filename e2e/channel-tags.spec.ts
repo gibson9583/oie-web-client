@@ -296,51 +296,71 @@ test('viewing a singleton tag before a dependency-only wizard save sends no chan
     expect(channelWrites).toBe(0);
 });
 
-test('reopening Summary after a dependency failure retries only the remaining dependency write', async ({ page }) => {
-    let channel = makeChannel('tag-partial-save');
-    let assignedTag: { id: string; name: string; channelIds: { string: string }; backgroundColor: Record<string, number> } | undefined;
-    let channelWrites = 0, graphAttempts = 0;
-    let graph: Array<{ dependentId: string; dependencyId: string }> = [];
-    await mockEngine(page, {
-        [`GET /channels/${channel.id}`]: () => ({ channel: { ...channel, exportData: { ...channel.exportData,
-            channelTags: assignedTag ? { channelTag: assignedTag } : null } } }),
-        'GET /server/channelTags': () => ({ set: assignedTag ? { channelTag: assignedTag } : null }),
-        'GET /channels/idsAndNames': dependencyNames,
-        'GET /server/channelDependencies': () => ({ set: { channelDependency: graph } }),
-        [`PUT /channels/${channel.id}`]: (request: Request) => {
-            channelWrites++;
-            channel = request.postDataJSON().channel;
-            const { id, name, backgroundColor } = channel.exportData.channelTags.channelTag[0];
-            assignedTag = { id, name, channelIds: { string: channel.id }, backgroundColor };
-            return true;
-        },
-        'PUT /server/channelDependencies': (request: Request) => {
-            if (++graphAttempts === 1) return { __status: 503, body: 'Unavailable' };
-            graph = request.postDataJSON().set.channelDependency;
-            return '';
-        }
+for (const readback of ['available', 'unavailable']) {
+    test(`reopening Summary after a dependency failure retries only the remaining dependency write (readback ${readback})`, async ({ page }) => {
+        let channel = makeChannel('tag-partial-save');
+        let assignedTag: { id: string; name: string; channelIds: { string: string }; backgroundColor: Record<string, number> } | undefined;
+        const settingsTag = { id: 'ops', name: 'Operations', channelIds: { string: channel.id } };
+        let settingsAssigned = false;
+        const savedTags = () => {
+            if (!assignedTag) return null;
+            return { channelTag: settingsAssigned ? [assignedTag, settingsTag] : assignedTag };
+        };
+        let channelWrites = 0, graphAttempts = 0, readbackFailures = 0;
+        let graph: Array<{ dependentId: string; dependencyId: string }> = [];
+        await mockEngine(page, {
+            [`GET /channels/${channel.id}`]: () => {
+                if (readback === 'unavailable' && channelWrites === 1 && readbackFailures === 0) {
+                    readbackFailures++;
+                    return { __status: 503, body: 'Channel readback unavailable' };
+                }
+                return { channel: { ...channel, exportData: { ...channel.exportData,
+                    channelTags: savedTags() } } };
+            },
+            'GET /server/channelTags': () => ({ set: savedTags() }),
+            'GET /channels/idsAndNames': dependencyNames,
+            'GET /server/channelDependencies': () => ({ set: { channelDependency: graph } }),
+            [`PUT /channels/${channel.id}`]: (request: Request) => {
+                channelWrites++;
+                // OIE retains the revision for a tag-only edit.
+                channel = { ...request.postDataJSON().channel, revision: channel.revision };
+                const { id, name, backgroundColor } = channel.exportData.channelTags.channelTag[0];
+                assignedTag = { id, name, channelIds: { string: channel.id }, backgroundColor };
+                return true;
+            },
+            'PUT /server/channelDependencies': (request: Request) => {
+                if (++graphAttempts === 1) return { __status: 503, body: 'Unavailable' };
+                graph = request.postDataJSON().set.channelDependency;
+                return '';
+            }
+        });
+        await page.goto(`/channels/${channel.id}/guided`);
+        await addWizardDependency(page);
+        await page.getByRole('button', { name: 'Classic editor', exact: true }).click();
+        const input = page.getByPlaceholder('Add tag…');
+        await input.fill('Production');
+        await input.blur();
+        const save = page.getByRole('button', { name: 'Save Changes', exact: true });
+        await save.click();
+        const error = page.getByRole('dialog', { name: 'Error', exact: true });
+        await expect(error).toBeVisible();
+        expect(channelWrites).toBe(1);
+        await error.getByRole('button', { name: 'Close', exact: true }).last().click();
+        // A Settings assignment does not advance the channel's modification timestamp.
+        settingsAssigned = true;
+        await page.getByRole('tab', { name: 'Scripts', exact: true }).click();
+        await page.getByRole('tab', { name: 'Summary', exact: true }).click();
+        const chips = page.getByTitle('Remove tag').locator('..');
+        await expect(chips.filter({ hasText: 'Production' })).toBeVisible();
+        await expect(chips.filter({ hasText: 'Operations' })).toBeVisible();
+        await save.click();
+        await expect(save).toHaveCount(0);
+        expect(graph).toEqual([{ dependentId: channel.id, dependencyId: 'root' }]);
+        expect(graphAttempts).toBe(2);
+        expect(readbackFailures).toBe(readback === 'unavailable' ? 1 : 0);
+        expect(channelWrites).toBe(1);
     });
-    await page.goto(`/channels/${channel.id}/guided`);
-    await addWizardDependency(page);
-    await page.getByRole('button', { name: 'Classic editor', exact: true }).click();
-    const input = page.getByPlaceholder('Add tag…');
-    await input.fill('Production');
-    await input.blur();
-    const save = page.getByRole('button', { name: 'Save Changes', exact: true });
-    await save.click();
-    const error = page.getByRole('dialog', { name: 'Error', exact: true });
-    await expect(error).toBeVisible();
-    expect(channelWrites).toBe(1);
-    await error.getByRole('button', { name: 'Close', exact: true }).last().click();
-    await page.getByRole('tab', { name: 'Scripts', exact: true }).click();
-    await page.getByRole('tab', { name: 'Summary', exact: true }).click();
-    await expect(page.getByTitle('Remove tag').locator('..')).toContainText('Production');
-    await save.click();
-    await expect(save).toHaveCount(0);
-    expect(graph).toEqual([{ dependentId: channel.id, dependencyId: 'root' }]);
-    expect(graphAttempts).toBe(2);
-    expect(channelWrites).toBe(1);
-});
+}
 
 test('a new channel keeps an unsaved tag when the global tag read fails and recovers between returns', async ({ page }) => {
     let unavailable = false;

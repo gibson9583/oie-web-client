@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import api from './api.js';
-import { channelEditState, loadChannelForEdit, saveChannelModel, updateChannelWithConflict } from './channel-save.js';
+import { channelEditState, loadChannelForEdit, loadTagChoices, saveChannelModel, setTagMembership, updateChannelWithConflict } from './channel-save.js';
 import { captureEngineSession, discardEngineResponses } from './engine-fetch.js';
 
 const original = () => ({ id: 'one', name: 'Original', revision: 3, pluginField: { keep: 'untouched' },
@@ -369,6 +369,131 @@ console.log('channel-save: readback availability and session cancellation preser
         api.server.channelTags = listTags;
         retainRevision = false;
         readbackFailure = null;
+    }
+}
+
+{
+    const listTags = api.server.channelTags;
+    const listAssigned = api.channels.tags;
+    const retained = { id: 'old-tag', name: 'Retention', channelIds: { string: 'one' } };
+    const color = { red: 120, green: 40, blue: 30, alpha: 255 };
+    try {
+        for (const scenario of ['new', 'existing', 'hidden', 'hidden-after-refresh']) {
+            const existing = scenario === 'existing';
+            const hidden = scenario.startsWith('hidden');
+            const selected = { id: 'selected', name: hidden ? '1e5' : 'Production', backgroundColor: color,
+                channelIds: existing ? { string: ['two', 'three'] } : '' };
+            let catalog = existing ? [retained, selected] : [retained];
+            api.server.channelTags = async () => {
+                if (hidden) throw new Error('Tags View denied');
+                return structuredClone(catalog);
+            };
+            api.channels.tags = async () => structuredClone(catalog);
+            server = original();
+            server.exportData.channelTags = { channelTag: retained };
+            const draft = await loadChannelForEdit('one');
+            setTagMembership(draft, selected, true, '4.7.0');
+            const options = { ...cancel, skipUnchanged: true };
+            const count = writes.length;
+            retainRevision = true;
+            readbackFailure = 'unavailable';
+            assert.equal(await saveChannelModel(draft, options), true);
+            readbackFailure = null;
+            // The shared save workflow records this before starting related writes.
+            channelEditState(draft).channelStageComplete = true;
+            const stamp = server.exportData.metadata.lastModified.time;
+            // The shipped serializer omits @version and unwraps singleton
+            // collections. A case-insensitive name match keeps the server tag's
+            // ID, color and other channel memberships.
+            const savedTag = { ...selected, id: hidden ? 'already-existed' : selected.id,
+                backgroundColor: hidden ? { ...color, red: 20 } : color,
+                channelIds: { string: existing || hidden ? ['three', 'one', 'two'] : 'one' } };
+            catalog = [savedTag, retained];
+            server.exportData.channelTags = { channelTag: [{ ...savedTag, name: hidden ? 100000 : savedTag.name }, retained] };
+            if (scenario === 'hidden-after-refresh') {
+                await loadTagChoices(draft, () => true);
+                assert.ok(draft.exportData.channelTags.channelTag.some(tag => tag.id === savedTag.id));
+            }
+            assert.equal(await saveChannelModel(draft, options), true);
+            assert.equal(writes.length, count + 1, 'retrying dependencies must not repeat an accepted tag assignment');
+            assert.equal(server.exportData.metadata.lastModified.time, stamp);
+
+            // Another user's channel change stays intact on a graph-only retry.
+            // The retry must not adopt that remote content as this draft's baseline.
+            server.name = 'Changed in Swing';
+            server.revision++;
+            server.exportData.metadata.userId = 8;
+            server.exportData.metadata.lastModified.time++;
+            const prompts = confirmations;
+            assert.equal(await saveChannelModel(draft, options), true);
+            assert.equal(confirmations, prompts);
+            assert.equal(writes.length, count + 1);
+            draft.description = 'A new local edit';
+            // Opening Summary after an edit may also change the displayed tags.
+            // That refresh cannot mark the user's description as saved.
+            catalog[0] = { ...savedTag, backgroundColor: { ...color, blue: 200 } };
+            await loadTagChoices(draft, () => true);
+            assert.equal(await saveChannelModel(draft, options), false);
+            assert.equal(confirmations, prompts + 1);
+            assert.equal(writes.length, count + 1);
+            assert.equal(server.name, 'Changed in Swing');
+            assert.equal(await saveChannelModel(draft, { ...allow, skipUnchanged: true }), true);
+            assert.equal(server.description, 'A new local edit');
+            assert.equal(writes.length, count + 2);
+        }
+    } finally {
+        api.server.channelTags = listTags;
+        api.channels.tags = listAssigned;
+        readbackFailure = null;
+        retainRevision = false;
+    }
+}
+console.log('channel-save: accepted channel stage survives unavailable readback, catalog refresh, and dependency retries; new local edits retain conflict checks');
+
+{
+    const get = api.channels.get, update = api.channels.update, listTags = api.server.channelTags;
+    try {
+        for (const stage of ['write', 'readback']) {
+            server = original();
+            const draft = await loadChannelForEdit('one');
+            const tag = { id: 'later', name: 'Added during save' };
+            const edit = () => {
+                draft.description = 'Later edit';
+                draft.exportData.metadata.enabled = false;
+                setTagMembership(draft, tag, true, '4.7.0');
+            };
+            let readback = false;
+            api.server.channelTags = async () => [];
+            api.channels.update = async (...args) => {
+                const result = await update(...args);
+                if (stage === 'write') edit();
+                readback = true;
+                return result;
+            };
+            api.channels.get = async (...args) => {
+                const result = await get(...args);
+                if (readback && stage === 'readback') edit();
+                return result;
+            };
+            const count = writes.length;
+            const options = { ...cancel, skipUnchanged: true };
+            draft.description = 'First edit';
+            assert.equal(await saveChannelModel(draft, options), true);
+            channelEditState(draft).channelStageComplete = true;
+            api.channels.get = get;
+            api.channels.update = update;
+            assert.equal(server.description, 'First edit');
+            assert.equal(draft.exportData.metadata.enabled, false);
+            assert.equal(await saveChannelModel(draft, options), true);
+            assert.equal(writes.length, count + 2);
+            assert.equal(server.description, 'Later edit');
+            assert.equal(server.exportData.metadata.enabled, false);
+            assert.equal(server.exportData.channelTags.channelTag[0].id, tag.id);
+        }
+    } finally {
+        api.channels.get = get;
+        api.channels.update = update;
+        api.server.channelTags = listTags;
     }
 }
 
