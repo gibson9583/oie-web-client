@@ -18,6 +18,8 @@ import type { Platform } from '@oie/web-shell';
  */
 import { frameModeSampleFrame, frameModeSettingsDialog } from '@oie/web-ui';
 
+const mllpPropertiesClass = 'com.mirth.connect.plugins.mllpmode.MLLPModeProperties';
+
 export function register(platform: Platform) {
     platform.registerTransmissionMode('MLLP', {
         label: 'MLLP',
@@ -26,7 +28,7 @@ export function register(platform: Platform) {
         // serializes as MLLPModeProperties (a FrameModeProperties subclass) and
         // carries the extra MLLPv2 fields — see MLLPModeProperties defaults.
         apply(tm: any) {
-            tm['@class'] = 'com.mirth.connect.plugins.mllpmode.MLLPModeProperties';
+            tm['@class'] = mllpPropertiesClass;
             tm.pluginPointName = 'MLLP';
             tm.startOfMessageBytes = '0B';
             tm.endOfMessageBytes = '1C0D';
@@ -36,6 +38,13 @@ export function register(platform: Platform) {
             tm.maxRetries = '2';
         },
         sampleFrame: frameModeSampleFrame,
-        openSettings: (tm: any, onChange: any) => frameModeSettingsDialog(tm, onChange, { mllp: true })
+        openSettings: (tm: any, onChange: any) => frameModeSettingsDialog(tm, () => {
+            // The engine also stores MLLPv1 defaults as the base frame class.
+            // Accepting this dialog adds fields that belong to the MLLP subclass.
+            if (tm['@class'] === 'com.mirth.connect.model.transmission.framemode.FrameModeProperties') {
+                tm['@class'] = mllpPropertiesClass;
+            }
+            onChange();
+        }, { mllp: true })
     });
 }

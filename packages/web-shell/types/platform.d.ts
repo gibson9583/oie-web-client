@@ -229,6 +229,7 @@ export interface DataTypeDef {
 export interface TransmissionModeDef {
     label: string;
     order?: number;
+    /** Initialize the engine @class and all mode defaults. tm starts with the selected pluginPointName and the existing @version, if present. */
     apply(tm: OieObject): void;
     sampleFrame?(tm: OieObject): string;
     openSettings?(tm: OieObject, onChange: () => void): void;

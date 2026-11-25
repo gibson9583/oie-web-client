@@ -953,16 +953,36 @@ export function TransmissionModePanel({ properties, onChange }: { properties: an
         properties.transmissionModeProperties = defaultFrameMode();
     }
     const tm = properties.transmissionModeProperties;
-    const modes = useMemo(() => platform.transmissionModes(), []) as any[];
+    const modes = useMemo(() => platform.transmissionModes(), []);
     if (!tm.pluginPointName && modes[0]) tm.pluginPointName = modes[0].name;
-    const modeOf = () => modes.find((m) => m.name === tm.pluginPointName);
-
-    const mode = modeOf();
+    const mode = modes.find((m) => m.name === tm.pluginPointName);
     const sample = mode && mode.sampleFrame ? mode.sampleFrame(tm) : '<Message Data>';
 
-    const openSettings = () => {
-        const m = modeOf();
-        if (m && m.openSettings) m.openSettings(tm, () => { onChange(); tick(); });
+    const selectMode = (name: string) => {
+        const selected = modes.find((m) => m.name === name);
+        if (!selected || name === tm.pluginPointName) return;
+        // The engine deserializes these fields against the selected Java class.
+        // Initialize separately so a failed plugin cannot partially change the channel.
+        const next: OieObject = { pluginPointName: name };
+        if (tm['@version'] !== undefined) next['@version'] = tm['@version'];
+        try {
+            selected.apply(next);
+            if (!next['@class']) {
+                // Older plugins following the SDK example supplied only framing bytes.
+                const frame = defaultFrameMode();
+                if (typeof next.startOfMessageBytes !== 'string' || typeof next.endOfMessageBytes !== 'string' ||
+                    Object.keys(next).some(key => key !== '@version' && !Object.hasOwn(frame, key))) {
+                    throw new Error('The transmission mode must set @class.');
+                }
+                next['@class'] = frame['@class'];
+            }
+        } catch (e) {
+            toast(`Cannot select ${selected.label}: ${apiErrorMessage(e)}`, 'error');
+            return;
+        }
+        properties.transmissionModeProperties = next;
+        onChange();
+        tick();
     };
 
     return (
@@ -975,18 +995,12 @@ export function TransmissionModePanel({ properties, onChange }: { properties: an
                         <div className="cform-control">
                             <div className="flex gap-1.5 items-center">
                                 <select value={tm.pluginPointName} className="w-[162px]"
-                                    onChange={(e) => {
-                                        tm.pluginPointName = e.target.value;
-                                        const m = modeOf();
-                                        if (m && m.apply) m.apply(tm);
-                                        onChange();
-                                        tick();
-                                    }}>
+                                    onChange={(e) => selectMode(e.target.value)}>
                                     {modes.map((m) => <option key={m.name} value={m.name}>{m.label}</option>)}
                                 </select>
                                 {mode && mode.openSettings && (
                                     <button type="button" className="icon-btn" title="Transmission Mode Settings"
-                                        onClick={openSettings}><Icon name="settings" /></button>
+                                        onClick={() => mode.openSettings?.(tm, () => { onChange(); tick(); })}><Icon name="settings" /></button>
                                 )}
                             </div>
                         </div>

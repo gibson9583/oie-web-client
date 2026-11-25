@@ -698,13 +698,36 @@ export function TransmissionModePanel({ properties, onChange }) {
     const modes = useMemo(() => platform.transmissionModes(), []);
     if (!tm.pluginPointName && modes[0])
         tm.pluginPointName = modes[0].name;
-    const modeOf = () => modes.find((m) => m.name === tm.pluginPointName);
-    const mode = modeOf();
+    const mode = modes.find((m) => m.name === tm.pluginPointName);
     const sample = mode && mode.sampleFrame ? mode.sampleFrame(tm) : '<Message Data>';
-    const openSettings = () => {
-        const m = modeOf();
-        if (m && m.openSettings)
-            m.openSettings(tm, () => { onChange(); tick(); });
+    const selectMode = (name) => {
+        const selected = modes.find((m) => m.name === name);
+        if (!selected || name === tm.pluginPointName)
+            return;
+        // The engine deserializes these fields against the selected Java class.
+        // Initialize separately so a failed plugin cannot partially change the channel.
+        const next = { pluginPointName: name };
+        if (tm['@version'] !== undefined)
+            next['@version'] = tm['@version'];
+        try {
+            selected.apply(next);
+            if (!next['@class']) {
+                // Older plugins following the SDK example supplied only framing bytes.
+                const frame = defaultFrameMode();
+                if (typeof next.startOfMessageBytes !== 'string' || typeof next.endOfMessageBytes !== 'string' ||
+                    Object.keys(next).some(key => key !== '@version' && !Object.hasOwn(frame, key))) {
+                    throw new Error('The transmission mode must set @class.');
+                }
+                next['@class'] = frame['@class'];
+            }
+        }
+        catch (e) {
+            toast(`Cannot select ${selected.label}: ${apiErrorMessage(e)}`, 'error');
+            return;
+        }
+        properties.transmissionModeProperties = next;
+        onChange();
+        tick();
     };
     return (React.createElement("div", { className: "mb-4" },
         React.createElement("div", { className: "cform" },
@@ -714,15 +737,8 @@ export function TransmissionModePanel({ properties, onChange }) {
                     React.createElement("label", { className: "cform-label" }, "Transmission Mode:"),
                     React.createElement("div", { className: "cform-control" },
                         React.createElement("div", { className: "flex gap-1.5 items-center" },
-                            React.createElement("select", { value: tm.pluginPointName, className: "w-[162px]", onChange: (e) => {
-                                    tm.pluginPointName = e.target.value;
-                                    const m = modeOf();
-                                    if (m && m.apply)
-                                        m.apply(tm);
-                                    onChange();
-                                    tick();
-                                } }, modes.map((m) => React.createElement("option", { key: m.name, value: m.name }, m.label))),
-                            mode && mode.openSettings && (React.createElement("button", { type: "button", className: "icon-btn", title: "Transmission Mode Settings", onClick: openSettings },
+                            React.createElement("select", { value: tm.pluginPointName, className: "w-[162px]", onChange: (e) => selectMode(e.target.value) }, modes.map((m) => React.createElement("option", { key: m.name, value: m.name }, m.label))),
+                            mode && mode.openSettings && (React.createElement("button", { type: "button", className: "icon-btn", title: "Transmission Mode Settings", onClick: () => mode.openSettings?.(tm, () => { onChange(); tick(); }) },
                                 React.createElement(Icon, { name: "settings" }))))),
                     React.createElement("label", { className: "cform-label" }, "Sample Frame:"),
                     React.createElement("div", { className: "cform-control" },
