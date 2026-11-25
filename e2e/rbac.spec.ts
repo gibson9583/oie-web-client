@@ -603,7 +603,7 @@ for (const kind of ['Filter', 'Transformer']) {
         await page.getByRole('tab', { name: 'Source', exact: true }).click();
         await page.getByRole('button', { name: `Edit ${kind}`, exact: true }).click();
         await page.getByRole('button', { name: 'Back to Channel', exact: true }).click();
-        await expect(page.getByRole('tab', { name: 'Summary', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Source', selected: true })).toBeVisible();
         await page.getByRole('tab', { name: 'Summary', exact: true }).click();
         await expect(name).toHaveValue(`New draft ${kind}`);
         expect(await hasUnsavedWork(page)).toBe(true);

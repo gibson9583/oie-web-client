@@ -33,7 +33,7 @@ import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { RailPane, TaskButton, useSideCollapse, CollapsedSideStrip, SideCollapseButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { useWizardModel, useWizardSteps, useLeaveGuard, WizardStepper, WizardHeader } from './wizard-frame.jsx';
-import { createEmbeddedEditor } from './filter-transformer.jsx';
+import { commitRawElement, createEmbeddedEditor } from './filter-transformer.jsx';
 import {
     ConnectorPropertiesPanels, QueueSettings, ChannelScripts, ChannelSettings, DataTypeBar,
     DependenciesStep
@@ -388,7 +388,7 @@ function ConnectorTabs({ channel, connector, mode, version, onChange, destIndex 
     const [tab, setTab] = useState('Settings');
     const settingsHostRef = useRef<any>(null);   // focus/drop scope for the Destination Mappings rail
     return (
-        <TabsPrimitive.Root value={tab} onValueChange={setTab} className="flex flex-col gap-4">
+        <TabsPrimitive.Root value={tab} onValueChange={next => { if (commitRawElement(channel)) setTab(next); }} className="flex flex-col gap-4">
             {/* m-0 drops .tabs' built-in 7x13 margins so the pill left-aligns
                 with the section content below (the Root's gap spaces the rows). */}
             <TabsPrimitive.List className="tabs overflow-x-auto m-0"
@@ -669,6 +669,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
     const [outbound, setOutbound] = useState(() => channel.sourceConnector.transformer.outboundDataType || defaultDataType(types));
 
     const { step, setStep, maxStep, goStep } = useWizardSteps(isNew, STEPS.length);
+    const selectStep = (next: number) => { if (commitRawElement(channel)) setStep(next); };
     const [selectedDest, setSelectedDest] = useState(0);
     const [nameTouched, setNameTouched] = useState(!isNew);   // don't flag a blank name until touched (existing channels already have one)
     const [existingNames, setExistingNames] = useState<any>(null);
@@ -763,6 +764,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
 
     // Advance, validating the current step first (highlight + toast, matching classic).
     function tryNext() {
+        if (!commitRawElement(channel)) return;
         const probs = stepProblems(step);
         if (probs.length) {
             clearHighlights();
@@ -788,6 +790,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
     };
 
     const addDestination = () => {
+        if (!commitRawElement(channel)) return;
         const dests = oie.destinationsOf(channel);
         const id = channel.nextMetaDataId || (dests.length + 1);
         channel.nextMetaDataId = id + 1;
@@ -800,6 +803,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
     const removeDestination = (i: any) => {
         const dests = oie.destinationsOf(channel);
         if (dests.length <= 1) { toast('A channel needs at least one destination.', 'warn'); return; }
+        if (!commitRawElement(channel, i === selectedDest ? 'discard-invalid' : 'report')) return;
         oie.setDestinations(channel, dests.filter((_, idx) => idx !== i));
         setSelectedDest(Math.max(0, i - 1));
         bump();
@@ -808,6 +812,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
 
     /* ---- navigation + create / finish ---- */
     function switchToClassic() {
+        if (!commitRawElement(channel)) return;
         switchingRef.current = true;
         store.setState('editingChannel', channel);
         store.setState('editingChannelNew', isNew);
@@ -822,7 +827,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
 
     async function saveChannelUnlocked(deploy: any) {
         const isCurrent = channelSessionActive();
-        if (!isCurrent()) return false;
+        if (!isCurrent() || !commitRawElement(channel)) return false;
         const probs = allProblems();
         if (probs.length) {
             const s = firstProblemStep();
@@ -841,6 +846,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
             stage = 'deploy/start dependencies';
             await persistChannelDependencies(depStateRef);
             if (!isCurrent()) return false;
+            editState.channelStageComplete = false;
             // Only all persisted stages make the edit session clean. Deployment
             // remains a separate operation and must never erase a pending stage.
             savedRef.current = true;
@@ -942,7 +948,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
             </ViewTasks>
             <WizardHeader icon="channels" title={isNew ? 'New Channel — Wizard' : `${channel.name || 'Channel'} — Wizard`} />
             {stageFailure && <div role="status" className="px-4 py-3 border-b border-line text-warning">{stageFailure.message}</div>}
-            <WizardStepper steps={STEPS} step={step} maxStep={maxStep} onStep={setStep} />
+            <WizardStepper steps={STEPS} step={step} maxStep={maxStep} onStep={selectStep} />
 
             <div className="view-body overflow-x-hidden">
                 {/* keyed on step so the slide-in animation replays on each step change */}
@@ -960,7 +966,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
                     )}
                     {stepName === 'Destinations' && (
                         <DestinationsStep channel={channel} version={version} selected={selectedDest}
-                            onSelect={setSelectedDest} onAdd={addDestination} onRemove={removeDestination}
+                            onSelect={(index: number) => { if (commitRawElement(channel)) setSelectedDest(index); }} onAdd={addDestination} onRemove={removeDestination}
                             onRename={renameDestination} onChange={bump} />
                     )}
                     {stepName === 'Scripts' && <ChannelScripts channel={channel} onChange={bump} />}
@@ -970,7 +976,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
 
             {/* Footer */}
             <div className="flex items-center gap-2 px-4 py-3 border-t border-line">
-                <button className="btn" disabled={step === 0} onClick={() => setStep(Math.max(0, step - 1))}>Back</button>
+                <button className="btn" disabled={step === 0} onClick={() => selectStep(Math.max(0, step - 1))}>Back</button>
                 <div className="ml-auto flex items-center gap-2">
                     {!isLast ? (
                         <button className="btn btn-primary" disabled={stepName === 'Basics' && !!nameError()} onClick={tryNext}>Next</button>

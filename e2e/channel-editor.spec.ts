@@ -492,6 +492,7 @@ test.describe('Channel editor', () => {
 
         await page.getByRole('button', { name: 'Back to Channel', exact: true }).click();
         await expect(page).toHaveURL(new RegExp(`/channels/${CHANNEL_ID}/edit$`));
+        await expect(page.getByRole('tab', { name: 'Source', selected: true })).toBeVisible();
     });
 
     // The Tags field commits on the native change event only (Enter / blur /

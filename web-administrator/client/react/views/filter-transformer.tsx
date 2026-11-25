@@ -3,6 +3,7 @@ import { loadErrorMessage } from '../load-error.js';
 import { channelDependencyState } from '../../core/channel-dependencies.js';
 import { persistChannelEdits, channelSessionActive } from '../channel-persistence.js';
 import { withEditorSave } from '../save-lock.js';
+import { channelEditorScreens } from '../channel-editor-return.js';
 import { parseFilterTransformerImport, normalizeImportTypes, alignDestinationTypes, updateImportedAttachmentHandler, normalizeImportedElementTypes } from './editor-import.js';
 /*
  * Filter / Transformer / Response Transformer editor — parity with the Swing
@@ -31,8 +32,8 @@ import { parseFilterTransformerImport, normalizeImportTypes, alignDestinationTyp
  *
  * The channel travels through the store ('editingChannel') so unsaved edits
  * survive navigation between the channel editor and this view. Dirty is the
- * explicit editingChannelDirty store flag; persist() (teardown) never sets it,
- * only commit() does.
+ * explicit editingChannelDirty store flag; user edits set it and teardown only
+ * persists the model.
  *
  * createEmbeddedEditor keeps the imperative embedding contract the channel
  * wizard captures once: a synchronous { el, teardown, handlers, taskState,
@@ -494,7 +495,7 @@ function ElementsGrid({ kind, isFilter, elements, selectedPath, typeOptions, can
    onChange() defaults during mount don't mark the channel dirty. The island
    remounts only when the selected ELEMENT (identity or type) changes — never
    on rev bumps, so plugin editor state (Monaco etc.) survives grid edits. */
-function StepEditorPanel({ kind, isFilter, element, headerIndex, settlingRef, onChange, onReplaceElement, destinations }: any) {
+function StepEditorPanel({ kind, isFilter, element, headerIndex, settlingRef, onChange, onRawEdit, channel, onReplaceElement, destinations }: any) {
     const hostRef = useRef<any>(null);
     const def = element ? typeDefFor(isFilter, element.__type) : null;
     const hasComponent = !!(def && typeof def.component === 'function');
@@ -546,7 +547,7 @@ function StepEditorPanel({ kind, isFilter, element, headerIndex, settlingRef, on
             {hasComponent
                 ? <div className="panel-body" ref={hostRef} />
                 : <div className="panel-body">
-                    <RawElementFallback element={element} onReplace={onReplaceElement} />
+                    <RawElementFallback element={element} onEdit={onRawEdit} channel={channel} onReplace={onReplaceElement} />
                 </div>}
         </div>
     );
@@ -561,25 +562,70 @@ function SettleGuard({ settlingRef, children }: any) {
     return children;
 }
 
+// A routed editor and a wizard each have one active step form per channel draft.
+type RawCommitMode = 'report' | 'quiet' | 'discard-invalid';
+const rawElementForms = new WeakMap<object, (mode: RawCommitMode) => boolean>();
+
+export function commitRawElement(channel: object, mode: 'report' | 'discard-invalid' = 'report'): boolean {
+    return rawElementForms.get(channel)?.(mode) ?? true;
+}
+
 /* Unknown plugin type: raw JSON fallback so nothing is lost. */
-function RawElementFallback({ element, onReplace }: any) {
-    const [text, setText] = useState(() => JSON.stringify(element, null, 2));
+function RawElementFallback({ element, onEdit, channel, onReplace }: any) {
+    const input = useRef<HTMLTextAreaElement>(null);
+    const edited = useRef(false);
+    const errorDialog = useRef<ReturnType<typeof toast> | null>(null);
+    const pointerAction = useRef(false);
+    useEffect(() => {
+        // On Safari a clicked button can blur this field without becoming the
+        // relatedTarget. Let the chosen action decide whether it needs the old row.
+        const onPointerDown = (event: PointerEvent) => {
+            pointerAction.current = event.target instanceof Element && !!event.target.closest('button, select, [role="menuitem"]');
+        };
+        document.addEventListener('pointerdown', onPointerDown, true);
+        return () => document.removeEventListener('pointerdown', onPointerDown, true);
+    }, []);
     // Re-seed when the selection moves to a different element (the panel is not
     // remounted between same-shape selections).
-    useEffect(() => { setText(JSON.stringify(element, null, 2)); }, [element]);
+    useLayoutEffect(() => {
+        edited.current = false;
+        input.current!.value = JSON.stringify(element, null, 2);
+    }, [element]);
+    function apply(mode: RawCommitMode) {
+        if (!edited.current) return true;
+        try {
+            const parsed = JSON.parse(input.current!.value);
+            parsed.__type = element.__type;
+            onReplace(parsed);
+            edited.current = false;
+            return true;
+        } catch (e: any) {
+            if (mode === 'discard-invalid') {
+                edited.current = false;
+                return true;
+            }
+            if (mode === 'report' && !errorDialog.current?.el?.isConnected) {
+                errorDialog.current = toast(`Invalid JSON: ${e.message}`, 'error');
+            }
+            return false;
+        }
+    }
+    // History navigation and wizard controls can leave a focused textarea without blur.
+    useLayoutEffect(() => {
+        rawElementForms.set(channel, apply);
+        return () => { if (rawElementForms.get(channel) === apply) rawElementForms.delete(channel); };
+    });
     return (
         <div className="field">
             <label>Raw element (JSON)</label>
-            <textarea rows={14} spellCheck={false} value={text}
-                onChange={(e: any) => setText(e.target.value)}
-                onBlur={() => {
-                    try {
-                        const parsed = JSON.parse(text);
-                        parsed.__type = element.__type;
-                        onReplace(parsed);
-                    } catch (e: any) {
-                        toast(`Invalid JSON: ${e.message}`, 'error');
-                    }
+            <textarea rows={14} spellCheck={false} ref={input}
+                onChange={() => { edited.current = true; onEdit(); }}
+                onKeyDown={() => { pointerAction.current = false; }}
+                onBlur={event => {
+                    // A dialog can take focus while deciding whether to save or discard.
+                    // Commit valid text on blur; let that dialog finish before reporting an error.
+                    apply(pointerAction.current || event.relatedTarget?.closest('[role="dialog"]') ? 'quiet' : 'report');
+                    pointerAction.current = false;
                 }} />
             <div className="hint">{`No editor registered for ${element.__type}`}</div>
         </div>
@@ -1337,6 +1383,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     const selectedPathRef = useRef(selectedPath);
     const setSelected = (path: any) => { selectedPathRef.current = path; setSelectedPathState(path); };
     const [rev, bump] = useReducer((x: any) => x + 1, 0);
+    const validation = useRef<{ returning: boolean } | null>(null);
     const [bottomTab, setBottomTab] = useState(0);
     // True only while a step plugin's flushSync mount runs (see StepEditorPanel).
     const settlingRef = useRef(false);
@@ -1370,14 +1417,26 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     const persistRef = useRef(persist);
     persistRef.current = persist;
 
+    function markDirty() {
+        store.setState('editingChannelDirty', true);
+        onTasksChange();
+    }
+
+    // Raw JSON may be incomplete while typing. Its text is already a draft
+    // edit; waiting for blur would let Back act on the previous script.
+    function onRawEdit() {
+        validation.current = null;
+        if (!channelDirty()) markDirty();
+    }
+
     // Called by the edit handlers: persist AND mark the shared dirty flag the
     // channel editor reads, so unsaved step edits prompt on exit. The rev bump
     // repaints the grid and regenerates the script preview.
     function commit() {
+        validation.current = null;
         persist();
         if (settlingRef.current) return;            // plugin initialization, not a user edit
-        store.setState('editingChannelDirty', true);
-        onTasksChange();
+        markDirty();
         bump();
     }
     const commitRef = useRef(commit);
@@ -1387,7 +1446,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
 
     async function saveChannelUnlocked() {
         const isCurrent = channelSessionActive();
-        if (!isCurrent()) return false;
+        if (!isCurrent() || !commitRawElement(channel)) return false;
         persist();
         const problems = oie.validateChannel(channel);
         if (problems.length) {
@@ -1441,10 +1500,16 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         });
     }
 
-    guardImplRef.current = async ({ path }: any) => {
+    guardImplRef.current = async ({ path, params: nextParams }: any) => {
         const isCurrent = channelSessionActive();
         if (!isCurrent()) return false;
-        if (path.startsWith(`/channels/${params.channelId}/`)) return; // same editing flow
+        if (path.startsWith(`/channels/${params.channelId}/`)) {
+            if (!commitRawElement(channel)) return false;
+            if (nextParams.metaDataId == null && path !== `/channels/${params.channelId}/edit`) {
+                channelEditorScreens.delete(channel);
+            }
+            return;
+        }
         if (channelDirty()) {
             const choice = await promptSaveChanges();
             if (!isCurrent() || choice === 'cancel') return false;
@@ -1454,6 +1519,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         }
         // Left the editor entirely: drop the working copy AND this guard so it can
         // never prompt again for navigation outside the editing flow.
+        channelEditorScreens.delete(channel);
         store.setState('editingChannel', null);
         store.setState('editingChannelNew', false);
         store.setState('editingChannelDirty', false);
@@ -1517,13 +1583,16 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     }
 
     function selectElement(path: any) {
+        if (!commitRawElement(channel)) return false;
         setSelected(path);
         onTasksChange();
+        return true;
     }
 
     /* ---- actions (resolve their targets at execution time via the refs) ---- */
 
     function addElement() {
+        if (!commitRawElement(channel)) return;
         const entries = availableTypeEntries();
         const items = h('div.step-list');
         const m = modal({
@@ -1569,8 +1638,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const list = listAtPath(elementsRef.current, path);
         if (!list) return;
         const idx = path[path.length - 1];
+        if (!list[idx] || list[idx].__type === newType) return;
+        // Converting the edited row replaces its plugin-specific fields. A
+        // change on a different row carries the current raw form forward.
+        if (!commitRawElement(channel, pathEquals(path, selectedPathRef.current) ? 'discard-invalid' : 'report')) return;
         const old = list[idx];
-        if (!old || old.__type === newType) return;
         const registry = isFilter ? platform.ruleTypes() : platform.stepTypes();
         const def = registry.get(newType);
         const created = def && def.create ? def.create() : { __type: newType, name: '', enabled: true };
@@ -1591,6 +1663,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const list = listAtPath(elements, selPath);
         const idx = selPath![selPath!.length! - 1];
         const parent = selPath!.slice!(0, -1);
+        commitRawElement(channel, 'discard-invalid');
         list.splice(idx, 1);
         setSelected(list.length ? [...parent, Math.min(idx, list.length - 1)]
             : (parent.length ? parent : (elements.length ? [0] : null)));
@@ -1598,6 +1671,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     }
 
     function move(delta: any) {
+        if (!commitRawElement(channel)) return;
         const elements = elementsRef.current;
         const selPath = selectedPathRef.current;
         if (!elementAtPath(elements, selPath)) { toast(`Select a ${kind.noun.toLowerCase()} first`, 'warn'); return; }
@@ -1649,10 +1723,12 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 }
             }
             if (choice === 'append') {
+                if (!commitRawElement(channel)) return;
                 elementsRef.current = [...elementsRef.current, ...cleaned];
             } else {
                 // Mutate the stable target object used by the message-template panels;
                 // replacement imports all transformer settings, including empty templates.
+                commitRawElement(channel, 'discard-invalid');
                 for (const key of Object.keys(target)) delete target[key];
                 Object.assign(target, imported);
                 elementsRef.current = cleaned;
@@ -1668,6 +1744,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     }
 
     async function exportElements() {
+        if (!commitRawElement(channel)) return;
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
         // Export the SERIALIZED tree (up-to-date properties.children on
@@ -1683,6 +1760,15 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     }
 
     /* ---- validation ---- */
+
+    // Edits and newer validation actions supersede an in-flight check, including
+    // a Back request. The editor stays interactive while Rhino compiles a script.
+    function beginValidation(returning = false) {
+        const request = { returning };
+        validation.current = request;
+        const navigation = router.navigationToken();
+        return () => mountedRef.current && validation.current === request && router.navigationToken() === navigation;
+    }
 
     // The Swing per-element error wrapper (BaseEditorPane.validateElementRecursive):
     //   Error in connector "<conn>" at [response ]<container> <element> <seq> ("<name>"):
@@ -1736,33 +1822,39 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // Full validation for "Validate <Kind>" and "Back to Channel". Mirrors Swing
     // BaseEditorPane.validateAll: (a) per-element field checks, then (b) a Rhino
     // syntax check of every element's generated script (engine bridge), covering
-    // non-JavaScript steps/rules too. Returns 'ok' | 'fail' | 'unavailable'.
+    // non-JavaScript steps/rules too. Ignore results after a route change.
     // `announce` controls the success/empty toasts (the manual Validate task
     // announces; Back to Channel runs it silently and only surfaces the error).
-    async function runValidation(announce: any) {
+    async function runValidation(announce: boolean, isCurrent: () => boolean) {
         if (!elementsRef.current.length) {
             if (announce) toast(`${kind.title} is empty — nothing to validate`, 'warn');
-            return 'ok';
+            return true;
         }
         // (a) Field checks (blank required fields, duplicate iterator index).
         const fieldErrors = collectFieldErrors();
-        if (fieldErrors.length) { showValidationErrors(fieldErrors); return 'fail'; }
+        if (fieldErrors.length) { showValidationErrors(fieldErrors); return false; }
         // (b) Rhino syntax check of each element's generated script. Iterator
         // children roll into the parent's generated script.
         for (const el of elementsRef.current) {
             const src = generateElementScript(el, childrenOf);
             if (src == null) continue;
             const result = await validateScript(src);
-            if (result.ok === null) { toast(result.message, 'warn'); return 'unavailable'; }
-            if (result.ok === false) { showValidationErrors([elementError(el, result.message)]); return 'fail'; }
+            if (!isCurrent()) return false;
+            if (result.ok === null) { toast(result.message, 'warn'); return true; }
+            if (result.ok === false) { showValidationErrors([elementError(el, result.message)]); return false; }
         }
         if (announce) toast(`All ${kind.noun.toLowerCase()}s validated successfully`);
-        return 'ok';
+        return true;
     }
 
-    async function validateElements() { await runValidation(true); }
+    async function validateElements() {
+        if (!commitRawElement(channel)) return;
+        await runValidation(true, beginValidation());
+    }
 
     async function validateElement() {
+        if (!commitRawElement(channel)) return;
+        const isCurrent = beginValidation();
         const el = elementAtPath(elementsRef.current, selectedPathRef.current);
         if (!el) { toast(`Select a ${kind.noun.toLowerCase()} first`, 'warn'); return; }
         // (a) Field check for this element (Swing plugin.checkProperties).
@@ -1773,6 +1865,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const src = generateElementScript(el, childrenOf);
         if (src != null) {
             const result = await validateScript(src);
+            if (!isCurrent() || elementAtPath(elementsRef.current, selectedPathRef.current) !== el) return;
             if (result.ok === false) { showValidationErrors([elementError(el, result.message)]); return; }
             if (result.ok === null) { toast(result.message, 'warn'); return; }
         }
@@ -1799,6 +1892,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     }
 
     function assignToIterator() {
+        if (!commitRawElement(channel)) return;
         const el = elementAtPath(elementsRef.current, selectedPathRef.current);
         if (!el) { toast(`Select a ${kind.noun.toLowerCase()} first`, 'warn'); return; }
         const targets = iteratorTargets(selectedPathRef.current);
@@ -1815,6 +1909,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     }
 
     function removeFromIterator() {
+        if (!commitRawElement(channel)) return;
         const elements = elementsRef.current;
         const selPath = selectedPathRef.current;
         const el = elementAtPath(elements, selPath);
@@ -1831,6 +1926,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
 
     // Steps created from a message-tree node (Map to Variable / Map to Message).
     function addTreeStep(typeId: any, label: any, baseName: any, setup: any) {
+        if (!commitRawElement(channel)) return;
         const def = platform.stepTypes().get(typeId);
         if (!def) { toast(`${label} is not available`, 'warn'); return; }
         const el = def.create ? def.create() : { __type: typeId };
@@ -1851,8 +1947,15 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         // Validate task and stays put on a blocking error — BaseEditorPane.accept()
         // aborts navigation when validateAll() reports errors. A non-blocking
         // 'unavailable' (engine validate endpoint down) must not trap the user.
-        if (await runValidation(false) === 'fail') return;
+        if (!commitRawElement(channel)) return;
+        const isCurrent = beginValidation(true);
+        if (!await runValidation(false, isCurrent) || !isCurrent()) return;
         persist();    // navigating back is not an edit — don't mark dirty
+        // Bookmarks and Dashboard actions have a connector but no originating tab.
+        if (!channelEditorScreens.has(channel)) {
+            channelEditorScreens.set(channel, String(params.metaDataId) === '0'
+                ? { tab: 'Source' } : { tab: 'Destinations', destinationId: connector.metaDataId });
+        }
         router.navigate(`/channels/${channel.id}/edit`);
     }
 
@@ -1863,7 +1966,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // step's actions. Right-clicking a row selects it first.
     function showStepMenu(e: any, path: any) {
         e.preventDefault();
-        if (path && !pathEquals(path, selectedPathRef.current)) selectElement(path);
+        if (path && !pathEquals(path, selectedPathRef.current) && !selectElement(path)) return;
         const el = elementAtPath(elementsRef.current, selectedPathRef.current);
         const onStep = !!el;
         const t = kind.title, n = kind.noun;
@@ -1913,6 +2016,9 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     const onAccessorDrop = useMemo(() => makeAccessorDrop(dragRef), []);
 
     apiRef.current = {
+        cancelPendingBack() {
+            if (validation.current?.returning) validation.current = null;
+        },
         taskState,
         handlers: {
             addElement, deleteElement, assignToIterator, removeFromIterator,
@@ -2041,7 +2147,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                     </div>
                     <div className="split-handle" data-editor-overtake="" />
                     <div className="split-b flex flex-col min-h-0">
-                        <BottomTabs active={bottomTab} onActive={setBottomTab} tabs={[
+                        <BottomTabs active={bottomTab} onActive={(next: number) => { if (commitRawElement(channel)) setBottomTab(next); }} tabs={[
                             {
                                 label: kind.noun,
                                 className: 'step-editor-fill py-3 px-3.5',
@@ -2050,6 +2156,8 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                                     headerIndex={selectedPath ? selectedPath[selectedPath.length - 1] + 1 : 0}
                                     settlingRef={settlingRef}
                                     onChange={() => commitRef.current()}
+                                    onRawEdit={onRawEdit}
+                                    channel={channel}
                                     onReplaceElement={(parsed: any) => {
                                         const selPath = selectedPathRef.current;
                                         const list = listAtPath(elementsRef.current, selPath);
@@ -2137,8 +2245,24 @@ function FilterTransformerView({ params, kindName }: any) {
     const ts = (ctx && ctx.taskState()) || { onStep: false, assign: false, remove: false, dirty: false };
     const t = ctx && ctx.handlers;
 
+    // Capture also reaches the task rail portal. Selecting a step or opening a
+    // chooser supersedes Back before the next edit has been committed.
+    function onEditorAction(event: React.MouseEvent) {
+        if (event.type === 'contextmenu' || (event.target instanceof Element && event.target.closest('button, select, tr[data-path]'))) {
+            apiRef.current?.cancelPendingBack();
+        }
+    }
+
+    // Native select pickers can open on pointerdown or keydown, before a click
+    // or change reaches the editor. Leave the browser's picker behavior intact.
+    function onSelectInteraction(event: React.SyntheticEvent) {
+        if (event.target instanceof HTMLSelectElement) apiRef.current?.cancelPendingBack();
+    }
+
     return (
-        <div className="view flex flex-col flex-1 min-h-0">
+        <div className="view flex flex-col flex-1 min-h-0"
+            onPointerDownCapture={onSelectInteraction} onKeyDownCapture={onSelectInteraction}
+            onClickCapture={onEditorAction} onContextMenuCapture={onEditorAction}>
             <ViewTasks>
                 {/* Mutation tasks ride channelEdit/doSaveChannel: there are no Swing
                     constants for the individual step actions, and editing steps is

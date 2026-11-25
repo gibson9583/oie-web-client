@@ -25,6 +25,7 @@ import { Icon } from '../bridges.jsx';
 import { openRadixDialog } from '../dialog-host.jsx';
 import { setActiveScope, clearActiveScope } from '../../core/script-completions.js';
 import { dependencySelection, librarySelection, refreshLibraryChoices, refreshDependencyChoices } from '../../core/channel-dependencies.js';
+import { assignedTags, loadTagChoices, sameTag, setTagMembership } from '../../core/channel-save.js';
 import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
 import { DataTypePropertiesEditor } from '../../datatypes/props-editor.jsx';
 
@@ -712,74 +713,48 @@ function tagChipBg(color: any) {
     return (color && color.red !== undefined) ? `rgba(${color.red}, ${color.green}, ${color.blue}, 0.26)` : 'var(--bg2)';
 }
 
-function ChannelTags({ channel, version }: any) {
-    const [, tick] = useReducer((x: any) => x + 1, 0);
-    const st = useRef<any>({ all: [], assigned: new Set(), available: false, loaded: false });
+function ChannelTags({ channel, version, onChange }: any) {
+    const [choices, setChoices] = useState<any[] | null>(null);
     useEffect(() => {
         let alive = true;
-        api.server.channelTags().catch(() => api.asList(channel.exportData?.channelTags, 'channelTag')).then((tags: any) => {
-            if (!alive) return;
-            const all = (Array.isArray(tags) ? tags : []).map((t: any) => ({ id: t.id, name: t.name, backgroundColor: t.backgroundColor, channelIds: api.asList(t.channelIds, 'string').map(String) }));
-            const assigned = new Set();
-            for (const t of all) if (t.channelIds.includes(channel.id)) assigned.add(t.name);
-            for (const ct of api.asList(channel.exportData && channel.exportData.channelTags, 'channelTag')) {
-                if (!ct) continue;
-                const known = (ct.id && all.find((t: any) => t.id === ct.id)) || (ct.name != null && all.find((t: any) => t.name === String(ct.name)));
-                if (known) { assigned.add(known.name); continue; }
-                if (ct.name == null || String(ct.name) === '') continue;
-                const name = String(ct.name);
-                all.push({ id: ct.id || oie.uuid(), name, channelIds: api.asList(ct.channelIds, 'string').map(String), backgroundColor: ct.backgroundColor });
-                assigned.add(name);
-            }
-            st.current = { all, assigned, available: true, loaded: true };
-            tick();
-        }).catch(() => { st.current.loaded = true; tick(); });
-        return () => { alive = false; };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    // Write assigned tags onto the channel (engine reconciles membership on save).
-    const apply = () => {
-        const s = st.current;
-        if (!s.available) return;
-        const channelTags = s.all.filter((t: any) => s.assigned.has(t.name)).map((t: any) => {
-            const ids = new Set(t.channelIds); ids.add(channel.id);
-            return { '@version': version, id: t.id, name: t.name, channelIds: { string: [...ids] }, backgroundColor: t.backgroundColor };
+        loadTagChoices(channel, () => alive).then(known => {
+            if (alive) setChoices(known);
+        }).catch(() => {
+            // Keep the draft editable when the server cannot supply suggestions.
+            if (alive) setChoices(assignedTags(channel));
         });
-        channel.exportData = channel.exportData || {};
-        channel.exportData.channelTags = channelTags.length ? { channelTag: channelTags } : '';
-        for (const t of s.all) { const ids = new Set((t as any).channelIds); if (s.assigned.has((t as any).name)) ids.add(channel.id); else ids.delete(channel.id); (t as any).channelIds = [...ids]; }
-    };
+        return () => { alive = false; };
+    }, [channel]);
 
-    const s = st.current;
-    const fixName = (n: any) => String(n).replace(/[^a-zA-Z_0-9\-\s]/g, '').slice(0, 24).trim();
-    const addTag = (raw: any) => {
-        const name = fixName(raw);
-        if (!name || s.assigned.has(name)) return;
-        if (!s.all.some((t: any) => t.name === name)) s.all.push({ id: oie.uuid(), name, channelIds: [], backgroundColor: randomTagColor() });
-        s.assigned.add(name); apply(); tick();
+    const assigned = [...assignedTags(channel)].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    const suggestions = (choices ?? []).filter(tag => !assigned.some(current => sameTag(current, tag))).map(tag => tag.name);
+    const changeMembership = (tag: any, add: boolean) => {
+        setTagMembership(channel, tag, add, version);
+        // A removed draft-only tag can be selected again with its original ID and color.
+        if (!choices?.some(known => sameTag(known, tag))) setChoices([...(choices ?? []), tag]);
+        onChange();
     };
-    const removeTag = (name: any) => { s.assigned.delete(name); apply(); tick(); };
-
-    const assigned = [...s.assigned].sort((a: any, b: any) => a.localeCompare(b));
-    const suggestions = s.all.filter((t: any) => !s.assigned.has(t.name)).map((t: any) => t.name);
+    const addTag = (raw: string) => {
+        const name = raw.replace(/[^a-zA-Z_0-9\-\s]/g, '').slice(0, 24).trim();
+        if (!name || assignedTags(channel).some(tag => sameTag(tag, { name }))) return;
+        const tag = choices?.find(known => sameTag(known, { name }))
+            ?? { id: oie.uuid(), name, channelIds: [], backgroundColor: randomTagColor() };
+        changeMembership(tag, true);
+    };
     return (
         <div className="panel !mt-0">
             <div className="panel-header">Tags</div>
             <div className="panel-body">
-                {!s.loaded && <div className="hint">Loading tags…</div>}
-                {s.loaded && (
+                {!choices && <div className="hint">Loading tags…</div>}
+                {choices && (
                     <div className="flex flex-wrap items-center gap-1.5">
                         {assigned.length === 0 && <span className="text-text-faint text-[11px]">No tags.</span>}
-                        {assigned.map((name: any) => {
-                            const tag = s.all.find((t: any) => t.name === name);
-                            return (
-                                <span key={name} className="tag" style={{ background: tagChipBg(tag && (tag as any).backgroundColor) }}>
-                                    {name}
-                                    <button type="button" className="appearance-none border-0 bg-transparent p-0 text-text-dim hover:text-[var(--text)] leading-none cursor-pointer" style={{ font: 'inherit' }} title="Remove tag" onClick={() => removeTag(name)}>✕</button>
-                                </span>
-                            );
-                        })}
+                        {assigned.map(tag => (
+                            <span key={tag.id} className="tag" style={{ background: tagChipBg(tag.backgroundColor) }}>
+                                {tag.name}
+                                <button type="button" className="appearance-none border-0 bg-transparent p-0 text-text-dim hover:text-[var(--text)] leading-none cursor-pointer" style={{ font: 'inherit' }} title="Remove tag" onClick={() => changeMembership(tag, false)}>✕</button>
+                            </span>
+                        ))}
                         <input type="text" list="wiz-tag-list" placeholder="Add tag…" className="w-[126px]"
                             onKeyDown={(e: any) => { if (e.key === 'Enter') { e.preventDefault(); addTag(e.target.value); e.target.value = ''; } }}
                             onChange={(e: any) => { if (e.target.value && suggestions.includes(e.target.value)) { addTag(e.target.value); e.target.value = ''; } }} />
@@ -833,7 +808,7 @@ export function ChannelSettings({ channel, version, onChange }: any) {
             </div>
 
             <AttachmentHandler channel={channel} version={version} />
-            <ChannelTags channel={channel} version={version} />
+            <ChannelTags channel={channel} version={version} onChange={tick} />
 
             <div className="panel !mt-0">
                 <div className="panel-header">Message Storage</div>
